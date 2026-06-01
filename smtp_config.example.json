@@ -1,0 +1,9 @@
+{
+  "host": "smtp.gmail.com",
+  "port": 587,
+  "use_tls": true,
+  "username": "your@gmail.com",
+  "password": "your-app-password",
+  "from": "your@gmail.com",
+  "from_name": "ادارة المراجعة"
+}
