@@ -1,4 +1,6 @@
-"""Build ZIP export: HTML, audit JSON, summary CSV, PDF snapshot."""
+"""Build ZIP export: HTML, audit JSON, summary CSV, PDF snapshot.
+
+See docs/FOLDER_MAP.md."""
 
 from __future__ import annotations
 

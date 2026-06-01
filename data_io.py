@@ -1,4 +1,6 @@
-"""Shared Excel/CSV loading for the dashboard tools."""
+"""Shared Excel/CSV loading for the dashboard tools.
+
+See docs/FOLDER_MAP.md and docs/ARCHITECTURE.md."""
 
 from __future__ import annotations
 

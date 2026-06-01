@@ -1,5 +1,6 @@
-"""UI strings for English and Arabic (RTL) dashboard reports."""
+"""UI strings for English and Arabic (RTL) dashboard reports.
 
+See docs/FOLDER_MAP.md."""
 from __future__ import annotations
 
 LOCALES = frozenset({"en", "ar"})

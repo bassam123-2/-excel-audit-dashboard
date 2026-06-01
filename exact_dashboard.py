@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""Alternate reference-layout dashboard renderer (not the main audit HTML).
+
+See docs/ARCHITECTURE.md — used when web_app calls render_from_reference."""
 from __future__ import annotations
 
 import json

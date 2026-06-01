@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Dynamic Excel dashboard: validation, charts, and export-ready summaries."""
+"""Dynamic Excel dashboard: validation, charts, and export-ready summaries.
+
+Main engine (~12k lines): audit payload, HTML/JS report, Tk GUI, SMTP.
+See START_HERE.md, docs/FOLDER_MAP.md, docs/ARCHITECTURE.md."""
 
 from __future__ import annotations
 

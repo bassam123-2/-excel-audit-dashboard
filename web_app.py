@@ -4,8 +4,11 @@ Upload Excel/CSV file and generate dashboard HTML report.
 
 Run:
     python web_app.py
+    .\\scripts\\run_web.ps1
 Then open:
     http://127.0.0.1:5000
+
+See START_HERE.md and docs/ARCHITECTURE.md.
 """
 
 from __future__ import annotations

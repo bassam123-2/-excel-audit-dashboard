@@ -2,6 +2,8 @@
 
 Turn an internal-audit Excel register (and optional finance data) into an interactive HTML dashboard. Supports **desktop (Tk)** and **web (Flask)** modes, English/Arabic UI, company logos, email actions, and export (ZIP / PDF / PPTX).
 
+**New to the repo?** Read **[START_HERE.md](START_HERE.md)** first, then **[docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)**.
+
 Current report build: **`dashboard-v1.0.3`** (see `REPORT_VERSION` in `ai_excel_dashboard.py`).
 
 ## Quick start
@@ -18,6 +20,7 @@ pip install -r requirements.txt
 
 ```bash
 python web_app.py
+# or:  .\scripts\run_web.ps1
 ```
 
 Open [http://127.0.0.1:5000](http://127.0.0.1:5000), upload your `.xlsx` / `.csv`, and open the generated report.
@@ -49,8 +52,12 @@ Output: `dist/ai_excel_dashboard_v3_update.exe`. Place `smtp_config.json` next t
 
 ## Project layout
 
+Full tree and “where to change what”: **[docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)** · Data flow: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
+
 | File / folder | Role |
 |---------------|------|
+| `START_HERE.md` | Onboarding checklist for new developers |
+| `scripts/` | `run_web.ps1`, `run_desktop.ps1`, `build_exe.ps1`, `stop_port_5000.ps1` |
 | `ai_excel_dashboard.py` | Core logic, audit payload, HTML/JS report template, Tk GUI, SMTP helpers (~12k lines) |
 | `web_app.py` | Flask upload UI and APIs |
 | `data_io.py` | Read Excel/CSV into pandas |
@@ -58,6 +65,7 @@ Output: `dist/ai_excel_dashboard_v3_update.exe`. Place `smtp_config.json` next t
 | `export_bundle.py` | ZIP export (HTML, JSON, CSV summary, PDF) |
 | `exact_dashboard.py` | Alternate reference-style dashboard renderer |
 | `assets/logos/` | Company/subcompany logos for the header |
+| `examples/` | Optional anonymized sample `.xlsx` for testing |
 | `ai_excel_dashboard_v3_update.spec` | PyInstaller one-file build |
 | `docs/EXCEL_SCHEMA.md` | Expected Excel columns and row rules |
 
