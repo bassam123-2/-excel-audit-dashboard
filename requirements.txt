@@ -1,0 +1,6 @@
+flask
+pandas
+openpyxl
+fpdf2
+python-pptx
+Pillow>=10.0.0
