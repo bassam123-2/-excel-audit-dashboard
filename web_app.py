@@ -24,6 +24,7 @@ from werkzeug.utils import secure_filename
 
 from ai_excel_dashboard import (
     AUDIT_BUNDLE_MAX_FILES,
+    REPORT_VERSION,
     _MAIL_API_MARKER,
     _PLAN_PARSE_API_MARKER,
     _valid_obs_email,
@@ -36,6 +37,7 @@ from ai_excel_dashboard import (
     send_audit_observation_email_smtp,
     workbook_dashboard_tab_title,
 )
+import ai_excel_dashboard as _ai_excel_dashboard_mod
 from dashboard_locale import normalize_locale, tr
 from data_io import read_input_file
 from exact_dashboard import render_from_reference
@@ -44,6 +46,23 @@ from export_bundle import build_summary_pptx, create_export_zip
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+
+
+@app.after_request
+def _add_dashboard_version_header(response):
+    response.headers["X-Dashboard-Version"] = REPORT_VERSION
+    return response
+
+
+@app.route("/api/version", methods=["GET"])
+def api_version():
+    """Confirm which code build the server is running (for deploy checks)."""
+    return jsonify(
+        {
+            "report_version": REPORT_VERSION,
+            "module_file": str(getattr(_ai_excel_dashboard_mod, "__file__", "")),
+        }
+    )
 
 
 def _inject_web_mail_api(html_out: str) -> str:
@@ -373,6 +392,7 @@ def upload_form_html(locale: str | None = None) -> str:
     .btn-secondary{{background:#fff;color:#1a1a2e;border:2px solid #007a38}}
     .btn-secondary:hover{{background:#e8f5ee}}
     .hint{{font-size:13px;color:#64748b;margin-top:12px;line-height:1.45}}
+    .build-tag{{font-size:12px;color:#94a3b8;margin-top:16px}}
   </style>
 </head>
 <body>
@@ -380,6 +400,7 @@ def upload_form_html(locale: str | None = None) -> str:
     <div class="card">
       <h1>{html.escape(tr(loc, "web_h1"))}</h1>
       <p>{html.escape(tr(loc, "web_intro"))}</p>
+      <p class="build-tag">Build: {html.escape(REPORT_VERSION)}</p>
       <form action="/analyze" method="post" enctype="multipart/form-data">
         <div class="row">
           <label><strong>{html.escape(tr(loc, "web_file_label"))}</strong></label>
@@ -720,4 +741,8 @@ def analyze() -> tuple[str, int] | str:
 
 
 if __name__ == "__main__":
+    mod_path = getattr(_ai_excel_dashboard_mod, "__file__", "?")
+    print(f"Excel dashboard web server — {REPORT_VERSION}")
+    print(f"  ai_excel_dashboard.py: {mod_path}")
+    print("  Open http://127.0.0.1:5000  |  GET /api/version to verify deploy")
     app.run(host="127.0.0.1", port=5000, debug=False)

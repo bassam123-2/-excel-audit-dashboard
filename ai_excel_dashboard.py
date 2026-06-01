@@ -40,7 +40,7 @@ from tkinter import Canvas, StringVar, Tk, filedialog, messagebox, ttk
 from dashboard_locale import AR_MONTH_HINTS, normalize_locale, tr
 from data_io import ATTR_READ_NOTES, read_input_file
 
-REPORT_VERSION = "dashboard-v1.0.1"
+REPORT_VERSION = "dashboard-v1.0.3"
 # Injected into generated HTML; replaced with a live URL when the Tk UI serves the report over HTTP.
 _MAIL_API_MARKER = "window.__AI_EXCEL_MAIL_API__=null;"
 _PLAN_PARSE_API_MARKER = "window.__AI_EXCEL_PLAN_PARSE_URL__=null;"
@@ -826,6 +826,13 @@ def _filter_option_token(v: Any) -> str:
     return str(j).strip()
 
 
+def _audit_observation_row_is_usable(row: pd.Series, colmap: dict[str, str]) -> bool:
+    """Ignore trailing spacer rows (e.g. only IA Status filled, no year or observation)."""
+    year = _filter_option_token(row[colmap["audit_year"]])
+    obs = _filter_option_token(row[colmap["observation_name"]])
+    return bool(year or obs)
+
+
 def _raise_if_multiple_audit_companies(
     df: pd.DataFrame,
     audit_colmap: dict[str, str],
@@ -1035,13 +1042,14 @@ def build_audit_observation_payload(
 ) -> dict[str, Any]:
     loc = normalize_locale(locale)
     all_token = "__ALL__"
+    df_obs = df[df.apply(lambda r: _audit_observation_row_is_usable(r, colmap), axis=1)]
     fk_order: list[str] = ["audit_year", "audit_cycle", "department"]
     has_co_dim = False
     if "company" in colmap:
         c_co = colmap["company"]
         co_tokens = {
             _filter_option_token(x)
-            for x in df[c_co].dropna().unique()
+            for x in df_obs[c_co].dropna().unique()
             if _filter_option_token(x) != ""
         }
         if co_tokens:
@@ -1051,7 +1059,7 @@ def build_audit_observation_payload(
         s_col = colmap["subcompany"]
         sc_tokens = {
             _filter_option_token(x)
-            for x in df[s_col].dropna().unique()
+            for x in df_obs[s_col].dropna().unique()
             if _filter_option_token(x) != ""
         }
         if sc_tokens:
@@ -1059,7 +1067,7 @@ def build_audit_observation_payload(
     filter_dims: list[dict[str, Any]] = []
     for logical in fk_order:
         c = colmap[logical]
-        sub = df[c]
+        sub = df_obs[c]
         tokens = {
             _filter_option_token(x)
             for x in sub.dropna().unique()
@@ -1073,13 +1081,13 @@ def build_audit_observation_payload(
                 "values": vals,
             }
         )
-    n_df = len(df)
-    clip = df.iloc[:max_rows] if n_df > max_rows else df
+    n_df = len(df_obs)
+    clip = df_obs.iloc[:max_rows] if n_df > max_rows else df_obs
     has_rating = "rating" in colmap
     has_observation_type = "observation_type" in colmap
     obs_type_order: list[str] = []
     if has_observation_type:
-        ot_s = df[colmap["observation_type"]]
+        ot_s = df_obs[colmap["observation_type"]]
         obs_type_order = sorted(
             {
                 _filter_option_token(x)
@@ -1089,9 +1097,9 @@ def build_audit_observation_payload(
             key=lambda x: (len(x), x),
         )[:80]
     rows_out: list[dict[str, Any]] = []
-    for i, (_, r) in enumerate(clip.iterrows()):
+    for _, r in clip.iterrows():
         rec: dict[str, Any] = {
-            "_idx": i,
+            "_idx": len(rows_out),
             "y": _json_safe_cell(r[colmap["audit_year"]]),
             "f": (
                 _json_safe_cell(r[colmap["function"]])
@@ -5810,9 +5818,18 @@ def generate_finance_report(
       if (rv0 === "" || fv0 === "") return false;
       return ffCellKeyNormString(rv0).toLowerCase() === ffCellKeyNormString(fv0).toLowerCase();
     }}
+    function aoRowIsUsable(r) {{
+      if (!r) return false;
+      const y = ffCellKey(r.y);
+      const o = ffCellKey(r.obs);
+      return y !== "" || o !== "";
+    }}
 
     (function mountAuditObservation() {{
       const AO = payload.audit_observation;
+      if (AO && Array.isArray(AO.rows)) {{
+        AO.rows = AO.rows.filter(aoRowIsUsable);
+      }}
       function snapshotReviewsForExport() {{
         let reviewsSnap = "";
         try {{
@@ -9422,6 +9439,7 @@ def generate_finance_report(
           rules.push({{ k: dim.key, vals: picked }});
         }});
         return rows.filter(function (r) {{
+          if (!aoRowIsUsable(r)) return false;
           for (let j = 0; j < rules.length; j++) {{
             const dk = rules[j].k;
             let ok = false;
@@ -10305,8 +10323,8 @@ def generate_finance_report(
         const yearCounts = {{}};
         for (let i = 0; i < yearRows.length; i++) {{
           const yk = ffCellKey(yearRows[i].y);
-          const yl = yk === "" ? blankLabel : yk;
-          yearCounts[yl] = (yearCounts[yl] || 0) + 1;
+          if (yk === "") continue;
+          yearCounts[yk] = (yearCounts[yk] || 0) + 1;
         }}
         const yearKeys = Object.keys(yearCounts).sort(function (a, b) {{
           return String(a).localeCompare(String(b), undefined, {{ numeric: true, sensitivity: "base" }});
@@ -10355,7 +10373,9 @@ def generate_finance_report(
             const tny = document.createElement("span");
             tny.className = "audit-rating-total-n";
             tly.textContent = ui.ratingTypesTotal || "Total";
-            tny.textContent = String(yearRows.length);
+            tny.textContent = String(
+              yearKeys.reduce(function (sum, k) {{ return sum + (yearCounts[k] || 0); }}, 0)
+            );
             totYr.appendChild(tly);
             totYr.appendChild(tny);
             yearBtnHost.appendChild(totYr);
@@ -10600,8 +10620,8 @@ def generate_finance_report(
         for (let yi = 0; yi < rowsYearPie.length; yi++) {{
           const yr = rowsYearPie[yi];
           const yk = ffCellKey(yr.y);
-          const yl = yk === "" ? blankLabel : yk;
-          countsYearPie[yl] = (countsYearPie[yl] || 0) + 1;
+          if (yk === "") continue;
+          countsYearPie[yk] = (countsYearPie[yk] || 0) + 1;
         }}
         let entriesYearPie = Object.keys(countsYearPie).map(function (k) {{ return [k, countsYearPie[k]]; }});
         entriesYearPie.sort(function (a, b) {{
