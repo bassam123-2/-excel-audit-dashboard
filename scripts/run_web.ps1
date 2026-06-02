@@ -1,4 +1,4 @@
-# Start Flask web dashboard on http://127.0.0.1:5000
+# Start Django web dashboard on http://127.0.0.1:8000
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
@@ -10,4 +10,4 @@ if (-not (Test-Path $py)) {
 }
 
 Write-Host "Starting web server from $Root"
-& $py web_app.py
+& $py manage.py runserver 127.0.0.1:8000

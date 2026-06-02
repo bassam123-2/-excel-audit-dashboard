@@ -11,8 +11,14 @@ excel-dashboard/                 ← rename repo on GitHub if possible (no space
 ├── requirements-dev.txt         ← + PyInstaller for .exe build
 ├── smtp_config.example.json     ← copy → smtp_config.json (never commit real config)
 │
-├── web_app.py                   ← ENTRY: Flask web server (port 5000)
-├── ai_excel_dashboard.py        ← ENTRY: desktop GUI + report engine + HTML/JS
+├── manage.py                    ← ENTRY: Django commands / runserver
+├── config/                      ← Django settings + urls
+├── reports_app/                 ← Upload/analyze/version views
+├── audit_app/                   ← Models, admin, audit services
+├── mail_app/                    ← Email + audit-plan parse APIs
+├── exports_app/                 ← Export endpoints/services
+├── web_app.py                   ← Deprecated Flask shim (kept for transition)
+├── ai_excel_dashboard.py        ← Legacy monolith logic reused by Django services
 ├── data_io.py                   ← read Excel / CSV
 ├── dashboard_locale.py          ← English / Arabic UI strings
 ├── export_bundle.py             ← ZIP / PDF export
@@ -32,6 +38,8 @@ excel-dashboard/                 ← rename repo on GitHub if possible (no space
 │
 ├── scripts/                     ← double-click or run from terminal
 │   ├── run_web.ps1
+│   ├── migrate.ps1
+│   ├── db_health.ps1
 │   ├── run_desktop.ps1
 │   ├── build_exe.ps1
 │   └── stop_port_5000.ps1
@@ -54,8 +62,10 @@ excel-dashboard/                 ← rename repo on GitHub if possible (no space
 
 | Goal | Start here |
 |------|------------|
-| Upload page / Flask routes | `web_app.py` |
+| Upload page / Django routes | `reports_app/views.py`, `reports_app/urls.py` |
 | Audit charts, filters, logos in report | `ai_excel_dashboard.py` → search `build_audit_observation_payload`, `syncBrandLogo` |
+| Persisted data models | `audit_app/models.py` |
+| SMTP/PPTX APIs | `mail_app/views.py` |
 | Excel column matching | `ai_excel_dashboard.py` → `AUDIT_OBS_ALIASES`, `resolve_audit_observation_columns` |
 | Translations | `dashboard_locale.py` |
 | How Excel is loaded | `data_io.py` |

@@ -744,8 +744,15 @@ def analyze() -> tuple[str, int] | str:
 
 
 if __name__ == "__main__":
-    mod_path = getattr(_ai_excel_dashboard_mod, "__file__", "?")
-    print(f"Excel dashboard web server — {REPORT_VERSION}")
-    print(f"  ai_excel_dashboard.py: {mod_path}")
-    print("  Open http://127.0.0.1:5000  |  GET /api/version to verify deploy")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    import os
+    import subprocess
+    import sys
+
+    print("Flask entrypoint is deprecated. Starting Django server instead.")
+    env = os.environ.copy()
+    env.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
+    subprocess.run(
+        [sys.executable, "manage.py", "runserver", "127.0.0.1:8000"],
+        check=False,
+        env=env,
+    )

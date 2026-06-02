@@ -1,12 +1,6 @@
-# Start Tk desktop app (file picker → HTML report)
+# Deprecated desktop launcher kept for transition only
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
-$py = Join-Path $Root ".venv\Scripts\python.exe"
-if (-not (Test-Path $py)) {
-    Write-Host "Virtual env not found. Run: python -m venv .venv ; .\.venv\Scripts\pip install -r requirements.txt"
-    exit 1
-}
-
-& $py ai_excel_dashboard.py
+Write-Host "Desktop mode is deprecated in Django migration. Use .\scripts\run_web.ps1"

@@ -1,4 +1,7 @@
 flask
+django>=5.0
+mysqlclient
+python-dotenv
 pandas
 openpyxl
 fpdf2

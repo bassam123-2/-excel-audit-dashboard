@@ -13044,4 +13044,18 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import os
+    import subprocess
+    import sys
+
+    print(
+        "Desktop runtime is deprecated in the Django migration. "
+        "Starting Django server instead."
+    )
+    env = os.environ.copy()
+    env.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
+    subprocess.run(
+        [sys.executable, "manage.py", "runserver", "127.0.0.1:8000"],
+        check=False,
+        env=env,
+    )

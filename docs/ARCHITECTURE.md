@@ -10,10 +10,10 @@ flowchart LR
   end
 
   subgraph python
+    DJANGO[reports_app/mail_app]
     IO[data_io.read_input_file]
     CORE[ai_excel_dashboard]
     LOC[dashboard_locale]
-    WEB[web_app.py]
     EXP[export_bundle]
   end
 
@@ -23,21 +23,20 @@ flowchart LR
     MAIL[SMTP email]
   end
 
-  XLSX --> IO --> CORE
-  PPTX --> WEB --> CORE
+  XLSX --> DJANGO --> IO --> CORE
+  PPTX --> DJANGO --> CORE
   CORE --> LOC
-  WEB --> CORE
   CORE --> HTML
   CORE --> EXP --> ZIP
-  WEB --> MAIL
+  DJANGO --> MAIL
 ```
 
-## Two ways to run the same engine
+## Runtime mode
 
 | Mode | Entry file | User action |
 |------|------------|-------------|
-| **Web** | `web_app.py` | Browser upload at `/` → POST `/analyze` |
-| **Desktop** | `ai_excel_dashboard.py` | Tk file picker → opens report in browser |
+| **Web (active)** | `manage.py` + `config/` | Browser upload at `/` → `/analyze` |
+| **Desktop (legacy)** | `ai_excel_dashboard.py` | Kept only for transition |
 
 Both call **`generate_finance_report()`** in `ai_excel_dashboard.py`, which:
 
@@ -45,7 +44,7 @@ Both call **`generate_finance_report()`** in `ai_excel_dashboard.py`, which:
 2. Detects columns (`resolve_audit_observation_columns`, `detect_primary_columns`)
 3. Builds JSON payloads (`build_audit_observation_payload`, finance KPIs, logos)
 4. Embeds payloads into a single HTML page (large inline JavaScript)
-5. Optionally injects API URLs for email / PPTX parse (`web_app._inject_web_mail_api`)
+5. Optionally injects API URLs for email / PPTX parse (via `reports_app.services.report_generation`)
 
 ## Important symbols in `ai_excel_dashboard.py`
 
@@ -61,17 +60,16 @@ Both call **`generate_finance_report()`** in `ai_excel_dashboard.py`, which:
 
 Search the file for these names rather than reading top-to-bottom.
 
-## Web-only pieces (`web_app.py`)
+## Web-only pieces (Django)
 
-- Upload form HTML (`upload_form_html`, `index`)
-- Multi-file analyze (`analyze`)
+- Upload form and analyze flow (`reports_app/views.py`)
 - `GET /api/version` — confirm deployed build
-- `POST /api/send-obs-email` — uses `send_audit_observation_email_smtp`
-- `POST /api/parse-audit-plan-pptx` — uses `parse_audit_plan_pptx_bytes`
+- `POST /api/send-obs-email` (`mail_app/views.py`)
+- `POST /api/parse-audit-plan-pptx` (`mail_app/views.py`)
 
 ## `exact_dashboard.py`
 
-Separate code path that renders a **reference-style** dashboard from similar data. Used when integrating a fixed layout; not the main audit HTML most users see. Check `web_app.py` imports (`render_from_reference`) for when it runs.
+Separate code path that renders a **reference-style** dashboard from similar data. Used when integrating a fixed layout; not the main audit HTML most users see. Check `reports_app/services/report_generation.py` for when it runs.
 
 ## Future refactor (optional)
 

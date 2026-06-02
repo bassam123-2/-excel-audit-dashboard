@@ -1,10 +1,10 @@
-# Excel Audit Dashboard
+# Excel Audit Dashboard (Django + MySQL)
 
-Turn an internal-audit Excel register (and optional finance data) into an interactive HTML dashboard. Supports **desktop (Tk)** and **web (Flask)** modes, English/Arabic UI, company logos, email actions, and export (ZIP / PDF / PPTX).
+This project now runs on **Django** with **MySQL** and is structured for multi-developer collaboration.
 
-**New to the repo?** Read **[START_HERE.md](START_HERE.md)** first, then **[docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)**.
+Legacy logic from `ai_excel_dashboard.py` is reused through Django service modules to preserve report behavior while moving runtime execution to Django web-only flow.
 
-Current report build: **`dashboard-v1.0.3`** (see `REPORT_VERSION` in `ai_excel_dashboard.py`).
+Start with **[START_HERE.md](START_HERE.md)**, then **[docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)** and **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ## Quick start
 
@@ -16,30 +16,22 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### Web server (recommended for shared use)
+### Web server
 
 ```bash
-python web_app.py
-# or:  .\scripts\run_web.ps1
+python manage.py runserver
+# or: .\scripts\run_web.ps1
 ```
 
-Open [http://127.0.0.1:5000](http://127.0.0.1:5000), upload your `.xlsx` / `.csv`, and open the generated report.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000), upload your `.xlsx` / `.csv`, and open the generated report.
 
 Verify deploy:
 
 ```bash
-curl http://127.0.0.1:5000/api/version
+curl http://127.0.0.1:8000/api/version
 ```
 
-Response should include `"report_version": "dashboard-v1.0.3"`. Every HTML response also sends header `X-Dashboard-Version`.
-
-### Desktop app
-
-```bash
-python ai_excel_dashboard.py
-```
-
-Pick a file in the GUI. The same report engine runs as on the web.
+Response includes the report version and module file. Every HTML response also sends `X-Dashboard-Version`.
 
 ### Windows executable
 
@@ -50,16 +42,22 @@ pyinstaller ai_excel_dashboard_v3_update.spec
 
 Output: `dist/ai_excel_dashboard_v3_update.exe`. Place `smtp_config.json` next to the exe if you use email (see below).
 
-## Project layout
+## Django project layout
 
 Full tree and “where to change what”: **[docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)** · Data flow: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
 
 | File / folder | Role |
 |---------------|------|
 | `START_HERE.md` | Onboarding checklist for new developers |
-| `scripts/` | `run_web.ps1`, `run_desktop.ps1`, `build_exe.ps1`, `stop_port_5000.ps1` |
-| `ai_excel_dashboard.py` | Core logic, audit payload, HTML/JS report template, Tk GUI, SMTP helpers (~12k lines) |
-| `web_app.py` | Flask upload UI and APIs |
+| `manage.py` | Django command entrypoint |
+| `config/` | Django settings/urls/wsgi/asgi |
+| `audit_app/` | Models, admin, extracted audit services |
+| `reports_app/` | Upload/analyze/version views and report orchestration |
+| `mail_app/` | `/api/send-obs-email`, `/api/parse-audit-plan-pptx` |
+| `exports_app/` | Export-related endpoints/services |
+| `scripts/` | `run_web.ps1`, `migrate.ps1`, `db_health.ps1`, `build_exe.ps1` |
+| `ai_excel_dashboard.py` | Legacy monolith (reused logic during migration) |
+| `web_app.py` | Deprecated Flask entrypoint shim |
 | `data_io.py` | Read Excel/CSV into pandas |
 | `dashboard_locale.py` | EN/AR UI strings |
 | `export_bundle.py` | ZIP export (HTML, JSON, CSV summary, PDF) |
@@ -76,12 +74,12 @@ Full tree and “where to change what”: **[docs/FOLDER_MAP.md](docs/FOLDER_MAP
 
 Alternatively set environment variables (see `_smtp_config_from_env()` in `ai_excel_dashboard.py`), e.g. `AI_EXCEL_SMTP_HOST`, `AI_EXCEL_SMTP_USER`, `AI_EXCEL_SMTP_PASSWORD`.
 
-## Web API (Flask)
+## Web API (Django)
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/` | GET | Upload form |
-| `/analyze` | POST | Upload file(s), returns HTML report |
+| `/analyze` | GET/POST | Analyze uploads and render report |
 | `/api/version` | GET | JSON build version + module path |
 | `/api/send-obs-email` | POST | Send observation email (needs SMTP config) |
 | `/api/parse-audit-plan-pptx` | POST | Parse audit plan PowerPoint |
@@ -90,21 +88,19 @@ Alternatively set environment variables (see `_smtp_config_from_env()` in `ai_ex
 
 See **[docs/EXCEL_SCHEMA.md](docs/EXCEL_SCHEMA.md)** for required columns, optional fields, and how empty rows are filtered.
 
-## Deploying updates
+## MySQL setup
 
-1. Pull latest code on the server.
-2. Restart the Python process (only **one** listener on port `5000`).
-3. Confirm `/api/version` shows the expected `report_version`.
-4. **Re-upload** the workbook and hard-refresh the browser — do not reuse an old saved HTML tab.
+Use **[docs/MYSQL_SETUP.md](docs/MYSQL_SETUP.md)** for local service setup, DB/user creation, migrations, and health checks.
 
 ## Dependencies
 
-Runtime (`requirements.txt`): Flask, pandas, openpyxl, fpdf2, python-pptx, Pillow.
+Runtime (`requirements.txt`): Django, mysqlclient, pandas, openpyxl, fpdf2, python-pptx, Pillow.
 
 Development build: `requirements-dev.txt` (adds PyInstaller).
 
-## Notes for contributors
+## Contributor workflow
 
-- Most UI changes live inside the large HTML/JS string in `ai_excel_dashboard.py` (search for `generate_finance_report` and audit observation JS).
-- Logo switching uses `build_company_logo_catalog()` and filter IDs `brand-filter-co` / `brand-filter-sc` in the report.
-- Audit year colors use a gray gradient (`auditYearGradientAt`); version bumps should update `REPORT_VERSION` when behavior changes.
+- Install dev tools: `pip install -r requirements-dev.txt`
+- Run tests: `pytest`
+- Lint/format: `ruff check .` and `black .`
+- Optional hooks: `pre-commit install`

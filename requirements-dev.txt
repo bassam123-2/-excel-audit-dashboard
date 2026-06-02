@@ -1,2 +1,7 @@
 -r requirements.txt
 pyinstaller>=6.0
+pytest
+pytest-django
+ruff
+black
+pre-commit
