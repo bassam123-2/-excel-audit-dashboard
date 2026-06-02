@@ -106,7 +106,7 @@ def build_response_for_request(request) -> HttpResponse:
         names = []
         for up in uploads:
             path = _persist_upload(up, tmp_dir)
-            df = read_input_file(path, sheet=sheet, locale=locale)
+            df = read_input_file(path, sheet_name=sheet, locale=locale)
             if df.empty:
                 return HttpResponse(tr(locale, "web_err_empty"), status=400)
             dfs.append(df)
