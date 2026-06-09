@@ -124,6 +124,12 @@ TEMPLATE_TYPE_CHOICES = [
 ]
 
 
+class DashboardStatus(models.TextChoices):
+    DRAFT = "draft", _("Draft")
+    PUBLISHED = "published", _("Published")
+    REJECTED = "rejected", _("Rejected")
+
+
 class Dashboard(models.Model):
     """A named dashboard backed by Excel data stored in the DB."""
 
@@ -162,6 +168,44 @@ class Dashboard(models.Model):
         related_name="dashboard",
         verbose_name=_("Upload session"),
     )
+    status = models.CharField(
+        max_length=20,
+        choices=DashboardStatus.choices,
+        default=DashboardStatus.DRAFT,
+        verbose_name=_("Status"),
+        db_index=True,
+    )
+    published_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Published at"),
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_dashboards",
+        verbose_name=_("Reviewed by"),
+    )
+    is_deleted = models.BooleanField(
+        default=False,
+        verbose_name=_("Soft deleted"),
+        db_index=True,
+    )
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Deleted at"),
+    )
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deleted_dashboards",
+        verbose_name=_("Deleted by"),
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
 
     class Meta:
@@ -171,11 +215,16 @@ class Dashboard(models.Model):
         permissions = [
             ("can_upload_files", _("Can upload files and create dashboards")),
             ("can_view_dashboards", _("Can view dashboards")),
-            ("can_delete_dashboards", _("Can delete dashboards")),
+            ("can_delete_dashboards", _("Can remove and restore dashboards")),
+            ("can_review_dashboards", _("Can approve or reject dashboards")),
         ]
 
     def __str__(self) -> str:
         return self.name
+
+    @property
+    def is_published(self) -> bool:
+        return self.status == DashboardStatus.PUBLISHED
 
     def get_template_display_name(self) -> str:
         try:
@@ -184,3 +233,35 @@ class Dashboard(models.Model):
             return dict(TEMPLATE_TYPE_CHOICES).get(
                 self.template_type, self.template_type.upper()
             )
+
+
+class DashboardRejectionLog(models.Model):
+    """Audit trail of rejection reasons for a dashboard."""
+
+    dashboard = models.ForeignKey(
+        Dashboard,
+        on_delete=models.CASCADE,
+        related_name="rejection_logs",
+        verbose_name=_("Dashboard"),
+    )
+    reason = models.TextField(verbose_name=_("Rejection reason"))
+    rejected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="dashboard_rejection_logs",
+        verbose_name=_("Rejected by"),
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
+
+    class Meta:
+        verbose_name = _("Dashboard rejection log")
+        verbose_name_plural = _("Dashboard rejection logs")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["dashboard", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Rejection #{self.pk} on dashboard {self.dashboard_id}"

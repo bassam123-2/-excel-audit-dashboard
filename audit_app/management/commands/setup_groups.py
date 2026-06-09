@@ -43,13 +43,15 @@ class Command(BaseCommand):
                 "auth.view_group",
                 # Permission viewing (read-only, no codename change)
                 "auth.view_permission",
+                # Dashboard review (approve / reject)
+                "audit_app.can_review_dashboards",
+                "audit_app.can_delete_dashboards",
             ],
         ),
         (
             "رافعو الملفات",
             [
                 "audit_app.can_upload_files",
-                "audit_app.can_delete_dashboards",
             ],
         ),
         (

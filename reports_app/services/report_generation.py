@@ -452,6 +452,8 @@ def store_upload_to_db(
     icon: str,
     template_type: str = "ai",
     description: str = "",
+    *,
+    resubmit_dashboard: "Dashboard | None" = None,
 ) -> "Dashboard":
     """
     Read uploaded Excel files (file1 required; file2-4 optional), store ALL
@@ -467,7 +469,8 @@ def store_upload_to_db(
     """
     import pandas as pd
     from django.conf import settings as _settings
-    from audit_app.models import Dashboard, ICON_CHOICES, UploadSession
+    from audit_app.models import Dashboard, DashboardStatus, ICON_CHOICES, UploadSession
+    from reports_app.dashboard_workflow import mark_dashboard_draft
 
     ui_locale = normalize_locale(request.session.get("ui_lang", "ar"))
     sheet = None
@@ -524,6 +527,14 @@ def store_upload_to_db(
             allow_multiple_audit_companies=False,
         )
         primary_audit_payload = audit_payload or {}
+        if resubmit_dashboard:
+            primary_audit_payload["report_id"] = resubmit_dashboard.report_id
+            # Remove old upload data before reusing the same report_id (unique on ReportArtifact).
+            old_session = resubmit_dashboard.upload_session
+            if old_session:
+                resubmit_dashboard.upload_session = None
+                resubmit_dashboard.save(update_fields=["upload_session"])
+                old_session.delete()
 
         session = persist_report_result(
             source_name=primary_name,
@@ -546,7 +557,11 @@ def store_upload_to_db(
             session.raw_data_json = raw_json
             session.save(update_fields=["raw_data_json"])
 
-        report_id = primary_audit_payload.get("report_id") or str(uuid.uuid4())
+        report_id = (
+            resubmit_dashboard.report_id
+            if resubmit_dashboard
+            else (primary_audit_payload.get("report_id") or str(uuid.uuid4()))
+        )
 
         # ── Save deck/plan files to media ────────────────────────────
         deck_paths = _save_uploaded_decks_to_media(
@@ -579,16 +594,43 @@ def store_upload_to_db(
             "missing_vehicle_decks": missing_vehicle_paths,
         }
 
+        if resubmit_dashboard:
+            resubmit_dashboard.name = dashboard_name
+            resubmit_dashboard.description = description
+            resubmit_dashboard.icon = icon
+            resubmit_dashboard.template_type = template_type
+            resubmit_dashboard.html_file = ""
+            resubmit_dashboard.source_files = source_files_info
+            resubmit_dashboard.upload_session = (
+                session if isinstance(session, UploadSession) else None
+            )
+            mark_dashboard_draft(resubmit_dashboard)
+            resubmit_dashboard.save(
+                update_fields=[
+                    "name",
+                    "description",
+                    "icon",
+                    "template_type",
+                    "html_file",
+                    "source_files",
+                    "upload_session",
+                    "status",
+                    "published_at",
+                ]
+            )
+            return resubmit_dashboard
+
         dashboard = Dashboard.objects.create(
             name=dashboard_name,
             description=description,
             icon=icon,
             template_type=template_type,
             report_id=report_id,
-            html_file="",  # generated on first view
+            html_file="",
             source_files=source_files_info,
             created_by=request.user if request.user.is_authenticated else None,
             upload_session=session if isinstance(session, UploadSession) else None,
+            status=DashboardStatus.DRAFT,
         )
         return dashboard
 

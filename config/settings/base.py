@@ -5,6 +5,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from config.error_logging.setup import build_logging_config
+from config.error_logging.signals import connect_error_signals
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
 
@@ -32,6 +35,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "config.middleware.RequestTrackingMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     # LocaleMiddleware must come AFTER SessionMiddleware and BEFORE CommonMiddleware
     # so that Django can read _language from session and activate it per request.
@@ -40,6 +44,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "config.middleware.RequestContextRefreshMiddleware",
+    "config.middleware.ErrorTrackingMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "reports_app.middleware.DashboardVersionHeaderMiddleware",
@@ -116,3 +122,20 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
+
+# ── Centralized error tracking ────────────────────────────────────────
+# Error logs are written to BASE_DIR/logs/errors/ (server-side only).
+# Override ERROR_LOGGING_ENABLED in test settings to disable file output.
+ERROR_LOGGING_ENABLED = (
+    os.environ.get("ERROR_LOGGING_ENABLED", "true").lower() == "true"
+)
+
+# Default logging config (development/production override debug flag).
+LOGGING = build_logging_config(
+    BASE_DIR,
+    enabled=ERROR_LOGGING_ENABLED,
+    debug=DEBUG,
+)
+
+# Register global exception signal handlers once settings are loaded.
+connect_error_signals()

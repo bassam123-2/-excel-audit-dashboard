@@ -29,6 +29,7 @@ def ui_context(request) -> dict:
     can_view = False
     can_manage_users = False
     can_delete_dashboards = False
+    can_review_dashboards = False
     if hasattr(request, "user") and request.user.is_authenticated:
         u = request.user
         can_upload = u.is_staff or u.is_superuser or u.has_perm("audit_app.can_upload_files")
@@ -38,10 +39,12 @@ def ui_context(request) -> dict:
             or u.has_perm("audit_app.can_upload_files")
         )
         can_delete_dashboards = (
-            u.is_staff or u.is_superuser
-            or u.has_perm("audit_app.can_delete_dashboards")
+            u.is_superuser or u.has_perm("audit_app.can_delete_dashboards")
         )
         can_manage_users = u.is_superuser or u.has_perm("auth.change_user")
+        can_review_dashboards = (
+            u.is_staff or u.is_superuser or u.has_perm("audit_app.can_review_dashboards")
+        )
 
     return {
         "lang": lang,
@@ -51,5 +54,6 @@ def ui_context(request) -> dict:
         "can_upload_files": can_upload,
         "can_view_dashboards": can_view,
         "can_delete_dashboards": can_delete_dashboards,
+        "can_review_dashboards": can_review_dashboards,
         "can_manage_users": can_manage_users,
     }

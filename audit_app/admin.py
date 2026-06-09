@@ -27,6 +27,8 @@ from .admin_forms import (
 from .models import (
     CompanyLogo,
     Dashboard,
+    DashboardRejectionLog,
+    DashboardStatus,
     DashboardTemplateType,
     ObservationRecord,
     ReportArtifact,
@@ -404,14 +406,51 @@ class DashboardTemplateTypeAdmin(admin.ModelAdmin):
     )
 
 
+class DashboardRejectionLogInline(admin.TabularInline):
+    model = DashboardRejectionLog
+    extra = 0
+    readonly_fields = ("reason", "rejected_by", "created_at")
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(DashboardRejectionLog)
+class DashboardRejectionLogAdmin(admin.ModelAdmin):
+    list_display = ("id", "dashboard", "rejected_by", "created_at")
+    search_fields = ("reason", "dashboard__name", "rejected_by__username")
+    list_filter = ("created_at",)
+    readonly_fields = ("dashboard", "reason", "rejected_by", "created_at")
+
+
 @admin.register(Dashboard)
 class DashboardAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "icon", "template_type", "created_by", "created_at")
+    list_display = (
+        "id", "name", "status", "is_deleted", "icon", "template_type", "created_by", "created_at",
+    )
     search_fields = ("name", "report_id", "description")
-    list_filter = ("template_type", "icon", "created_at", "created_by")
-    readonly_fields = ("report_id", "html_file", "source_files", "created_at", "upload_session")
+    list_filter = ("is_deleted", "status", "template_type", "icon", "created_at", "created_by")
+    readonly_fields = (
+        "report_id", "html_file", "source_files", "created_at", "upload_session",
+        "published_at", "deleted_at", "deleted_by",
+    )
+    inlines = [DashboardRejectionLogInline]
+    actions = ["restore_dashboards"]
     fieldsets = (
         (_("Basic information"), {"fields": ("name", "description", "icon", "template_type", "created_by")}),
+        (_("Workflow"), {"fields": ("status", "published_at", "reviewed_by")}),
+        (_("Soft delete"), {"fields": ("is_deleted", "deleted_at", "deleted_by")}),
         (_("Report data"), {"fields": ("report_id", "html_file", "source_files", "upload_session")}),
         (_("Dates"), {"fields": ("created_at",)}),
     )
+
+    @admin.action(description=_("Restore selected dashboards"))
+    def restore_dashboards(self, request, queryset):
+        from reports_app.dashboard_workflow import restore_dashboard
+
+        count = 0
+        for dashboard in queryset.filter(is_deleted=True):
+            restore_dashboard(dashboard)
+            count += 1
+        self.message_user(request, _("Restored %(count)d dashboard(s).") % {"count": count})

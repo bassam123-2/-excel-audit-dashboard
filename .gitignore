@@ -18,3 +18,6 @@ _pv.txt
 
 # Secrets (keep example in dist/)
 smtp_config.json
+
+# Server-side application and error logs (never commit)
+logs/
