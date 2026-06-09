@@ -1,0 +1,734 @@
+/*
+ * Admin theme — mirrors templates/base.html exactly.
+ * Layout: fixed sidebar (260px) + main-wrap with topbar + page-body.
+ */
+
+/* ── Design tokens (identical to base.html) ─────── */
+:root {
+    --sw: 260px;
+    --navy: #0f1f3d;
+    --navy2: #162136;
+    --accent: #3b82f6;
+    --accent-dark: #2563eb;
+    --success: #10b981;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --surface: #ffffff;
+    --bg: #f0f4f9;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --muted: #64748b;
+    --radius: 12px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    font-family: 'Noto Sans Arabic', 'Inter', 'Segoe UI', Arial, sans-serif !important;
+    background: var(--bg) !important;
+    color: var(--text) !important;
+    margin: 0 !important;
+    font-size: 14px !important;
+}
+
+html[dir="ltr"] body {
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif !important;
+}
+
+/* Hide Django dark-mode toggle & default header remnants */
+#header, .theme-toggle, .toggle-nav-sidebar { display: none !important; }
+
+/* Popup windows — no sidebar margin */
+body.popup .main-wrap { margin: 0 !important; }
+body.popup .page-body { padding: 1rem !important; }
+
+/* Reset Django container */
+#container {
+    background: var(--bg) !important;
+    min-height: 100vh !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* ═══════════════════════════════════════════════════
+   SIDEBAR — identical to base.html
+   ═══════════════════════════════════════════════════ */
+.sidebar {
+    position: fixed;
+    top: 0;
+    width: var(--sw);
+    height: 100vh;
+    background: var(--navy);
+    display: flex;
+    flex-direction: column;
+    z-index: 300;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+html[dir="ltr"] .sidebar { left: 0; }
+html[dir="rtl"] .sidebar { right: 0; }
+
+.sb-brand {
+    padding: 1.25rem 1.1rem 1rem;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.sb-brand-link {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    text-decoration: none !important;
+}
+.sb-logo {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; color: #fff; flex-shrink: 0;
+}
+.sb-brand-text h6 {
+    color: #fff; margin: 0; font-weight: 700; font-size: .9rem; line-height: 1.2;
+}
+.sb-brand-text span { color: rgba(255,255,255,.35); font-size: .7rem; }
+
+.sb-nav {
+    padding: .75rem 0;
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* Django nav-sidebar inside our sb-nav — override Django nav_sidebar.css hiding */
+.sb-nav #nav-sidebar,
+#nav-sidebar {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    visibility: visible !important;
+    left: auto !important;
+    right: auto !important;
+    margin: 0 !important;
+    flex: none !important;
+    max-height: none !important;
+}
+.sb-nav #nav-filter {
+    background: rgba(255,255,255,.1) !important;
+    border: 1px solid rgba(255,255,255,.15) !important;
+    border-radius: 8px !important;
+    color: #fff !important;
+    padding: .45rem .75rem !important;
+    width: calc(100% - 1.1rem) !important;
+    margin: 0 .55rem .5rem !important;
+    font-size: .82rem !important;
+    font-family: inherit !important;
+}
+.sb-nav #nav-filter::placeholder { color: rgba(255,255,255,.4) !important; }
+
+/* App sections inside sidebar — no card chrome */
+.sb-nav .module {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+}
+
+/* Section headers (app names) — like base.html .sb-section */
+.sb-nav .module caption {
+    font-size: .66rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .08em !important;
+    color: rgba(255,255,255,.50) !important;
+    padding: .8rem 1.1rem .25rem !important;
+    background: transparent !important;
+    border: none !important;
+    text-align: start !important;
+    caption-side: top !important;
+}
+.sb-nav .module caption a.section {
+    color: rgba(255,255,255,.50) !important;
+    text-decoration: none !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    text-transform: inherit !important;
+    letter-spacing: inherit !important;
+    border: none !important;
+    background: transparent !important;
+}
+.sb-nav .module caption a.section:hover {
+    color: rgba(255,255,255,.55) !important;
+    background: transparent !important;
+}
+
+.sb-nav .module table { width: 100% !important; border: none !important; border-collapse: collapse !important; }
+.sb-nav .module thead { display: none !important; }
+
+/* Hide Add / Change extra columns — show model name only */
+.sb-nav .module td { display: none !important; }
+
+/* Model rows — like base.html .sb-link */
+.sb-nav .module tr th[scope="row"] {
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    font-weight: 500 !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+}
+.sb-nav .module tr th[scope="row"] a {
+    display: flex !important;
+    align-items: center;
+    gap: .6rem;
+    padding: .55rem 1.1rem !important;
+    color: rgba(255,255,255,.82) !important;
+    text-decoration: none !important;
+    font-size: .84rem !important;
+    font-weight: 500 !important;
+    transition: all .15s !important;
+    margin: 1px .5rem !important;
+    border-radius: 8px !important;
+}
+html[dir="ltr"] .sb-nav .module tr th[scope="row"] a {
+    border-left: 3px solid transparent !important;
+}
+html[dir="rtl"] .sb-nav .module tr th[scope="row"] a {
+    border-right: 3px solid transparent !important;
+}
+
+.sb-nav .module tr th[scope="row"] a:hover {
+    color: #ffffff !important;
+    background: rgba(255,255,255,.10) !important;
+}
+.sb-nav .module tr.current-model th[scope="row"] a {
+    color: #ffffff !important;
+    background: rgba(59,130,246,.25) !important;
+}
+html[dir="ltr"] .sb-nav .module tr.current-model th[scope="row"] a {
+    border-left-color: var(--accent) !important;
+}
+html[dir="rtl"] .sb-nav .module tr.current-model th[scope="row"] a {
+    border-right-color: var(--accent) !important;
+}
+
+.sb-nav .module .current-app caption a.section {
+    color: rgba(255,255,255,.55) !important;
+}
+
+/* ── Sidebar dark-theme isolation ─────────────────
+   Block Django admin + content .module rules from
+   leaking white backgrounds / wrong text colors.   */
+.sidebar .module,
+.sidebar .module table,
+.sidebar .module tbody,
+.sidebar .module tr,
+.sidebar .module th,
+.sidebar .module td,
+.sidebar #nav-sidebar,
+.sidebar #nav-sidebar .module,
+.sidebar #nav-sidebar .current-model,
+.sidebar #nav-sidebar tr.current-model,
+.sidebar #nav-sidebar tr.current-model th {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border-color: transparent !important;
+}
+
+.sidebar .module caption {
+    color: rgba(255,255,255,.50) !important;
+    border-bottom: none !important;
+}
+.sidebar .module caption a.section {
+    color: rgba(255,255,255,.50) !important;
+}
+.sidebar .module caption a.section:hover {
+    color: rgba(255,255,255,.75) !important;
+}
+
+.sidebar .module tr th[scope="row"],
+.sidebar .module tr th[scope="row"] a {
+    color: rgba(255,255,255,.82) !important;
+}
+.sidebar .module tr th[scope="row"] a:hover {
+    color: #ffffff !important;
+    background: rgba(255,255,255,.10) !important;
+}
+.sidebar .module tr.current-model th[scope="row"] a {
+    color: #ffffff !important;
+    background: rgba(59,130,246,.25) !important;
+}
+
+/* Kill any global link-color overrides inside sidebar */
+.sidebar .module ul li a,
+.sidebar .module table a,
+.sidebar #nav-sidebar a.addlink,
+.sidebar #nav-sidebar a.changelink,
+.sidebar #nav-sidebar a.viewlink {
+    color: rgba(255,255,255,.82) !important;
+}
+.sidebar .module ul li a:hover,
+.sidebar .module table a:hover {
+    color: #ffffff !important;
+    text-decoration: none !important;
+}
+
+.sidebar #nav-filter.no-results {
+    background: rgba(239,68,68,.15) !important;
+    border-color: rgba(239,68,68,.35) !important;
+    color: #fca5a5 !important;
+}
+
+.sb-footer {
+    padding: .9rem 1.1rem;
+    border-top: 1px solid rgba(255,255,255,.06);
+    margin-top: auto;
+}
+.sb-user {
+    display: flex; align-items: center; gap: .65rem;
+    padding: .6rem .75rem;
+    background: rgba(255,255,255,.05);
+    border-radius: 10px;
+    margin-bottom: .6rem;
+}
+.sb-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    color: #fff; font-weight: 700; font-size: .8rem;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.sb-uname { color: #fff; font-size: .82rem; font-weight: 600; line-height: 1.2; }
+.sb-uemail {
+    color: rgba(255,255,255,.38); font-size: .7rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;
+}
+.sb-home {
+    display: flex; align-items: center; justify-content: center; gap: .4rem;
+    width: 100%; padding: .45rem;
+    margin-bottom: .5rem;
+    background: rgba(59,130,246,.15);
+    color: rgba(147,197,253,.95);
+    border: 1px solid rgba(59,130,246,.28);
+    border-radius: 8px; font-size: .8rem; font-weight: 500;
+    text-decoration: none !important;
+    transition: all .15s;
+}
+.sb-home:hover {
+    background: rgba(59,130,246,.25);
+    color: #fff;
+}
+.sb-logout {
+    display: flex; align-items: center; justify-content: center; gap: .4rem;
+    width: 100%; padding: .45rem;
+    background: rgba(239,68,68,.12);
+    color: rgba(255,100,100,.85);
+    border: 1px solid rgba(239,68,68,.2);
+    border-radius: 8px; font-size: .8rem; font-weight: 500;
+    text-decoration: none !important;
+    transition: all .15s;
+    cursor: pointer;
+}
+.sb-logout:hover { background: rgba(239,68,68,.2); color: #fca5a5; }
+
+/* ═══════════════════════════════════════════════════
+   MAIN WRAP — identical to base.html
+   ═══════════════════════════════════════════════════ */
+.main-wrap {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+html[dir="ltr"] .main-wrap { margin-left: var(--sw); }
+html[dir="rtl"] .main-wrap { margin-right: var(--sw); }
+
+.topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: .75rem 1.5rem;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 200;
+    gap: 1rem;
+}
+.topbar-title {
+    font-weight: 600; font-size: .92rem; color: var(--text);
+    display: flex; align-items: center; gap: .5rem;
+    min-width: 0;
+}
+.topbar-actions { display: flex; align-items: center; gap: .6rem; flex-shrink: 0; }
+.topbar-date { color: var(--muted); font-size: .78rem; }
+
+.btn-lang {
+    display: inline-flex; align-items: center; gap: .3rem;
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 8px;
+    padding: .3rem .75rem; font-size: .78rem; font-weight: 600;
+    text-decoration: none !important; transition: all .15s; cursor: pointer;
+    font-family: inherit;
+}
+.btn-lang:hover { background: var(--border); color: var(--text); }
+.lang-toggle-form { display: inline; margin: 0; }
+
+/* Breadcrumbs in topbar */
+.topbar .breadcrumbs {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: .82rem !important;
+    color: var(--muted) !important;
+}
+.topbar .breadcrumbs a {
+    color: var(--muted) !important;
+    text-decoration: none !important;
+}
+.topbar .breadcrumbs a:hover { color: var(--text) !important; }
+.topbar .breadcrumbs .sep { opacity: .4; font-size: .7rem; margin: 0 .2rem; }
+.topbar .breadcrumbs .current { color: var(--text); font-weight: 600; }
+
+.page-body {
+    padding: 1.5rem;
+    flex: 1;
+    background: var(--bg) !important;
+}
+
+.admin-messages-wrap { padding: 1rem 1.5rem 0; }
+
+/* ═══════════════════════════════════════════════════
+   PAGE HEADINGS & CONTENT
+   ═══════════════════════════════════════════════════ */
+#content { padding: 0 !important; background: transparent !important; }
+#content h1 {
+    font-size: 1.1rem !important; font-weight: 700 !important;
+    color: var(--navy) !important; margin: 0 0 1.25rem !important;
+}
+#main { background: transparent !important; }
+
+/* ═══════════════════════════════════════════════════
+   MODULES / CARDS — content area only (not sidebar)
+   ═══════════════════════════════════════════════════ */
+.page-body .module,
+.main-wrap .module {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
+    overflow: hidden !important;
+    margin-bottom: 1.25rem !important;
+}
+.page-body .module h2,
+.page-body .module caption,
+.main-wrap .module h2,
+.main-wrap .module caption {
+    background: transparent !important;
+    color: var(--navy) !important;
+    font-size: .88rem !important; font-weight: 600 !important;
+    padding: .9rem 1.25rem !important;
+    border-bottom: 1px solid var(--border) !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+}
+.page-body .module caption a,
+.main-wrap .module caption a { color: var(--accent) !important; }
+.page-body .module ul li a,
+.page-body .module table a,
+.main-wrap .module ul li a,
+.main-wrap .module table a {
+    color: var(--accent-dark) !important; text-decoration: none !important;
+}
+.page-body .module ul li a:hover,
+.page-body .module table a:hover,
+.main-wrap .module ul li a:hover,
+.main-wrap .module table a:hover { text-decoration: underline !important; }
+
+/* Dashboard index — app cards grid */
+#content-main > div[class^="app-"] {
+    display: inline-block !important;
+    vertical-align: top !important;
+    width: calc(50% - .5rem) !important;
+    margin-bottom: 1rem !important;
+}
+
+/* Recent actions sidebar on index */
+#content-related .module { margin-top: 0 !important; }
+.colMS #content-related { float: none !important; width: 100% !important; margin: 0 !important; }
+
+/* ═══════════════════════════════════════════════════
+   CHANGE LIST
+   ═══════════════════════════════════════════════════ */
+#changelist {
+    background: var(--surface) !important;
+    border-radius: var(--radius) !important;
+    border: 1px solid var(--border) !important;
+    overflow: hidden !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
+}
+#changelist-search { padding: .75rem 1rem !important; border-bottom: 1px solid var(--border) !important; }
+#changelist-search input[type=text] {
+    border: 1.5px solid var(--border) !important; border-radius: 9px !important;
+    padding: .45rem .85rem !important; font-family: inherit !important;
+}
+#changelist-search input[type=submit] {
+    background: var(--accent-dark) !important; color: #fff !important;
+    border: none !important; border-radius: 8px !important;
+    padding: .45rem .9rem !important; cursor: pointer !important;
+    font-size: .82rem !important; font-family: inherit !important;
+}
+
+#result_list { width: 100% !important; border-collapse: collapse !important; font-size: .83rem !important; }
+#result_list thead th {
+    background: #f8fafc !important; color: var(--navy) !important;
+    font-size: .7rem !important; font-weight: 700 !important;
+    text-transform: uppercase !important; letter-spacing: .05em !important;
+    border-bottom: 2px solid var(--border) !important;
+    padding: .6rem 1rem !important;
+}
+#result_list thead th a { color: var(--navy) !important; text-decoration: none !important; }
+#result_list thead th a:hover { color: var(--accent) !important; }
+#result_list tbody tr { border-bottom: 1px solid #f1f5f9 !important; }
+#result_list tbody tr:hover td { background: #eff6ff !important; }
+#result_list td { padding: .6rem 1rem !important; color: var(--text) !important; }
+#result_list td a { color: var(--accent-dark) !important; text-decoration: none !important; }
+
+#changelist .actions {
+    padding: .5rem 1rem !important;
+    border-bottom: 1px solid var(--border) !important;
+    font-size: .82rem !important;
+    background: #f8fafc !important;
+}
+#changelist .actions select {
+    border: 1.5px solid var(--border) !important; border-radius: 8px !important;
+    padding: .3rem .7rem !important; font-family: inherit !important;
+}
+#changelist .actions input[type=submit] {
+    background: var(--accent-dark) !important; color: #fff !important;
+    border: none !important; border-radius: 7px !important;
+    padding: .3rem .8rem !important; font-family: inherit !important;
+}
+
+.paginator {
+    padding: .6rem 1rem !important; font-size: .78rem !important;
+    border-top: 1px solid var(--border) !important; background: #f8fafc !important;
+}
+.paginator a { color: var(--accent-dark) !important; text-decoration: none !important; }
+
+#changelist-filter {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
+    overflow: hidden !important;
+}
+#changelist-filter h2 {
+    background: #f8fafc !important; color: var(--navy) !important;
+    font-size: .72rem !important; font-weight: 700 !important;
+    text-transform: uppercase !important;
+    padding: .65rem 1rem !important; margin: 0 !important;
+    border-bottom: 1px solid var(--border) !important;
+}
+#changelist-filter h3 {
+    font-size: .78rem !important; color: var(--muted) !important;
+    font-weight: 600 !important;
+    padding: .5rem 1rem .2rem !important; margin: 0 !important;
+}
+#changelist-filter ul li a { color: var(--accent-dark) !important; font-size: .8rem !important; }
+#changelist-filter ul li.selected a { font-weight: 700 !important; color: var(--accent-dark) !important; }
+
+/* ═══════════════════════════════════════════════════
+   FORMS
+   ═══════════════════════════════════════════════════ */
+fieldset.module {
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    padding: 1.1rem 1.25rem !important;
+    margin-bottom: 1.25rem !important;
+    background: var(--surface) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
+}
+fieldset.module h2 {
+    font-size: .78rem !important; font-weight: 700 !important;
+    text-transform: uppercase !important; letter-spacing: .06em !important;
+    color: var(--muted) !important;
+    border-bottom: 1px solid var(--border) !important;
+    padding-bottom: .6rem !important; margin-bottom: .85rem !important;
+    background: transparent !important;
+}
+
+.form-row { padding: .5rem 0 !important; }
+.form-row label, .form-label {
+    font-weight: 600 !important; font-size: .84rem !important;
+    color: #374151 !important;
+}
+
+input[type=text], input[type=email], input[type=url],
+input[type=number], input[type=date], input[type=datetime-local],
+input[type=password], select, textarea {
+    border: 1.5px solid var(--border) !important;
+    border-radius: 9px !important;
+    padding: .5rem .85rem !important;
+    font-size: .85rem !important; color: var(--text) !important;
+    outline: none !important;
+    transition: border-color .15s, box-shadow .15s !important;
+    font-family: inherit !important;
+}
+input:focus, select:focus, textarea:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px rgba(59,130,246,.12) !important;
+}
+
+.help { font-size: .76rem !important; color: var(--muted) !important; }
+.errorlist { color: var(--danger) !important; font-size: .8rem !important; }
+
+.submit-row {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    padding: .85rem 1.1rem !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
+    margin-top: 1.25rem !important;
+    display: flex !important; gap: .6rem !important;
+    flex-wrap: wrap !important;
+}
+.submit-row input[type=submit],
+.submit-row a.closelink,
+.submit-row a.deletelink {
+    border-radius: 9px !important;
+    font-weight: 600 !important; font-size: .84rem !important;
+    padding: .5rem 1.1rem !important;
+    font-family: inherit !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+    height: auto !important;
+    min-height: 2.25rem !important;
+    line-height: 1.35 !important;
+}
+.submit-row a.closelink {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background-image: none !important;
+    white-space: nowrap !important;
+}
+.submit-row input[type=submit].default,
+.submit-row input[name=_save] {
+    background: var(--accent-dark) !important;
+    color: #fff !important; border: none !important;
+}
+.submit-row input[name=_continue],
+.submit-row input[name=_addanother] {
+    background: #f1f5f9 !important; color: #374151 !important;
+    border: 1px solid var(--border) !important;
+}
+.submit-row a.deletelink {
+    background: #fef2f2 !important;
+    color: var(--danger) !important;
+    border: 1px solid #fca5a5 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: auto !important;
+    min-height: 2.25rem !important;
+    line-height: 1.35 !important;
+    box-sizing: border-box !important;
+    margin-left: auto !important;
+    background-image: none !important;
+    padding-left: 1.1rem !important;
+    white-space: nowrap !important;
+}
+.submit-row a.deletelink:hover,
+.submit-row a.deletelink:focus {
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+    border-color: #f87171 !important;
+}
+
+/* Inline admin */
+.inline-group {
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    margin-bottom: 1.25rem !important;
+    overflow: hidden !important;
+    background: var(--surface) !important;
+}
+.inline-group h2 {
+    background: #f8fafc !important;
+    border-bottom: 1px solid var(--border) !important;
+    font-size: .75rem !important; font-weight: 700 !important;
+    color: var(--muted) !important;
+    padding: .65rem 1rem !important; margin: 0 !important;
+}
+
+/* Object tools */
+.object-tools { margin: 0 0 1rem !important; padding: 0 !important; list-style: none !important; display: flex !important; gap: .5rem !important; justify-content: flex-end !important; }
+.object-tools li a {
+    background: var(--accent-dark) !important; color: #fff !important;
+    border-radius: 8px !important; padding: .4rem .9rem !important;
+    font-size: .78rem !important; font-weight: 600 !important;
+    text-decoration: none !important;
+}
+.object-tools li a:hover { background: #1d4ed8 !important; }
+
+/* ═══════════════════════════════════════════════════
+   MESSAGES / ALERTS — matches base.html alerts
+   ═══════════════════════════════════════════════════ */
+ul.messagelist { padding: 0 !important; margin: 0 !important; list-style: none !important; }
+ul.messagelist li {
+    padding: .65rem 1.1rem !important;
+    border-radius: var(--radius) !important;
+    font-size: .875rem !important; margin-bottom: .5rem !important;
+    list-style: none !important; border: none !important;
+}
+ul.messagelist li.success { background: #ecfdf5 !important; color: #065f46 !important; }
+ul.messagelist li.warning { background: #fffbeb !important; color: #92400e !important; }
+ul.messagelist li.error { background: #fef2f2 !important; color: #991b1b !important; }
+
+/* ═══════════════════════════════════════════════════
+   FOOTER
+   ═══════════════════════════════════════════════════ */
+#footer {
+    background: transparent !important;
+    border: none !important;
+    color: var(--muted) !important;
+    font-size: .74rem !important;
+    padding: .65rem 1.5rem !important;
+    text-align: center !important;
+}
+
+/* ═══════════════════════════════════════════════════
+   RTL
+   ═══════════════════════════════════════════════════ */
+html[dir="rtl"] .submit-row { justify-content: flex-end !important; }
+html[dir="rtl"] .submit-row a.deletelink {
+    margin-left: 0 !important;
+    margin-right: auto !important;
+}
+html[dir="rtl"] .aligned label { text-align: right !important; }
+
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform .25s;
+    }
+    html[dir="rtl"] .sidebar { transform: translateX(100%); }
+    html[dir="ltr"] .main-wrap { margin-left: 0 !important; }
+    html[dir="rtl"] .main-wrap { margin-right: 0 !important; }
+    #content-main > div[class^="app-"] { width: 100% !important; }
+    /* Keep nav visible inside sidebar on mobile */
+    .sb-nav #nav-sidebar, #nav-sidebar { display: block !important; }
+}
+
+/* Scrollbar */
+.sidebar::-webkit-scrollbar { width: 4px; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 4px; }

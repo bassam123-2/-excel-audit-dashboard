@@ -47,6 +47,7 @@ REPORT_VERSION = "dashboard-v1.0.3"
 # Injected into generated HTML; replaced with a live URL when the Tk UI serves the report over HTTP.
 _MAIL_API_MARKER = "window.__AI_EXCEL_MAIL_API__=null;"
 _PLAN_PARSE_API_MARKER = "window.__AI_EXCEL_PLAN_PARSE_URL__=null;"
+_REVIEWS_API_MARKER = "window.__AI_EXCEL_REVIEWS_API__=null;"
 _SMTP_HELPER_HOST = "127.0.0.1"
 _SMTP_HELPER_PORT = 51977
 _MAIL_API_FALLBACK_MARKER = (
@@ -1307,9 +1308,17 @@ def build_audit_observation_payload(
             "reviewsTitle": tr(loc, "audit_reviews_title"),
             "reviewsDownload": tr(loc, "audit_reviews_download"),
             "reviewsPlaceholder": tr(loc, "audit_reviews_placeholder"),
+            "reviewsAllLabel": tr(loc, "audit_reviews_all_label"),
+            "reviewsAddLabel": tr(loc, "audit_reviews_add_label"),
+            "reviewsComposePlaceholder": tr(loc, "audit_reviews_compose_placeholder"),
+            "reviewsSave": tr(loc, "audit_reviews_save"),
+            "reviewsSaving": tr(loc, "audit_reviews_saving"),
+            "reviewsSaved": tr(loc, "audit_reviews_saved"),
+            "reviewsEmpty": tr(loc, "audit_reviews_empty"),
+            "reviewsBy": tr(loc, "audit_reviews_by"),
+            "reviewsSaveError": tr(loc, "audit_reviews_save_error"),
             "additionalNotesToggleLabel": tr(loc, "audit_additional_notes_toggle_label"),
-            # Arabic chip/modal title in the HTML UI even when report locale is English.
-            "deckAttachToggleLabel": tr("ar", "audit_deck_attach_toggle_label"),
+            "deckAttachToggleLabel": tr(loc, "audit_deck_attach_toggle_label"),
             "deckUploadTitle": tr(loc, "audit_deck_upload_title"),
             "deckUploadHint": tr(loc, "audit_deck_upload_hint"),
             "deckBrowse": tr(loc, "audit_deck_browse"),
@@ -2252,6 +2261,7 @@ def generate_finance_report(
   <!-- plan-upload:v4-fetch-only (no FileReader for audit plan file reads) -->
   <script>{_MAIL_API_MARKER}</script>
   <script>{_PLAN_PARSE_API_MARKER}</script>
+  <script>{_REVIEWS_API_MARKER}</script>
   <script>{_MAIL_API_FALLBACK_MARKER}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -2737,13 +2747,40 @@ def generate_finance_report(
     .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-dashboard-exit {{
       display: flex !important;
       position: fixed;
-      top: max(0.55rem, env(safe-area-inset-top, 0px));
-      left: max(0.55rem, env(safe-area-inset-left, 0px));
+      top: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
       z-index: 10001;
+      box-sizing: border-box;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 0.5rem;
+      min-height: 2.85rem;
+      padding: 0.45rem 0.75rem;
+      padding-top: max(0.45rem, env(safe-area-inset-top, 0px));
+      padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+      padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+      background: rgba(15, 23, 42, 0.94);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+      box-shadow: 0 4px 18px rgba(15, 23, 42, 0.35);
     }}
     .locale-ar .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-dashboard-exit {{
-      left: auto;
-      right: max(0.55rem, env(safe-area-inset-right, 0px));
+      justify-content: flex-start;
+    }}
+    .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-dashboard-btn.nav-btn {{
+      font-weight: 700;
+      border-radius: 8px;
+      background: #2563eb;
+      border: 2px solid #1d4ed8;
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }}
+    .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-dashboard-btn.nav-btn:hover {{
+      background: #1d4ed8;
+      border-color: #1e40af;
     }}
     .audit-deck-dashboard-btn.nav-btn {{
       font-weight: 700;
@@ -2794,7 +2831,9 @@ def generate_finance_report(
       flex: 1 1 auto !important;
       min-height: 0 !important;
       padding: 0 !important;
+      padding-top: calc(2.85rem + env(safe-area-inset-top, 0px)) !important;
       overflow: hidden !important;
+      box-sizing: border-box !important;
     }}
     .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-modal-viewer {{
       min-height: 0 !important;
@@ -2844,6 +2883,11 @@ def generate_finance_report(
     .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-pptx-toolbar,
     .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-pptx-zoombar {{
       flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }}
+    .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-pptx-toolbar {{
+      padding-top: 0.35rem;
     }}
     .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-svg-host {{
       min-height: 0 !important;
@@ -4218,6 +4262,12 @@ def generate_finance_report(
       flex-direction: column;
       max-height: inherit;
       min-height: 0;
+      height: 100%;
+    }}
+    #audit-reviews-panel .audit-aging-body {{
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
     }}
     .audit-aging-head {{
       display: flex;
@@ -4271,8 +4321,6 @@ def generate_finance_report(
       overflow: hidden;
     }}
     .audit-reviews-notepad {{
-      flex: 1;
-      min-height: min(50vh, 22rem);
       width: 100%;
       box-sizing: border-box;
       padding: 0.85rem 1rem;
@@ -4283,13 +4331,80 @@ def generate_finance_report(
       font-family: ui-monospace, "Cascadia Code", "Consolas", system-ui, sans-serif;
       font-size: 0.92rem;
       line-height: 1.55;
-      resize: vertical;
       box-shadow: inset 0 1px 2px rgba(30, 41, 59, 0.06);
     }}
     .audit-reviews-notepad:focus {{
       outline: 2px solid rgba(96, 165, 250, 0.55);
       outline-offset: 1px;
     }}
+    .audit-reviews-notepad--readonly {{
+      flex: 1 1 auto;
+      min-height: 5.5rem;
+      max-height: 100%;
+      overflow-y: auto;
+      resize: none;
+      cursor: default;
+      background: #f8fafc;
+      color: #334155;
+    }}
+    .audit-reviews-section-label {{
+      display: block;
+      flex: 0 0 auto;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin: 0 0 0.45rem;
+    }}
+    .audit-reviews-list-wrap {{
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      margin-bottom: 0;
+    }}
+    .audit-reviews-compose-wrap {{
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      border-top: 1px solid var(--stroke);
+      margin-top: 0.85rem;
+      padding-top: 0.75rem;
+    }}
+    .audit-reviews-compose {{
+      min-height: 5.5rem;
+      max-height: 12rem;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.75rem 0.9rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #fff;
+      color: #0f172a;
+      font-family: ui-monospace, "Cascadia Code", "Consolas", system-ui, sans-serif;
+      font-size: 0.92rem;
+      line-height: 1.55;
+      resize: vertical;
+    }}
+    .audit-reviews-compose:focus {{
+      outline: 2px solid rgba(96, 165, 250, 0.55);
+      outline-offset: 1px;
+    }}
+    .audit-reviews-compose-actions {{
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+    }}
+    .audit-reviews-save-status {{
+      font-size: 0.82rem;
+      color: var(--muted);
+    }}
+    .audit-reviews-save-status.is-ok {{ color: #15803d; }}
+    .audit-reviews-save-status.is-err {{ color: #b91c1c; }}
     .audit-aging-table {{
       width: 100%;
       border-collapse: separate;
@@ -5100,6 +5215,19 @@ def generate_finance_report(
     .audit-pie-card--obs .audit-pie-card-accent {{
       background: radial-gradient(circle, hsla(var(--dyn-h3), 66%, 34%, 0.26) 0%, transparent 68%);
     }}
+    .audit-pie-card--obs {{
+      overflow: visible;
+      padding-top: 0.75rem;
+    }}
+    .audit-pie-card--obs .audit-pie-title {{
+      margin-bottom: 0.3rem;
+    }}
+    .audit-pie-card--obs .audit-pie-canvas-wrap {{
+      height: 300px;
+      min-height: 280px;
+      max-height: 420px;
+      overflow: visible;
+    }}
     .audit-pie-title {{
       position: relative;
       z-index: 1;
@@ -5481,7 +5609,18 @@ def generate_finance_report(
           <button type="button" class="nav-btn" id="audit-reviews-download"></button>
         </div>
         <div class="audit-aging-body audit-reviews-body">
-          <textarea id="audit-reviews-textarea" class="audit-reviews-notepad" wrap="soft"></textarea>
+          <div class="audit-reviews-list-wrap">
+            <span class="audit-reviews-section-label" id="audit-reviews-all-label"></span>
+            <textarea id="audit-reviews-textarea" class="audit-reviews-notepad audit-reviews-notepad--readonly" wrap="soft" readonly tabindex="-1" aria-readonly="true"></textarea>
+          </div>
+          <div class="audit-reviews-compose-wrap">
+            <span class="audit-reviews-section-label" id="audit-reviews-add-label"></span>
+            <textarea id="audit-reviews-compose" class="audit-reviews-compose" wrap="soft"></textarea>
+            <div class="audit-reviews-compose-actions">
+              <button type="button" class="nav-btn" id="audit-reviews-save"></button>
+              <span class="audit-reviews-save-status" id="audit-reviews-save-status" aria-live="polite"></span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -5970,6 +6109,12 @@ def generate_finance_report(
       const reviewsTitle = document.getElementById("audit-reviews-title");
       const reviewsDownloadBtn = document.getElementById("audit-reviews-download");
       const reviewsTextarea = document.getElementById("audit-reviews-textarea");
+      const reviewsAllLabel = document.getElementById("audit-reviews-all-label");
+      const reviewsAddLabel = document.getElementById("audit-reviews-add-label");
+      const reviewsCompose = document.getElementById("audit-reviews-compose");
+      const reviewsSaveBtn = document.getElementById("audit-reviews-save");
+      const reviewsSaveStatus = document.getElementById("audit-reviews-save-status");
+      let reviewsCache = [];
       const planBackdrop = document.getElementById("audit-plan-backdrop");
       const planPanel = document.getElementById("audit-plan-panel");
       const planClose = document.getElementById("audit-plan-close");
@@ -6661,9 +6806,8 @@ def generate_finance_report(
               }});
             }});
           }}
-          if (typeof o.reviewsNote === "string" && reviewsTextarea) {{
+          if (typeof o.reviewsNote === "string" && reviewsTextarea && !window.__AI_EXCEL_REVIEWS_API__) {{
             reviewsTextarea.value = o.reviewsNote;
-            try {{ localStorage.setItem("auditOtherReviewsNote", o.reviewsNote); }} catch (_lsH) {{}}
           }}
         }} catch (_e) {{}}
       }}
@@ -7407,7 +7551,82 @@ def generate_finance_report(
           }}
         }} catch (_pmOpenPlan) {{}}
       }}
-      const AUDIT_REVIEWS_LS = "auditOtherReviewsNote";
+      function reviewsByLine(user, date) {{
+        return String(ui.reviewsBy || "{{user}} — {{date}}")
+          .replace(/\\{{user\\}}/g, user || "")
+          .replace(/\\{{date\\}}/g, date || "");
+      }}
+      function formatReviewsForDisplay(reviews) {{
+        if (!reviews || !reviews.length) return ui.reviewsEmpty || "";
+        const sep = "────────────────────────────────────────";
+        return reviews.map(function (r) {{
+          const header = reviewsByLine(r.author_display || r.author || "?", r.created_at || "");
+          return header + "\\n" + String(r.body || "") + "\\n" + sep;
+        }}).join("\\n\\n");
+      }}
+      function renderReviewsDisplay() {{
+        if (reviewsTextarea) reviewsTextarea.value = formatReviewsForDisplay(reviewsCache);
+      }}
+      function setReviewsSaveStatus(msg, kind) {{
+        if (!reviewsSaveStatus) return;
+        reviewsSaveStatus.textContent = msg || "";
+        reviewsSaveStatus.classList.remove("is-ok", "is-err");
+        if (kind === "ok") reviewsSaveStatus.classList.add("is-ok");
+        if (kind === "err") reviewsSaveStatus.classList.add("is-err");
+      }}
+      function loadDashboardReviews() {{
+        const url = window.__AI_EXCEL_REVIEWS_API__;
+        if (!url) {{
+          renderReviewsDisplay();
+          return Promise.resolve();
+        }}
+        return fetch(url, {{ credentials: "same-origin", headers: {{ Accept: "application/json" }} }})
+          .then(function (resp) {{ return resp.json(); }})
+          .then(function (data) {{
+            if (data && data.ok && Array.isArray(data.reviews)) {{
+              reviewsCache = data.reviews;
+              renderReviewsDisplay();
+            }}
+          }})
+          .catch(function () {{}});
+      }}
+      function saveDashboardReview() {{
+        const url = window.__AI_EXCEL_REVIEWS_API__;
+        const body = reviewsCompose ? String(reviewsCompose.value || "").trim() : "";
+        if (!url) {{
+          setReviewsSaveStatus(ui.reviewsSaveError || "Could not save review.", "err");
+          return Promise.resolve();
+        }}
+        if (!body) return Promise.resolve();
+        if (reviewsSaveBtn) reviewsSaveBtn.disabled = true;
+        setReviewsSaveStatus(ui.reviewsSaving || "Saving…", "");
+        return fetch(url, {{
+          method: "POST",
+          credentials: "same-origin",
+          headers: {{ "Content-Type": "application/json", Accept: "application/json" }},
+          body: JSON.stringify({{ body: body }}),
+        }})
+          .then(function (resp) {{
+            return resp.json().then(function (data) {{ return {{ ok: resp.ok, data: data }}; }});
+          }})
+          .then(function (result) {{
+            if (result.ok && result.data && result.data.ok && result.data.review) {{
+              reviewsCache.push(result.data.review);
+              renderReviewsDisplay();
+              if (reviewsCompose) reviewsCompose.value = "";
+              setReviewsSaveStatus(ui.reviewsSaved || "Review saved.", "ok");
+              try {{ persistAuditUserEdits(); }} catch (_pe) {{}}
+            }} else {{
+              setReviewsSaveStatus(ui.reviewsSaveError || "Could not save review.", "err");
+            }}
+          }})
+          .catch(function () {{
+            setReviewsSaveStatus(ui.reviewsSaveError || "Could not save review.", "err");
+          }})
+          .finally(function () {{
+            if (reviewsSaveBtn) reviewsSaveBtn.disabled = false;
+          }});
+      }}
       function closeOtherReviews() {{
         if (reviewsBackdrop) {{
           reviewsBackdrop.style.display = "none";
@@ -7438,7 +7657,9 @@ def generate_finance_report(
             window.parent.postMessage({{ type: "deck-modal-state", open: true }}, "*");
           }}
         }} catch (_pmOpenReviews) {{}}
-        if (reviewsTextarea) reviewsTextarea.focus();
+        loadDashboardReviews().then(function () {{
+          if (reviewsCompose) reviewsCompose.focus();
+        }});
       }}
 
       function applyObsBarMeta() {{
@@ -7623,22 +7844,35 @@ def generate_finance_report(
       if (additionalNotesLbl) additionalNotesLbl.textContent = ui.additionalNotesToggleLabel || "ملاحظات اضافية";
       if (reviewsTitle) reviewsTitle.textContent = ui.reviewsTitle || "Other audit reviews";
       if (reviewsDownloadBtn) reviewsDownloadBtn.textContent = ui.reviewsDownload || "Download";
+      if (reviewsAllLabel) reviewsAllLabel.textContent = ui.reviewsAllLabel || "All reviews";
+      if (reviewsAddLabel) reviewsAddLabel.textContent = ui.reviewsAddLabel || "Add your review";
+      if (reviewsCompose) reviewsCompose.placeholder = ui.reviewsComposePlaceholder || "";
+      if (reviewsSaveBtn) reviewsSaveBtn.textContent = ui.reviewsSave || "Save review";
       if (reviewsTextarea) {{
-        reviewsTextarea.placeholder = ui.reviewsPlaceholder || "";
-        const already = String(reviewsTextarea.value || "").trim() !== "";
-        if (!already) {{
-          const embeddedNote = String(reviewsTextarea.textContent || "").replace(/\\u00a0/g, " ");
-          if (embeddedNote.trim() !== "") {{
-            reviewsTextarea.value = embeddedNote;
-          }} else {{
-            try {{
-              const saved = localStorage.getItem(AUDIT_REVIEWS_LS);
-              if (saved != null) reviewsTextarea.value = saved;
-            }} catch (_ls0) {{}}
-          }}
+        reviewsTextarea.placeholder = ui.reviewsEmpty || "";
+        renderReviewsDisplay();
+      }}
+      if (!window.__AI_EXCEL_REVIEWS_API__) {{
+        if (reviewsCompose) {{
+          reviewsCompose.disabled = true;
+          reviewsCompose.placeholder = ui.reviewsSaveError || "Saving requires the web dashboard.";
         }}
-        reviewsTextarea.addEventListener("input", function () {{
-          try {{ localStorage.setItem(AUDIT_REVIEWS_LS, reviewsTextarea.value); }} catch (_ls1) {{}}
+        if (reviewsSaveBtn) reviewsSaveBtn.disabled = true;
+      }} else {{
+        loadDashboardReviews();
+      }}
+      if (reviewsSaveBtn) {{
+        reviewsSaveBtn.addEventListener("click", function () {{
+          saveDashboardReview();
+        }});
+      }}
+      if (reviewsCompose) {{
+        reviewsCompose.addEventListener("keydown", function (ev) {{
+          if (!ev) return;
+          if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") {{
+            ev.preventDefault();
+            saveDashboardReview();
+          }}
         }});
       }}
       try {{
@@ -9610,6 +9844,16 @@ def generate_finance_report(
       let auditPieRating = null;
       let auditPieObs = null;
 
+      function resizeObsPieCanvas(entryCount) {{
+        const wrap = document.querySelector(".audit-pie-card--obs .audit-pie-canvas-wrap");
+        if (!wrap) return;
+        const n = Math.max(1, Number(entryCount) || 1);
+        const h = Math.min(420, Math.max(280, 240 + Math.max(0, n - 3) * 22));
+        wrap.style.height = h + "px";
+        wrap.style.minHeight = h + "px";
+        if (auditPieObs) auditPieObs.resize();
+      }}
+
       const auditPalette = {{
         "very low": "#92D050",
         "low": "#70AD47",
@@ -9754,6 +9998,10 @@ def generate_finance_report(
         const mkObsBarOpts = function () {{
           return {{
             maintainAspectRatio: false,
+            layout: {{
+              autoPadding: false,
+              padding: {{ top: 8, bottom: 2, left: 4, right: 6 }},
+            }},
             plugins: {{
               legend: {{ display: false }},
               tooltip: {{
@@ -9770,18 +10018,26 @@ def generate_finance_report(
             }},
             scales: {{
               x: {{
-                grid: {{ color: "rgba(15,23,42,0.06)" }},
+                grid: {{ display: false }},
+                border: {{ display: false }},
                 ticks: {{
                   color: "#334155",
                   autoSkip: false,
                   maxRotation: 35,
-                  minRotation: 20,
+                  minRotation: 0,
+                  padding: 4,
                 }}
               }},
               y: {{
                 beginAtZero: true,
-                grid: {{ display: false }},
-                ticks: {{ color: "#334155" }}
+                grace: "12%",
+                border: {{ display: false }},
+                grid: {{ color: "rgba(15,23,42,0.06)", drawBorder: false }},
+                ticks: {{
+                  color: "#334155",
+                  padding: 4,
+                  precision: 0,
+                }}
               }}
             }}
           }};
@@ -9860,10 +10116,12 @@ def generate_finance_report(
               backgroundColor: "rgba(100, 116, 139, 0.42)",
               borderColor: "rgba(100, 116, 139, 0.75)",
               borderWidth: 1,
-              borderSkipped: false,
-              borderRadius: 6,
+              borderSkipped: "bottom",
+              borderRadius: {{ topLeft: 6, topRight: 6 }},
               barThickness: 22,
+              clip: false,
             }}];
+            resizeObsPieCanvas(1);
             chart.update("none");
             return;
           }}
@@ -9875,10 +10133,12 @@ def generate_finance_report(
             backgroundColor: entries.map(function (p) {{ return obsTypeGradientColor(p[0], obsKeyOrder); }}),
             borderColor: "rgba(15, 23, 42, 0.9)",
             borderWidth: 1.5,
-            borderSkipped: false,
-            borderRadius: 6,
+            borderSkipped: "bottom",
+            borderRadius: {{ topLeft: 6, topRight: 6 }},
             barThickness: 22,
+            clip: false,
           }}];
+          resizeObsPieCanvas(entries.length);
           chart.update("none");
         }};
         if (auditPieIa) {{
@@ -11062,10 +11322,10 @@ def generate_finance_report(
         try {{
           const o = JSON.parse(el.textContent);
           if (!o || o.v !== 1 || typeof o.reviewsNote !== "string") return;
+          if (window.__AI_EXCEL_REVIEWS_API__) return;
           const ta = document.getElementById("audit-reviews-textarea");
           if (!ta || String(ta.value || "").trim() !== "") return;
           ta.value = o.reviewsNote;
-          try {{ localStorage.setItem("auditOtherReviewsNote", o.reviewsNote); }} catch (_lsF) {{}}
         }} catch (_e) {{}}
       }}
       go();

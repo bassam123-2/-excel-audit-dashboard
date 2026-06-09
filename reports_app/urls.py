@@ -1,6 +1,16 @@
 from django.urls import path
 
-from .views import analyze, api_version, favicon, index
+from .views import (
+    analyze,
+    api_version,
+    dashboard_detail,
+    dashboard_delete,
+    dashboard_list,
+    dashboard_reviews_api,
+    dashboard_serve,
+    favicon,
+    index,
+)
 
 urlpatterns = [
     path("", index, name="index"),
@@ -8,4 +18,9 @@ urlpatterns = [
     path("analyze/", analyze, name="analyze_slash"),
     path("api/version", api_version, name="api_version"),
     path("favicon.ico", favicon, name="favicon"),
+    path("dashboards/", dashboard_list, name="dashboard_list"),
+    path("dashboards/<int:pk>/", dashboard_detail, name="dashboard_detail"),
+    path("dashboards/<int:pk>/delete/", dashboard_delete, name="dashboard_delete"),
+    path("dashboards/<int:pk>/serve/", dashboard_serve, name="dashboard_serve"),
+    path("api/dashboards/<int:pk>/reviews/", dashboard_reviews_api, name="dashboard_reviews_api"),
 ]

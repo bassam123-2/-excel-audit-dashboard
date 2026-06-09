@@ -1,15 +1,24 @@
 from __future__ import annotations
 
+from django.conf import settings
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 
 class UploadSession(models.Model):
     source_name = models.CharField(max_length=255)
     sheet_name = models.CharField(max_length=255, blank=True)
     mode = models.CharField(max_length=32, default="ai")
-    locale = models.CharField(max_length=8, default="en")
+    locale = models.CharField(max_length=8, default="ar")
     content_sha256 = models.CharField(max_length=64, blank=True)
+    raw_data_json = models.TextField(
+        blank=True, default="", verbose_name=_("Raw file data (JSON)")
+    )
     uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Upload session")
+        verbose_name_plural = _("Upload sessions")
 
     def __str__(self) -> str:
         return f"{self.source_name} ({self.uploaded_at:%Y-%m-%d %H:%M})"
@@ -30,6 +39,8 @@ class ObservationRecord(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        verbose_name = _("Audit observation")
+        verbose_name_plural = _("Audit observations")
         indexes = [
             models.Index(fields=["audit_year"]),
             models.Index(fields=["company", "subcompany"]),
@@ -44,6 +55,8 @@ class CompanyLogo(models.Model):
 
     class Meta:
         unique_together = ("company_key", "subcompany_key")
+        verbose_name = _("Company logo")
+        verbose_name_plural = _("Company logos")
 
 
 class ReportArtifact(models.Model):
@@ -56,3 +69,148 @@ class ReportArtifact(models.Model):
     columns = models.PositiveIntegerField(default=0)
     payload = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Report artifact")
+        verbose_name_plural = _("Report artifacts")
+
+
+class DashboardTemplateType(models.Model):
+    """Editable dashboard template types."""
+
+    code = models.SlugField(
+        max_length=32,
+        unique=True,
+        verbose_name=_("Type code"),
+        help_text=_("Internal slug without spaces, e.g. ai"),
+    )
+    name = models.CharField(
+        max_length=128,
+        verbose_name=_("Type name"),
+        help_text=_("Display name shown to users"),
+    )
+    description = models.TextField(blank=True, verbose_name=_("Description"))
+    icon = models.CharField(
+        max_length=64,
+        default="bi-grid",
+        verbose_name=_("Bootstrap icon"),
+        help_text=_("Example: bi-bar-chart-line-fill"),
+    )
+    is_active = models.BooleanField(default=True, verbose_name=_("Active"))
+    sort_order = models.PositiveSmallIntegerField(default=0, verbose_name=_("Sort order"))
+
+    class Meta:
+        verbose_name = _("Dashboard template type")
+        verbose_name_plural = _("Dashboard template types")
+        ordering = ["sort_order", "code"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.code})"
+
+
+ICON_CHOICES = [
+    ("bi-bar-chart-line-fill", _("Bar chart")),
+    ("bi-pie-chart-fill", _("Pie chart")),
+    ("bi-graph-up-arrow", _("Line / growth chart")),
+    ("bi-table", _("Data table")),
+    ("bi-clipboard2-data-fill", _("Data analysis")),
+    ("bi-file-earmark-spreadsheet-fill", _("Spreadsheet")),
+    ("bi-calculator-fill", _("Finance / accounting")),
+    ("bi-building-fill", _("Organization / companies")),
+]
+
+TEMPLATE_TYPE_CHOICES = [
+    ("ai", _("AI analytical dashboard")),
+]
+
+
+class Dashboard(models.Model):
+    """A named dashboard backed by Excel data stored in the DB."""
+
+    name = models.CharField(max_length=255, verbose_name=_("Dashboard name"))
+    description = models.TextField(blank=True, verbose_name=_("Description"))
+    icon = models.CharField(
+        max_length=64,
+        choices=ICON_CHOICES,
+        default="bi-bar-chart-line-fill",
+        verbose_name=_("Dashboard icon"),
+    )
+    template_type = models.CharField(
+        max_length=32,
+        choices=TEMPLATE_TYPE_CHOICES,
+        default="ai",
+        verbose_name=_("Template type"),
+    )
+    report_id = models.CharField(max_length=64, unique=True, verbose_name=_("Report ID"))
+    html_file = models.CharField(
+        max_length=512, blank=True, default="", verbose_name=_("Cached HTML file")
+    )
+    source_files = models.JSONField(default=list, blank=True, verbose_name=_("Source files"))
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="dashboards",
+        verbose_name=_("Created by"),
+    )
+    upload_session = models.ForeignKey(
+        UploadSession,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="dashboard",
+        verbose_name=_("Upload session"),
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
+
+    class Meta:
+        verbose_name = _("Dashboard")
+        verbose_name_plural = _("Dashboards")
+        ordering = ["-created_at"]
+        permissions = [
+            ("can_upload_files", _("Can upload files and create dashboards")),
+            ("can_view_dashboards", _("Can view dashboards")),
+            ("can_delete_dashboards", _("Can delete dashboards")),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+    def get_template_display_name(self) -> str:
+        try:
+            return DashboardTemplateType.objects.get(code=self.template_type).name
+        except DashboardTemplateType.DoesNotExist:
+            return dict(TEMPLATE_TYPE_CHOICES).get(
+                self.template_type, self.template_type.upper()
+            )
+
+
+class DashboardReview(models.Model):
+    """User-authored review note tied to a saved dashboard."""
+
+    dashboard = models.ForeignKey(
+        Dashboard,
+        on_delete=models.CASCADE,
+        related_name="reviews",
+        verbose_name=_("Dashboard"),
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="dashboard_reviews",
+        verbose_name=_("Author"),
+    )
+    body = models.TextField(verbose_name=_("Review text"))
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
+
+    class Meta:
+        verbose_name = _("Dashboard review")
+        verbose_name_plural = _("Dashboard reviews")
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["dashboard", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Review #{self.pk} on {self.dashboard_id} by {self.author_id}"

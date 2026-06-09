@@ -88,6 +88,68 @@ Alternatively set environment variables (see `_smtp_config_from_env()` in `ai_ex
 
 See **[docs/EXCEL_SCHEMA.md](docs/EXCEL_SCHEMA.md)** for required columns, optional fields, and how empty rows are filtered.
 
+## AI dashboard templates (`template_type: ai`)
+
+Dashboards created from the upload form (e.g. `/dashboards/2/`) use template code **`ai`**. The report inside the iframe is **English-only** regardless of site UI language. The surrounding Django pages (sidebar, toolbar) still follow the session language.
+
+### Request flow
+
+```
+/dashboards/<id>/          → dashboard_detail view  → Django wrapper + iframe
+/dashboards/<id>/serve/    → dashboard_serve view   → generated HTML (cached)
+```
+
+### Django templates (site shell around the report)
+
+| Path | Role |
+|------|------|
+| `templates/reports_app/dashboard_detail.html` | Dashboard page: toolbar + `<iframe src="…/serve/">` |
+| `templates/reports_app/dashboard_list.html` | List of saved dashboards |
+| `templates/reports_app/upload.html` | Upload form (`/`) |
+| `templates/base.html` | Shared layout: sidebar, topbar, messages |
+| `web_strings.py` | Bilingual strings for the Django shell (not the report iframe) |
+
+### Report HTML generator (iframe content — not Django templates)
+
+The audit dashboard HTML/CSS/JS is built in Python, not as `.html` files under `templates/`:
+
+| Path | Role |
+|------|------|
+| `ai_excel_dashboard.py` → `generate_finance_report()` | Main report builder; inline HTML template starts ~line 2245 |
+| `ai_excel_dashboard.py` → `build_audit_observation_payload()` | Audit observations table, filters, charts data |
+| `ai_excel_dashboard.py` → `build_multi_dashboard_shell()` | Multi-workbook tab shell (legacy multi-file uploads) |
+| `dashboard_locale.py` | Report UI strings (`tr(loc, "…")`) — EN/AR keys |
+| `data_io.py` | Read Excel/CSV into pandas |
+| `reports_app/services/report_generation.py` | `store_upload_to_db()`, `generate_from_db_data()`, `report_locale_for_dashboard()` |
+
+Locale for `ai` dashboards is forced to **`en`** in:
+
+- `reports_app/views.py` → `dashboard_serve()` (cache key + generation)
+- `reports_app/services/report_generation.py` → `store_upload_to_db()`, `generate_from_db_data()`
+
+### Cached report files
+
+| Path | Role |
+|------|------|
+| `media/dashboards/<id>_en.html` | Cached English report for dashboard `<id>` (used for `ai` type) |
+| `media/dashboards/<id>_ar.html` | Arabic cache (only for non-`ai` template types, if added later) |
+| `media/decks/<report_id>/deck*.pptx` | Optional audit committee slide decks |
+| `media/decks/<report_id>/high_risk_deck*.pptx` | Optional high-risk slide decks |
+
+Force regeneration after editing `ai_excel_dashboard.py`:
+
+```
+/dashboards/<id>/serve/?nocache=1
+```
+
+### Quick edit checklist
+
+1. **Toolbar / breadcrumb / “Open in new tab”** → `templates/reports_app/dashboard_detail.html`, `web_strings.py`
+2. **Chart labels, audit table, deck viewer, report layout** → `ai_excel_dashboard.py` (`generate_finance_report`)
+3. **Report button/chart text (English)** → `dashboard_locale.py` (keys prefixed `audit_`, `metric_`, `ft_`, etc.)
+4. **Upload form** → `templates/reports_app/upload.html`, `web_strings.py`
+5. **When report is built / which locale** → `reports_app/services/report_generation.py`, `reports_app/views.py`
+
 ## MySQL setup
 
 Use **[docs/MYSQL_SETUP.md](docs/MYSQL_SETUP.md)** for local service setup, DB/user creation, migrations, and health checks.
