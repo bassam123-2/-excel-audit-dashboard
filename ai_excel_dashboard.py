@@ -47,7 +47,6 @@ REPORT_VERSION = "dashboard-v1.0.3"
 # Injected into generated HTML; replaced with a live URL when the Tk UI serves the report over HTTP.
 _MAIL_API_MARKER = "window.__AI_EXCEL_MAIL_API__=null;"
 _PLAN_PARSE_API_MARKER = "window.__AI_EXCEL_PLAN_PARSE_URL__=null;"
-_REVIEWS_API_MARKER = "window.__AI_EXCEL_REVIEWS_API__=null;"
 _SMTP_HELPER_HOST = "127.0.0.1"
 _SMTP_HELPER_PORT = 51977
 _MAIL_API_FALLBACK_MARKER = (
@@ -1338,15 +1337,6 @@ def build_audit_observation_payload(
             "reviewsTitle": tr(loc, "audit_reviews_title"),
             "reviewsDownload": tr(loc, "audit_reviews_download"),
             "reviewsPlaceholder": tr(loc, "audit_reviews_placeholder"),
-            "reviewsAllLabel": tr(loc, "audit_reviews_all_label"),
-            "reviewsAddLabel": tr(loc, "audit_reviews_add_label"),
-            "reviewsComposePlaceholder": tr(loc, "audit_reviews_compose_placeholder"),
-            "reviewsSave": tr(loc, "audit_reviews_save"),
-            "reviewsSaving": tr(loc, "audit_reviews_saving"),
-            "reviewsSaved": tr(loc, "audit_reviews_saved"),
-            "reviewsEmpty": tr(loc, "audit_reviews_empty"),
-            "reviewsBy": tr(loc, "audit_reviews_by"),
-            "reviewsSaveError": tr(loc, "audit_reviews_save_error"),
             "additionalNotesToggleLabel": tr(loc, "audit_additional_notes_toggle_label"),
             "deckAttachToggleLabel": tr(loc, "audit_deck_attach_toggle_label"),
             "deckUploadTitle": tr(loc, "audit_deck_upload_title"),
@@ -1354,6 +1344,9 @@ def build_audit_observation_payload(
             "deckBrowse": tr(loc, "audit_deck_browse"),
             "deckViewerTitle": tr(loc, "audit_deck_viewer_title"),
             "deckEmptyHint": tr(loc, "audit_deck_empty_hint"),
+            "deckNoAttachment": tr(loc, "audit_deck_no_attachment"),
+            "deckNoAttachmentTitle": tr(loc, "audit_deck_no_attachment_title"),
+            "deckNoAttachmentOk": tr(loc, "audit_deck_no_attachment_ok"),
             "deckSlideHeading": tr(loc, "audit_deck_slide_heading"),
             "deckPptLegacyWarn": tr(loc, "audit_deck_ppt_legacy_warn"),
             "deckReadError": tr(loc, "audit_deck_read_error"),
@@ -1380,6 +1373,12 @@ def build_audit_observation_payload(
                     "highRiskToggleLabel": tr("en", "audit_high_risk_toggle_label"),
                     "highRiskUploadTitle": tr("en", "audit_high_risk_upload_title"),
                     "highRiskUploadHint": tr("en", "audit_high_risk_upload_hint"),
+                    "tgaViolationsToggleLabel": tr("en", "audit_tga_violations_toggle_label"),
+                    "tgaViolationsUploadTitle": tr("en", "audit_tga_violations_upload_title"),
+                    "tgaViolationsUploadHint": tr("en", "audit_tga_violations_upload_hint"),
+                    "missingVehicleToggleLabel": tr("en", "audit_missing_vehicle_toggle_label"),
+                    "missingVehicleUploadTitle": tr("en", "audit_missing_vehicle_upload_title"),
+                    "missingVehicleUploadHint": tr("en", "audit_missing_vehicle_upload_hint"),
                 }
                 if loc == "en"
                 else {}
@@ -2015,6 +2014,10 @@ def generate_finance_report(
     embedded_decks_by_company_path: dict[str, str] | None = None,
     attached_high_risk_deck_path: str | None = None,
     embedded_high_risk_decks_by_company_path: dict[str, str] | None = None,
+    attached_tga_violations_deck_path: str | None = None,
+    embedded_tga_violations_decks_by_company_path: dict[str, str] | None = None,
+    attached_missing_vehicle_deck_path: str | None = None,
+    embedded_missing_vehicle_decks_by_company_path: dict[str, str] | None = None,
     allow_multiple_audit_companies: bool = False,
 ) -> tuple[str, dict[str, Any]]:
     loc = normalize_locale(locale)
@@ -2188,6 +2191,20 @@ def generate_finance_report(
         )
         if hr_embedded:
             chart_payload["embedded_high_risk_slide_deck"] = hr_embedded
+        tga_embedded = build_embedded_slide_deck_bundle(
+            fallback_path=attached_tga_violations_deck_path,
+            by_company_paths=embedded_tga_violations_decks_by_company_path,
+            locale=loc,
+        )
+        if tga_embedded:
+            chart_payload["embedded_tga_violations_slide_deck"] = tga_embedded
+        mv_embedded = build_embedded_slide_deck_bundle(
+            fallback_path=attached_missing_vehicle_deck_path,
+            by_company_paths=embedded_missing_vehicle_decks_by_company_path,
+            locale=loc,
+        )
+        if mv_embedded:
+            chart_payload["embedded_missing_vehicle_slide_deck"] = mv_embedded
     logo_catalog = build_company_logo_catalog()
     chart_payload["brand_logo_catalog"] = logo_catalog
 
@@ -2291,7 +2308,6 @@ def generate_finance_report(
   <!-- plan-upload:v4-fetch-only (no FileReader for audit plan file reads) -->
   <script>{_MAIL_API_MARKER}</script>
   <script>{_PLAN_PARSE_API_MARKER}</script>
-  <script>{_REVIEWS_API_MARKER}</script>
   <script>{_MAIL_API_FALLBACK_MARKER}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -2467,6 +2483,9 @@ def generate_finance_report(
     body.multi-shell-embedded #brand-context-company-names {{
       display: none !important;
     }}
+    body.multi-shell-embedded .brand-context-aside--sc-only #brand-context-company-names {{
+      display: block !important;
+    }}
     .brand-context-aside.brand-context-aside--visible {{
       display: flex;
     }}
@@ -2495,6 +2514,21 @@ def generate_finance_report(
       font-size: 0.7rem;
       font-weight: 700;
       color: #0f172a;
+    }}
+    .brand-context-names .brand-context-chip--muted {{
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      margin: 0.12rem 0 0;
+      padding: 0.42rem 0.65rem;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.06);
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1.35;
+      text-align: left;
     }}
     .brand-context-names .brand-context-all {{
       font-weight: 800;
@@ -3344,6 +3378,8 @@ def generate_finance_report(
     /* Audit committee report toggle: larger square blue checkbox only */
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-deck-attach-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-high-risk-cb,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-tga-violations-cb,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-missing-vehicle-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-additional-notes-cb {{
       -webkit-appearance: none;
       appearance: none;
@@ -3365,6 +3401,8 @@ def generate_finance_report(
     }}
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-deck-attach-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-high-risk-cb:checked,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-tga-violations-cb:checked,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-missing-vehicle-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-additional-notes-cb:checked {{
       border-radius: 0 !important;
       -webkit-border-radius: 0;
@@ -3373,6 +3411,8 @@ def generate_finance_report(
     }}
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-deck-attach-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-high-risk-cb:focus-visible),
+    .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-tga-violations-cb:focus-visible),
+    .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-missing-vehicle-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-additional-notes-cb:focus-visible) {{
       box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45);
     }}
@@ -3526,6 +3566,33 @@ def generate_finance_report(
       border: 1px solid rgba(15, 23, 42, 0.12);
       border-left: 1px solid rgba(15, 23, 42, 0.12);
       box-shadow: none;
+    }}
+    .brand-context-aside > #brand-company-filter-host .audit-dim-filter-block--brand-sc {{
+      --audit-filt-accent: #64748b;
+      --audit-filt-surface: #ffffff;
+      --audit-filt-border: rgba(15, 23, 42, 0.12);
+      gap: 0;
+      padding: 0;
+      background: #ffffff;
+      border: 1px solid rgba(15, 23, 42, 0.14);
+      border-left: 1px solid rgba(15, 23, 42, 0.14);
+      border-radius: 8px;
+      overflow: hidden;
+    }}
+    .brand-context-aside > #brand-company-filter-host .audit-dim-filter-block--brand-sc select[multiple] {{
+      min-height: 4.5rem;
+      max-height: 7.5rem;
+      padding: 0.28rem 0.4rem;
+      border: none;
+      border-radius: 0;
+      background: #ffffff;
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: #0f172a;
+    }}
+    .brand-context-aside > #brand-company-filter-host .audit-dim-filter-block--brand-sc select[multiple]:focus {{
+      border: none;
+      box-shadow: inset 0 0 0 2px rgba(15, 23, 42, 0.12);
     }}
     .brand-context-aside > #brand-company-filter-host .audit-dim-filter-head {{
       gap: 0.28rem;
@@ -4313,6 +4380,103 @@ def generate_finance_report(
       font-weight: 800;
       color: var(--text);
     }}
+    .audit-deck-missing-backdrop {{
+      position: fixed;
+      inset: 0;
+      z-index: 260;
+      display: none;
+      background: rgba(15, 23, 42, 0.42);
+      backdrop-filter: blur(8px);
+    }}
+    .audit-deck-missing-panel {{
+      position: fixed;
+      z-index: 261;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      width: min(22rem, calc(100vw - 2.5rem));
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: linear-gradient(165deg, #ffffff 0%, #f8fafc 100%);
+      box-shadow:
+        0 24px 48px rgba(15, 23, 42, 0.16),
+        0 0 0 1px rgba(255, 255, 255, 0.65) inset;
+      overflow: hidden;
+      animation: audit-deck-missing-in 0.22s ease-out;
+    }}
+    @keyframes audit-deck-missing-in {{
+      from {{
+        opacity: 0;
+        transform: translate(-50%, calc(-50% + 10px)) scale(0.97);
+      }}
+      to {{
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }}
+    }}
+    .audit-deck-missing-inner {{
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 1.65rem 1.35rem 1.35rem;
+      gap: 0.65rem;
+    }}
+    .audit-deck-missing-icon {{
+      width: 3.4rem;
+      height: 3.4rem;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(145deg, #eff6ff 0%, #e0e7ff 100%);
+      border: 1px solid rgba(59, 130, 246, 0.22);
+      color: #2563eb;
+      margin-bottom: 0.15rem;
+    }}
+    .audit-deck-missing-icon svg {{
+      width: 1.55rem;
+      height: 1.55rem;
+      display: block;
+    }}
+    .audit-deck-missing-report {{
+      margin: 0;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #64748b;
+      line-height: 1.35;
+    }}
+    .audit-deck-missing-title {{
+      margin: 0;
+      font-size: 1.08rem;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1.3;
+    }}
+    .audit-deck-missing-msg {{
+      margin: 0 0 0.35rem;
+      font-size: 0.9rem;
+      line-height: 1.55;
+      color: #475569;
+      max-width: 18rem;
+    }}
+    .audit-deck-missing-ok {{
+      min-width: 6.5rem;
+      margin-top: 0.25rem;
+      padding: 0.55rem 1.35rem;
+      border-radius: 999px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      border-color: #1d4ed8;
+      color: #fff;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.28);
+    }}
+    .audit-deck-missing-ok:hover {{
+      filter: brightness(1.05);
+    }}
     .audit-aging-close {{
       width: 2rem;
       height: 2rem;
@@ -4345,6 +4509,8 @@ def generate_finance_report(
       overflow: hidden;
     }}
     .audit-reviews-notepad {{
+      flex: 1;
+      min-height: min(50vh, 22rem);
       width: 100%;
       box-sizing: border-box;
       padding: 0.85rem 1rem;
@@ -4356,79 +4522,12 @@ def generate_finance_report(
       font-size: 0.92rem;
       line-height: 1.55;
       box-shadow: inset 0 1px 2px rgba(30, 41, 59, 0.06);
+      resize: vertical;
     }}
     .audit-reviews-notepad:focus {{
       outline: 2px solid rgba(96, 165, 250, 0.55);
       outline-offset: 1px;
     }}
-    .audit-reviews-notepad--readonly {{
-      flex: 1 1 auto;
-      min-height: 5.5rem;
-      max-height: 100%;
-      overflow-y: auto;
-      resize: none;
-      cursor: default;
-      background: #f8fafc;
-      color: #334155;
-    }}
-    .audit-reviews-section-label {{
-      display: block;
-      flex: 0 0 auto;
-      font-size: 0.78rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--muted);
-      margin: 0 0 0.45rem;
-    }}
-    .audit-reviews-list-wrap {{
-      flex: 1 1 auto;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      margin-bottom: 0;
-    }}
-    .audit-reviews-compose-wrap {{
-      flex: 0 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
-      border-top: 1px solid var(--stroke);
-      margin-top: 0.85rem;
-      padding-top: 0.75rem;
-    }}
-    .audit-reviews-compose {{
-      min-height: 5.5rem;
-      max-height: 12rem;
-      width: 100%;
-      box-sizing: border-box;
-      padding: 0.75rem 0.9rem;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      background: #fff;
-      color: #0f172a;
-      font-family: ui-monospace, "Cascadia Code", "Consolas", system-ui, sans-serif;
-      font-size: 0.92rem;
-      line-height: 1.55;
-      resize: vertical;
-    }}
-    .audit-reviews-compose:focus {{
-      outline: 2px solid rgba(96, 165, 250, 0.55);
-      outline-offset: 1px;
-    }}
-    .audit-reviews-compose-actions {{
-      display: flex;
-      align-items: center;
-      gap: 0.65rem;
-      flex-wrap: wrap;
-    }}
-    .audit-reviews-save-status {{
-      font-size: 0.82rem;
-      color: var(--muted);
-    }}
-    .audit-reviews-save-status.is-ok {{ color: #15803d; }}
-    .audit-reviews-save-status.is-err {{ color: #b91c1c; }}
     .audit-aging-table {{
       width: 100%;
       border-collapse: separate;
@@ -5438,6 +5537,14 @@ def generate_finance_report(
                     '<input type="checkbox" id="audit-high-risk-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
                     '<span id="audit-high-risk-label"></span>'
                     '</label>'
+                    '<label class="audit-obs-aging-toggle">'
+                    '<input type="checkbox" id="audit-tga-violations-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
+                    '<span id="audit-tga-violations-label"></span>'
+                    '</label>'
+                    '<label class="audit-obs-aging-toggle">'
+                    '<input type="checkbox" id="audit-missing-vehicle-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
+                    '<span id="audit-missing-vehicle-label"></span>'
+                    '</label>'
                   ) if loc == "en" else ""}
                   <label class="audit-obs-aging-toggle">
                     <input type="checkbox" id="audit-additional-notes-cb" aria-controls="audit-additional-notes-inline-panel" />
@@ -5633,18 +5740,7 @@ def generate_finance_report(
           <button type="button" class="nav-btn" id="audit-reviews-download"></button>
         </div>
         <div class="audit-aging-body audit-reviews-body">
-          <div class="audit-reviews-list-wrap">
-            <span class="audit-reviews-section-label" id="audit-reviews-all-label"></span>
-            <textarea id="audit-reviews-textarea" class="audit-reviews-notepad audit-reviews-notepad--readonly" wrap="soft" readonly tabindex="-1" aria-readonly="true"></textarea>
-          </div>
-          <div class="audit-reviews-compose-wrap">
-            <span class="audit-reviews-section-label" id="audit-reviews-add-label"></span>
-            <textarea id="audit-reviews-compose" class="audit-reviews-compose" wrap="soft"></textarea>
-            <div class="audit-reviews-compose-actions">
-              <button type="button" class="nav-btn" id="audit-reviews-save"></button>
-              <span class="audit-reviews-save-status" id="audit-reviews-save-status" aria-live="polite"></span>
-            </div>
-          </div>
+          <textarea id="audit-reviews-textarea" class="audit-reviews-notepad" wrap="soft"></textarea>
         </div>
       </div>
     </div>
@@ -5687,6 +5783,23 @@ def generate_finance_report(
             <p class="muted" id="audit-deck-empty-hint"></p>
           </div>
         </div>
+      </div>
+    </div>
+    <div class="audit-deck-missing-backdrop" id="audit-deck-missing-backdrop" style="display:none" aria-hidden="true"></div>
+    <div class="audit-deck-missing-panel" id="audit-deck-missing-panel" role="alertdialog" aria-modal="true" aria-labelledby="audit-deck-missing-title" aria-describedby="audit-deck-missing-msg" aria-hidden="true" tabindex="-1" style="display:none">
+      <div class="audit-deck-missing-inner">
+        <div class="audit-deck-missing-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="9.5" y1="12.5" x2="14.5" y2="17.5"/>
+            <line x1="14.5" y1="12.5" x2="9.5" y2="17.5"/>
+          </svg>
+        </div>
+        <p class="audit-deck-missing-report" id="audit-deck-missing-report"></p>
+        <h3 class="audit-deck-missing-title" id="audit-deck-missing-title"></h3>
+        <p class="audit-deck-missing-msg" id="audit-deck-missing-msg"></p>
+        <button type="button" class="nav-btn audit-deck-missing-ok" id="audit-deck-missing-ok"></button>
       </div>
     </div>
   </main>
@@ -6133,12 +6246,6 @@ def generate_finance_report(
       const reviewsTitle = document.getElementById("audit-reviews-title");
       const reviewsDownloadBtn = document.getElementById("audit-reviews-download");
       const reviewsTextarea = document.getElementById("audit-reviews-textarea");
-      const reviewsAllLabel = document.getElementById("audit-reviews-all-label");
-      const reviewsAddLabel = document.getElementById("audit-reviews-add-label");
-      const reviewsCompose = document.getElementById("audit-reviews-compose");
-      const reviewsSaveBtn = document.getElementById("audit-reviews-save");
-      const reviewsSaveStatus = document.getElementById("audit-reviews-save-status");
-      let reviewsCache = [];
       const planBackdrop = document.getElementById("audit-plan-backdrop");
       const planPanel = document.getElementById("audit-plan-panel");
       const planClose = document.getElementById("audit-plan-close");
@@ -6170,12 +6277,17 @@ def generate_finance_report(
       const deckAttachLbl = document.getElementById("audit-deck-attach-label");
       const highRiskCb = document.getElementById("audit-high-risk-cb");
       const highRiskLbl = document.getElementById("audit-high-risk-label");
+      const tgaViolationsCb = document.getElementById("audit-tga-violations-cb");
+      const tgaViolationsLbl = document.getElementById("audit-tga-violations-label");
+      const missingVehicleCb = document.getElementById("audit-missing-vehicle-cb");
+      const missingVehicleLbl = document.getElementById("audit-missing-vehicle-label");
       const deckUploadLayer = document.getElementById("audit-deck-upload-layer");
       const deckUploadLayerTitle = document.getElementById("audit-deck-upload-layer-title");
       const deckUploadLayerHint = document.getElementById("audit-deck-upload-layer-hint");
       const deckUploadLayerBrowse = document.getElementById("audit-deck-upload-layer-browse");
       let deckPanelMode = "committee";
-      const deckFilesByMode = {{ committee: null, highRisk: null }};
+      const deckFilesByMode = {{ committee: null, highRisk: null, tgaViolations: null, missingVehicle: null }};
+      const deckAttachToggles = [deckAttachCb, highRiskCb, tgaViolationsCb, missingVehicleCb];
       const deckBackdrop = document.getElementById("audit-deck-backdrop");
       const deckModal = document.getElementById("audit-deck-modal");
       const deckModalClose = document.getElementById("audit-deck-modal-close");
@@ -6197,7 +6309,7 @@ def generate_finance_report(
       let deckBlobUrls = [];
       let deckLastFile = null;
       let embeddedDeckLoadSig = null;
-      let embeddedHighRiskLoadSig = null;
+      const embeddedAltDeckLoadSig = {{ highRisk: null, tgaViolations: null, missingVehicle: null }};
       let deckLastObjectUrl = null;
       let deckPptxViewer = null;
       let deckPptxSvgViewer = null;
@@ -6740,7 +6852,11 @@ def generate_finance_report(
           brandCoHost.classList.remove("brand-company-filter-host--hidden");
         }}
         const brandAsideOn = document.getElementById("brand-context-aside");
-        if (brandAsideOn) brandAsideOn.classList.add("brand-context-aside--visible");
+        if (brandAsideOn) {{
+          brandAsideOn.classList.add("brand-context-aside--visible");
+          if (hasSubcompanyFilterDim) brandAsideOn.classList.add("brand-context-aside--sc-only");
+          else brandAsideOn.classList.remove("brand-context-aside--sc-only");
+        }}
       }} else {{
         if (brandCoHost) {{
           brandCoHost.innerHTML = "";
@@ -6750,7 +6866,10 @@ def generate_finance_report(
           brandCoHost.classList.remove("brand-company-filter-host--sc-only");
         }}
         const brandAsideNoCo = document.getElementById("brand-context-aside");
-        if (brandAsideNoCo) brandAsideNoCo.classList.remove("brand-context-aside--visible");
+        if (brandAsideNoCo) {{
+          brandAsideNoCo.classList.remove("brand-context-aside--visible");
+          brandAsideNoCo.classList.remove("brand-context-aside--sc-only");
+        }}
       }}
       const ALL = AO.all_token;
       const tilesHost = document.getElementById("audit-ia-tiles");
@@ -6830,8 +6949,9 @@ def generate_finance_report(
               }});
             }});
           }}
-          if (typeof o.reviewsNote === "string" && reviewsTextarea && !window.__AI_EXCEL_REVIEWS_API__) {{
+          if (typeof o.reviewsNote === "string" && reviewsTextarea) {{
             reviewsTextarea.value = o.reviewsNote;
+            try {{ localStorage.setItem("auditOtherReviewsNote", o.reviewsNote); }} catch (_lsH) {{}}
           }}
         }} catch (_e) {{}}
       }}
@@ -7575,82 +7695,7 @@ def generate_finance_report(
           }}
         }} catch (_pmOpenPlan) {{}}
       }}
-      function reviewsByLine(user, date) {{
-        return String(ui.reviewsBy || "{{user}} — {{date}}")
-          .replace(/\\{{user\\}}/g, user || "")
-          .replace(/\\{{date\\}}/g, date || "");
-      }}
-      function formatReviewsForDisplay(reviews) {{
-        if (!reviews || !reviews.length) return ui.reviewsEmpty || "";
-        const sep = "────────────────────────────────────────";
-        return reviews.map(function (r) {{
-          const header = reviewsByLine(r.author_display || r.author || "?", r.created_at || "");
-          return header + "\\n" + String(r.body || "") + "\\n" + sep;
-        }}).join("\\n\\n");
-      }}
-      function renderReviewsDisplay() {{
-        if (reviewsTextarea) reviewsTextarea.value = formatReviewsForDisplay(reviewsCache);
-      }}
-      function setReviewsSaveStatus(msg, kind) {{
-        if (!reviewsSaveStatus) return;
-        reviewsSaveStatus.textContent = msg || "";
-        reviewsSaveStatus.classList.remove("is-ok", "is-err");
-        if (kind === "ok") reviewsSaveStatus.classList.add("is-ok");
-        if (kind === "err") reviewsSaveStatus.classList.add("is-err");
-      }}
-      function loadDashboardReviews() {{
-        const url = window.__AI_EXCEL_REVIEWS_API__;
-        if (!url) {{
-          renderReviewsDisplay();
-          return Promise.resolve();
-        }}
-        return fetch(url, {{ credentials: "same-origin", headers: {{ Accept: "application/json" }} }})
-          .then(function (resp) {{ return resp.json(); }})
-          .then(function (data) {{
-            if (data && data.ok && Array.isArray(data.reviews)) {{
-              reviewsCache = data.reviews;
-              renderReviewsDisplay();
-            }}
-          }})
-          .catch(function () {{}});
-      }}
-      function saveDashboardReview() {{
-        const url = window.__AI_EXCEL_REVIEWS_API__;
-        const body = reviewsCompose ? String(reviewsCompose.value || "").trim() : "";
-        if (!url) {{
-          setReviewsSaveStatus(ui.reviewsSaveError || "Could not save review.", "err");
-          return Promise.resolve();
-        }}
-        if (!body) return Promise.resolve();
-        if (reviewsSaveBtn) reviewsSaveBtn.disabled = true;
-        setReviewsSaveStatus(ui.reviewsSaving || "Saving…", "");
-        return fetch(url, {{
-          method: "POST",
-          credentials: "same-origin",
-          headers: {{ "Content-Type": "application/json", Accept: "application/json" }},
-          body: JSON.stringify({{ body: body }}),
-        }})
-          .then(function (resp) {{
-            return resp.json().then(function (data) {{ return {{ ok: resp.ok, data: data }}; }});
-          }})
-          .then(function (result) {{
-            if (result.ok && result.data && result.data.ok && result.data.review) {{
-              reviewsCache.push(result.data.review);
-              renderReviewsDisplay();
-              if (reviewsCompose) reviewsCompose.value = "";
-              setReviewsSaveStatus(ui.reviewsSaved || "Review saved.", "ok");
-              try {{ persistAuditUserEdits(); }} catch (_pe) {{}}
-            }} else {{
-              setReviewsSaveStatus(ui.reviewsSaveError || "Could not save review.", "err");
-            }}
-          }})
-          .catch(function () {{
-            setReviewsSaveStatus(ui.reviewsSaveError || "Could not save review.", "err");
-          }})
-          .finally(function () {{
-            if (reviewsSaveBtn) reviewsSaveBtn.disabled = false;
-          }});
-      }}
+      const AUDIT_REVIEWS_LS = "auditOtherReviewsNote";
       function closeOtherReviews() {{
         if (reviewsBackdrop) {{
           reviewsBackdrop.style.display = "none";
@@ -7681,9 +7726,7 @@ def generate_finance_report(
             window.parent.postMessage({{ type: "deck-modal-state", open: true }}, "*");
           }}
         }} catch (_pmOpenReviews) {{}}
-        loadDashboardReviews().then(function () {{
-          if (reviewsCompose) reviewsCompose.focus();
-        }});
+        if (reviewsTextarea) reviewsTextarea.focus();
       }}
 
       function applyObsBarMeta() {{
@@ -7868,35 +7911,23 @@ def generate_finance_report(
       if (additionalNotesLbl) additionalNotesLbl.textContent = ui.additionalNotesToggleLabel || "ملاحظات اضافية";
       if (reviewsTitle) reviewsTitle.textContent = ui.reviewsTitle || "Other audit reviews";
       if (reviewsDownloadBtn) reviewsDownloadBtn.textContent = ui.reviewsDownload || "Download";
-      if (reviewsAllLabel) reviewsAllLabel.textContent = ui.reviewsAllLabel || "All reviews";
-      if (reviewsAddLabel) reviewsAddLabel.textContent = ui.reviewsAddLabel || "Add your review";
-      if (reviewsCompose) reviewsCompose.placeholder = ui.reviewsComposePlaceholder || "";
-      if (reviewsSaveBtn) reviewsSaveBtn.textContent = ui.reviewsSave || "Save review";
       if (reviewsTextarea) {{
-        reviewsTextarea.placeholder = ui.reviewsEmpty || "";
-        renderReviewsDisplay();
-      }}
-      if (!window.__AI_EXCEL_REVIEWS_API__) {{
-        if (reviewsCompose) {{
-          reviewsCompose.disabled = true;
-          reviewsCompose.placeholder = ui.reviewsSaveError || "Saving requires the web dashboard.";
-        }}
-        if (reviewsSaveBtn) reviewsSaveBtn.disabled = true;
-      }} else {{
-        loadDashboardReviews();
-      }}
-      if (reviewsSaveBtn) {{
-        reviewsSaveBtn.addEventListener("click", function () {{
-          saveDashboardReview();
-        }});
-      }}
-      if (reviewsCompose) {{
-        reviewsCompose.addEventListener("keydown", function (ev) {{
-          if (!ev) return;
-          if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") {{
-            ev.preventDefault();
-            saveDashboardReview();
+        reviewsTextarea.placeholder = ui.reviewsPlaceholder || "";
+        const already = String(reviewsTextarea.value || "").trim() !== "";
+        if (!already) {{
+          const embeddedNote = String(reviewsTextarea.textContent || "").replace(/\\u00a0/g, " ");
+          if (embeddedNote.trim() !== "") {{
+            reviewsTextarea.value = embeddedNote;
+          }} else {{
+            try {{
+              const saved = localStorage.getItem(AUDIT_REVIEWS_LS);
+              if (saved != null) reviewsTextarea.value = saved;
+            }} catch (_ls0) {{}}
           }}
+        }}
+        reviewsTextarea.addEventListener("input", function () {{
+          try {{ localStorage.setItem(AUDIT_REVIEWS_LS, reviewsTextarea.value); }} catch (_ls1) {{}}
+          try {{ persistAuditUserEdits(); }} catch (_pe) {{}}
         }});
       }}
       try {{
@@ -7934,35 +7965,105 @@ def generate_finance_report(
       }}
       if (deckAttachLbl) deckAttachLbl.textContent = ui.deckAttachToggleLabel || "تقرير لجنة المراجعة";
       if (highRiskLbl) highRiskLbl.textContent = ui.highRiskToggleLabel || "High Risk Observations & Emerging Risks";
+      if (tgaViolationsLbl) tgaViolationsLbl.textContent = ui.tgaViolationsToggleLabel || "TGA Violations Report";
+      if (missingVehicleLbl) missingVehicleLbl.textContent = ui.missingVehicleToggleLabel || "Missing Vehicle Report";
       if (deckUploadLayerTitle) {{
-        deckUploadLayerTitle.textContent = ui.highRiskUploadTitle || ui.deckUploadTitle || "Upload document";
+        deckUploadLayerTitle.textContent = ui.deckUploadTitle || "Upload document";
       }}
       if (deckUploadLayerHint) {{
-        deckUploadLayerHint.textContent = ui.highRiskUploadHint || ui.deckUploadHint || "";
+        deckUploadLayerHint.textContent = ui.deckUploadHint || "";
       }}
       if (deckUploadLayerBrowse) {{
         deckUploadLayerBrowse.textContent = ui.deckBrowse || "Browse…";
       }}
+      const DECK_MODE_META = {{
+        committee: {{
+          title: function () {{ return ui.deckAttachToggleLabel || "Audit committee report"; }},
+          hint: function () {{ return ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.deckUploadTitle || "Upload"; }},
+          uploadHint: function () {{ return ui.deckUploadHint || ""; }},
+        }},
+        highRisk: {{
+          title: function () {{ return ui.highRiskToggleLabel || "High Risk Observations & Emerging Risks"; }},
+          hint: function () {{ return ui.highRiskUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.highRiskUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.highRiskUploadHint || ui.deckUploadHint || ""; }},
+        }},
+        tgaViolations: {{
+          title: function () {{ return ui.tgaViolationsToggleLabel || "TGA Violations Report"; }},
+          hint: function () {{ return ui.tgaViolationsUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.tgaViolationsUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.tgaViolationsUploadHint || ui.deckUploadHint || ""; }},
+        }},
+        missingVehicle: {{
+          title: function () {{ return ui.missingVehicleToggleLabel || "Missing Vehicle Report"; }},
+          hint: function () {{ return ui.missingVehicleUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.missingVehicleUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.missingVehicleUploadHint || ui.deckUploadHint || ""; }},
+        }},
+      }};
+      function deckIsAltMode(mode) {{
+        const m = mode != null ? mode : deckPanelMode;
+        return m !== "committee";
+      }}
+      function deckModeMeta(mode) {{
+        return DECK_MODE_META[mode] || DECK_MODE_META.committee;
+      }}
+      function deckEmbeddedPayloadForMode(mode) {{
+        if (mode === "highRisk") return payload.embedded_high_risk_slide_deck;
+        if (mode === "tgaViolations") return payload.embedded_tga_violations_slide_deck;
+        if (mode === "missingVehicle") return payload.embedded_missing_vehicle_slide_deck;
+        return null;
+      }}
+      function deckUncheckOtherAttachToggles(activeCb) {{
+        for (let i = 0; i < deckAttachToggles.length; i++) {{
+          const cb = deckAttachToggles[i];
+          if (cb && cb !== activeCb) cb.checked = false;
+        }}
+      }}
+      const deckMissingBackdrop = document.getElementById("audit-deck-missing-backdrop");
+      const deckMissingPanel = document.getElementById("audit-deck-missing-panel");
+      const deckMissingReport = document.getElementById("audit-deck-missing-report");
+      const deckMissingTitle = document.getElementById("audit-deck-missing-title");
+      const deckMissingMsg = document.getElementById("audit-deck-missing-msg");
+      const deckMissingOk = document.getElementById("audit-deck-missing-ok");
+      function deckCloseNoAttachmentNotice() {{
+        if (deckMissingBackdrop) {{
+          deckMissingBackdrop.style.display = "none";
+          deckMissingBackdrop.setAttribute("aria-hidden", "true");
+        }}
+        if (deckMissingPanel) {{
+          deckMissingPanel.style.display = "none";
+          deckMissingPanel.setAttribute("aria-hidden", "true");
+        }}
+      }}
+      function deckShowNoAttachmentNotice(mode) {{
+        const meta = deckModeMeta(mode || deckPanelMode);
+        const reportName = meta.title();
+        const title = ui.deckNoAttachmentTitle || "No attachment";
+        const msg = ui.deckNoAttachment || "No attachment available for this report.";
+        if (deckMissingReport) deckMissingReport.textContent = reportName;
+        if (deckMissingTitle) deckMissingTitle.textContent = title;
+        if (deckMissingMsg) deckMissingMsg.textContent = msg;
+        if (deckMissingOk) deckMissingOk.textContent = ui.deckNoAttachmentOk || "OK";
+        if (deckMissingBackdrop) {{
+          deckMissingBackdrop.style.display = "block";
+          deckMissingBackdrop.setAttribute("aria-hidden", "false");
+        }}
+        if (deckMissingPanel) {{
+          deckMissingPanel.style.display = "block";
+          deckMissingPanel.setAttribute("aria-hidden", "false");
+          try {{ deckMissingPanel.focus(); }} catch (_mf) {{}}
+        }}
+      }}
       function deckApplyPanelChrome() {{
-        const isHighRisk = deckPanelMode === "highRisk";
-        const title = isHighRisk
-          ? (ui.highRiskToggleLabel || "High Risk Observations & Emerging Risks")
-          : (ui.deckAttachToggleLabel || "تقرير لجنة المراجعة");
-        const hint = isHighRisk
-          ? (ui.highRiskUploadHint || ui.deckUploadHint || "")
-          : (ui.deckUploadHint || "");
+        const meta = deckModeMeta(deckPanelMode);
+        const title = meta.title();
+        const hint = meta.hint();
         if (deckModalTitle) deckModalTitle.textContent = title;
         if (deckModalHint) deckModalHint.textContent = hint;
-        if (deckUploadLayerTitle) {{
-          deckUploadLayerTitle.textContent = isHighRisk
-            ? (ui.highRiskUploadTitle || ui.deckUploadTitle || "Upload document")
-            : (ui.deckUploadTitle || "Upload");
-        }}
-        if (deckUploadLayerHint) {{
-          deckUploadLayerHint.textContent = isHighRisk
-            ? (ui.highRiskUploadHint || ui.deckUploadHint || "")
-            : (ui.deckUploadHint || "");
-        }}
+        if (deckUploadLayerTitle) deckUploadLayerTitle.textContent = meta.uploadTitle();
+        if (deckUploadLayerHint) deckUploadLayerHint.textContent = meta.uploadHint();
       }}
       function deckSetUploadFirstMode(on) {{
         if (!deckModal) return;
@@ -7986,8 +8087,8 @@ def generate_finance_report(
           }});
         }});
       }}
-      function deckFinishHighRiskPresentation() {{
-        if (deckPanelMode !== "highRisk") return;
+      function deckFinishAltDeckPresentation() {{
+        if (!deckIsAltMode()) return;
         if (!deckModal || deckModal.style.display === "none" || deckModal.getAttribute("aria-hidden") === "true") return;
         deckOpenHighRiskSlideshow();
       }}
@@ -8019,7 +8120,30 @@ def generate_finance_report(
         }}
         return {{ entry: entry, sig: sig }};
       }}
-      function loadEmbeddedDeckBundleEntry(entry) {{
+      function deckEmbeddedBundleHasAttachment(ed) {{
+        if (!ed) return false;
+        const picked = pickEmbeddedDeckBundleEntry(ed);
+        return !!(picked.entry && picked.entry.data_base64);
+      }}
+      function deckModeHasAttachment(mode) {{
+        if (deckFilesByMode[mode]) return true;
+        if (mode === "committee") {{
+          return deckEmbeddedBundleHasAttachment(payload.embedded_slide_deck);
+        }}
+        return deckEmbeddedBundleHasAttachment(deckEmbeddedPayloadForMode(mode));
+      }}
+      function tryOpenDeckAttachMode(mode, cb) {{
+        if (!deckModeHasAttachment(mode)) {{
+          if (cb) cb.checked = false;
+          deckShowNoAttachmentNotice(mode);
+          return false;
+        }}
+        deckUncheckOtherAttachToggles(cb);
+        deckPanelMode = mode;
+        openDeckModal();
+        return true;
+      }}
+      function loadEmbeddedDeckBundleEntry(entry, defaultName) {{
         if (!entry || !entry.data_base64) return false;
         try {{
           const raw = atob(entry.data_base64);
@@ -8029,7 +8153,7 @@ def generate_finance_report(
           const mime =
             entry.mime || "application/vnd.openxmlformats-officedocument.presentationml.presentation";
           const blob = new Blob([u8], {{ type: mime }});
-          const name = entry.file_name || "high-risk-slides.pptx";
+          const name = entry.file_name || defaultName || "slides.pptx";
           const f = new File([blob], name, {{ type: mime }});
           void deckHandleFile(f);
           return true;
@@ -8037,16 +8161,16 @@ def generate_finance_report(
           return false;
         }}
       }}
-      function applyEmbeddedHighRiskDeck() {{
-        if (deckPanelMode !== "highRisk") return false;
-        const ed = payload.embedded_high_risk_slide_deck;
+      function applyEmbeddedDeckForMode(mode) {{
+        if (!deckIsAltMode(mode)) return false;
+        const ed = deckEmbeddedPayloadForMode(mode);
         if (!ed) return false;
         const picked = pickEmbeddedDeckBundleEntry(ed);
         const entry = picked.entry;
         const sig = picked.sig;
         if (!entry || !entry.data_base64) {{
           if (sig === "none" && ed.by_company) {{
-            embeddedHighRiskLoadSig = sig;
+            embeddedAltDeckLoadSig[mode] = sig;
             deckClearViewer();
             deckLastFile = null;
             if (deckFilename) deckFilename.style.display = "none";
@@ -8054,45 +8178,50 @@ def generate_finance_report(
           }}
           return false;
         }}
-        if (sig === embeddedHighRiskLoadSig && deckLastFile) {{
+        if (sig === embeddedAltDeckLoadSig[mode] && deckLastFile) {{
           try {{ deckResetViewerToFirstPage(); }} catch (_hrR0) {{}}
-          deckFinishHighRiskPresentation();
+          deckFinishAltDeckPresentation();
           return true;
         }}
-        embeddedHighRiskLoadSig = sig;
+        embeddedAltDeckLoadSig[mode] = sig;
         deckClearViewer();
         deckLastFile = null;
-        return loadEmbeddedDeckBundleEntry(entry);
+        const defaultName =
+          mode === "highRisk" ? "high-risk-slides.pptx"
+          : mode === "tgaViolations" ? "tga-violations-report.pptx"
+          : mode === "missingVehicle" ? "missing-vehicle-report.pptx"
+          : "slides.pptx";
+        return loadEmbeddedDeckBundleEntry(entry, defaultName);
       }}
-      function rehydrateEmbeddedHighRiskDeckIfNeeded() {{
-        if (deckPanelMode !== "highRisk") return;
-        if (!highRiskCb || !highRiskCb.checked) return;
-        applyEmbeddedHighRiskDeck();
+      function rehydrateEmbeddedAltDeckIfNeeded() {{
+        if (!deckIsAltMode()) return;
+        const cbByMode = {{
+          highRisk: highRiskCb,
+          tgaViolations: tgaViolationsCb,
+          missingVehicle: missingVehicleCb,
+        }};
+        const cb = cbByMode[deckPanelMode];
+        if (!cb || !cb.checked) return;
+        applyEmbeddedDeckForMode(deckPanelMode);
       }}
       function deckPromptUploadIfNeeded() {{
-        if (deckPanelMode !== "highRisk") return;
-        if (applyEmbeddedHighRiskDeck()) return;
-        const stored = deckFilesByMode.highRisk;
+        if (!deckIsAltMode()) return;
+        if (applyEmbeddedDeckForMode(deckPanelMode)) return;
+        const stored = deckFilesByMode[deckPanelMode];
         if (stored) {{
           deckSetUploadFirstMode(false);
           void deckHandleFile(stored);
           return;
         }}
-        const edHr = payload.embedded_high_risk_slide_deck;
-        if (edHr && (edHr.data_base64 || edHr.by_company || edHr.fallback)) {{
-          deckSetUploadFirstMode(false);
-          return;
-        }}
-        deckSetUploadFirstMode(true);
+        deckSetUploadFirstMode(false);
         deckClearViewer();
         if (deckFilename) deckFilename.style.display = "none";
         if (deckDownloadBtn) deckDownloadBtn.style.display = "none";
         deckLastFile = null;
-        setTimeout(function () {{
-          try {{
-            if (deckFileInput) deckFileInput.click();
-          }} catch (_hrUp) {{}}
-        }}, 120);
+        if (deckEmptyHint) {{
+          deckEmptyHint.style.display = "block";
+          deckEmptyHint.textContent = ui.deckNoAttachment || "No attachment available for this report.";
+        }}
       }}
       deckApplyPanelChrome();
       if (deckFullPageLblText) deckFullPageLblText.textContent = ui.deckFullPage || "Full page";
@@ -9123,6 +9252,8 @@ def generate_finance_report(
         if (deckLastFile) deckFilesByMode[deckPanelMode] = deckLastFile;
         if (deckAttachCb) deckAttachCb.checked = false;
         if (highRiskCb) highRiskCb.checked = false;
+        if (tgaViolationsCb) tgaViolationsCb.checked = false;
+        if (missingVehicleCb) missingVehicleCb.checked = false;
         if (deckFileInput) deckFileInput.value = "";
         deckSetUploadFirstMode(false);
         deckClearViewer();
@@ -9210,7 +9341,7 @@ def generate_finance_report(
         deckBackdrop.setAttribute("aria-hidden", "false");
         deckModal.style.display = "block";
         deckModal.setAttribute("aria-hidden", "false");
-        if (deckPanelMode === "highRisk") {{
+        if (deckIsAltMode()) {{
           deckSetUploadFirstMode(false);
           deckPromptUploadIfNeeded();
         }} else {{
@@ -9238,19 +9369,20 @@ def generate_finance_report(
       function deckSyncPanel() {{
         if (!deckAttachCb) return;
         if (deckAttachCb.checked) {{
-          if (highRiskCb) highRiskCb.checked = false;
-          deckPanelMode = "committee";
-          openDeckModal();
+          tryOpenDeckAttachMode("committee", deckAttachCb);
         }} else if (deckPanelMode === "committee") deckCloseModalAndReset();
       }}
-      function highRiskDeckSyncPanel() {{
-        if (!highRiskCb) return;
-        if (highRiskCb.checked) {{
-          if (deckAttachCb) deckAttachCb.checked = false;
-          deckPanelMode = "highRisk";
-          openDeckModal();
-        }} else if (deckPanelMode === "highRisk") deckCloseModalAndReset();
+      function makeAltDeckSyncPanel(cb, mode) {{
+        return function () {{
+          if (!cb) return;
+          if (cb.checked) {{
+            tryOpenDeckAttachMode(mode, cb);
+          }} else if (deckPanelMode === mode) deckCloseModalAndReset();
+        }};
       }}
+      const highRiskDeckSyncPanel = makeAltDeckSyncPanel(highRiskCb, "highRisk");
+      const tgaViolationsDeckSyncPanel = makeAltDeckSyncPanel(tgaViolationsCb, "tgaViolations");
+      const missingVehicleDeckSyncPanel = makeAltDeckSyncPanel(missingVehicleCb, "missingVehicle");
       function deckShowPdf(file) {{
         if (!deckPdfFrame) return;
         deckDestroyPptxViewer();
@@ -9283,7 +9415,7 @@ def generate_finance_report(
         const mime = String(f.type || "").toLowerCase();
         if (name.endsWith(".pdf") || mime === "application/pdf") {{
           deckShowPdf(f);
-          deckFinishHighRiskPresentation();
+          deckFinishAltDeckPresentation();
           return;
         }}
         if (name.endsWith(".ppt")) {{
@@ -9300,7 +9432,7 @@ def generate_finance_report(
             deckPdfFrame.src = "about:blank";
           }}
           await deckRenderPptx(f);
-          deckFinishHighRiskPresentation();
+          deckFinishAltDeckPresentation();
           return;
         }}
         deckClearViewer();
@@ -9309,18 +9441,30 @@ def generate_finance_report(
           deckEmptyHint.textContent = ui.deckUploadHint || "";
         }}
       }}
+      function bindAltDeckToggle(cb, syncFn) {{
+        if (!cb || !syncFn) return;
+        cb.addEventListener("change", syncFn);
+        cb.addEventListener("click", function () {{
+          queueMicrotask(syncFn);
+        }});
+      }}
       if (deckAttachCb) {{
         deckAttachCb.addEventListener("change", deckSyncPanel);
         deckAttachCb.addEventListener("click", function () {{
           queueMicrotask(deckSyncPanel);
         }});
       }}
-      if (highRiskCb) {{
-        highRiskCb.addEventListener("change", highRiskDeckSyncPanel);
-        highRiskCb.addEventListener("click", function () {{
-          queueMicrotask(highRiskDeckSyncPanel);
-        }});
-      }}
+      bindAltDeckToggle(highRiskCb, highRiskDeckSyncPanel);
+      bindAltDeckToggle(tgaViolationsCb, tgaViolationsDeckSyncPanel);
+      bindAltDeckToggle(missingVehicleCb, missingVehicleDeckSyncPanel);
+      if (deckMissingOk) deckMissingOk.addEventListener("click", deckCloseNoAttachmentNotice);
+      if (deckMissingBackdrop) deckMissingBackdrop.addEventListener("click", deckCloseNoAttachmentNotice);
+      document.addEventListener("keydown", function (ev) {{
+        if (!ev || ev.key !== "Escape") return;
+        if (!deckMissingPanel || deckMissingPanel.style.display === "none") return;
+        ev.preventDefault();
+        deckCloseNoAttachmentNotice();
+      }});
       if (deckUploadLayerBrowse && deckFileInput) {{
         deckUploadLayerBrowse.addEventListener("click", function () {{
           try {{ deckFileInput.click(); }} catch (_ulb) {{}}
@@ -10582,12 +10726,13 @@ def generate_finance_report(
           return;
         }}
         if (!sel || !sel.options || sel.options.length === 0) {{
-          kicker.textContent = ui.subcompanyLabel || "Subcompany";
+          kicker.textContent = ui.brandSubcompaniesInFilterTitle || ui.subcompanyLabel || "Subcompanies";
           const spicked = Array.from(scStrip.selectedOptions || []).map(function (o) {{ return String(o.textContent || o.value || "").trim(); }}).filter(function (x) {{ return x !== ""; }});
           if (spicked.length === 0) {{
-            const t = document.createElement("span");
-            t.textContent = ui.brandNoCompanySelected || "—";
-            namesHost.appendChild(t);
+            const th = document.createElement("span");
+            th.className = "brand-context-chip brand-context-chip--muted";
+            th.textContent = ui.brandAllSubcompaniesHint || "All subcompanies (optional filter off)";
+            namesHost.appendChild(th);
             finishBrandStrip();
             return;
           }}
@@ -11170,7 +11315,7 @@ def generate_finance_report(
           if (typeof applyEmbeddedDeckForCompanySelection === "function") applyEmbeddedDeckForCompanySelection();
         }} catch (_edeck) {{}}
         try {{
-          if (typeof rehydrateEmbeddedHighRiskDeckIfNeeded === "function") rehydrateEmbeddedHighRiskDeckIfNeeded();
+          if (typeof rehydrateEmbeddedAltDeckIfNeeded === "function") rehydrateEmbeddedAltDeckIfNeeded();
         }} catch (_edhr) {{}}
         try {{ syncBrandLogo(); }} catch (_logoCh) {{}}
       }}
@@ -11178,7 +11323,14 @@ def generate_finance_report(
         opts = opts || {{}};
         const block = document.createElement("div");
         block.className = "audit-dim-filter-block";
+        if (opts.plainBrandSubcompany) block.classList.add("audit-dim-filter-block--brand-sc");
         if (opts.dimKey) block.setAttribute("data-audit-dim", String(opts.dimKey));
+        if (opts.hideHead) {{
+          block.appendChild(sel);
+          tbHost.appendChild(block);
+          sel.addEventListener("change", onAuditToolbarFilterChange);
+          return;
+        }}
         const head = document.createElement("div");
         head.className = "audit-dim-filter-head";
         const ttl = document.createElement("span");
@@ -11295,7 +11447,9 @@ def generate_finance_report(
           brandCoHost || tb,
           scDim.label || ui.subcompanyLabel || "Subcompany",
           subSel,
-          {{ dimKey: scDim.key || "sco" }},
+          brandCoHost
+            ? {{ dimKey: scDim.key || "sco", hideHead: true, plainBrandSubcompany: true }}
+            : {{ dimKey: scDim.key || "sco" }},
         );
       }}
       if (brandCoHost) {{
@@ -11365,10 +11519,10 @@ def generate_finance_report(
         try {{
           const o = JSON.parse(el.textContent);
           if (!o || o.v !== 1 || typeof o.reviewsNote !== "string") return;
-          if (window.__AI_EXCEL_REVIEWS_API__) return;
           const ta = document.getElementById("audit-reviews-textarea");
           if (!ta || String(ta.value || "").trim() !== "") return;
           ta.value = o.reviewsNote;
+          try {{ localStorage.setItem("auditOtherReviewsNote", o.reviewsNote); }} catch (_lsF) {{}}
         }} catch (_e) {{}}
       }}
       go();

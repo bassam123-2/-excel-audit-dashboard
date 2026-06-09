@@ -2,7 +2,11 @@
 
 from django import forms
 from django.contrib.auth.forms import SetPasswordMixin, UserChangeForm, UserCreationForm
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from django.utils.translation import gettext_lazy as _
+
+from accounts_app.models import UserProfile
 
 IS_STAFF_LABEL = _("Admin")
 IS_STAFF_HELP = _(
@@ -16,16 +20,112 @@ def apply_is_staff_labels(form: forms.BaseForm) -> None:
         form.fields["is_staff"].help_text = IS_STAFF_HELP
 
 
+def _clear_password_help_text(form: forms.BaseForm) -> None:
+    """Hide Django validator help — custom live checklist replaces it."""
+    for name in ("password1", "password2"):
+        if name in form.fields:
+            form.fields[name].help_text = ""
+
+
+def _validate_email_format(email: str) -> str:
+    email = (email or "").strip()
+    if not email:
+        raise forms.ValidationError(_("Email address is required."))
+    try:
+        validate_email(email)
+    except DjangoValidationError as exc:
+        raise forms.ValidationError(_("Enter a valid email address.")) from exc
+    return email
+
+
+def _save_user_job_title(user, job_title: str) -> None:
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile.job_title = job_title or ""
+    profile.save(update_fields=["job_title"])
+
+
+def _initial_job_title(user) -> str:
+    if not user.pk:
+        return ""
+    try:
+        return user.profile.job_title
+    except UserProfile.DoesNotExist:
+        return ""
+
+
 class MandatoryPasswordAdminCreationForm(UserCreationForm):
     """Create users in admin with a required password (no disable-password option)."""
 
+    email = forms.EmailField(
+        label=_("Email address"),
+        required=True,
+        widget=forms.EmailInput(
+            attrs={"autocomplete": "email", "inputmode": "email"},
+        ),
+    )
+    first_name = forms.CharField(
+        label=_("First name"),
+        required=False,
+        max_length=150,
+    )
+    last_name = forms.CharField(
+        label=_("Last name"),
+        required=False,
+        max_length=150,
+    )
+    job_title = forms.CharField(
+        label=_("Job title"),
+        required=False,
+        max_length=128,
+        help_text=_("The user's job title or position."),
+    )
 
-class AdminUserChangeForm(UserChangeForm):
-    """User edit form with is_staff relabeled as Admin."""
+    class Meta(UserCreationForm.Meta):
+        fields = ("username", "email", "first_name", "last_name")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        _clear_password_help_text(self)
+        self.fields["email"].required = True
+
+    def clean_email(self):
+        return _validate_email_format(self.cleaned_data.get("email", ""))
+
+    def save(self, commit=True):
+        user = super().save(commit=commit)
+        _save_user_job_title(user, self.cleaned_data.get("job_title", ""))
+        return user
+
+
+class AdminUserChangeForm(UserChangeForm):
+    """User edit form — password is changed via a separate form on the change page."""
+
+    job_title = forms.CharField(
+        label=_("Job title"),
+        required=False,
+        max_length=128,
+        help_text=_("The user's job title or position."),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "password" in self.fields:
+            del self.fields["password"]
         apply_is_staff_labels(self)
+        self.fields["job_title"].initial = _initial_job_title(self.instance)
+        if "email" in self.fields:
+            self.fields["email"].required = True
+            self.fields["email"].widget = forms.EmailInput(
+                attrs={"autocomplete": "email", "inputmode": "email"},
+            )
+
+    def clean_email(self):
+        return _validate_email_format(self.cleaned_data.get("email", ""))
+
+    def save(self, commit=True):
+        user = super().save(commit=commit)
+        _save_user_job_title(user, self.cleaned_data.get("job_title", ""))
+        return user
 
 
 class MandatoryPasswordAdminChangeForm(SetPasswordMixin, forms.Form):
@@ -38,6 +138,7 @@ class MandatoryPasswordAdminChangeForm(SetPasswordMixin, forms.Form):
         self.user = user
         super().__init__(*args, **kwargs)
         self.fields["password1"].widget.attrs["autofocus"] = True
+        _clear_password_help_text(self)
 
     def clean(self):
         self.validate_passwords()

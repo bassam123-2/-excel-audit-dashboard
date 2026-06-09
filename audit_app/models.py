@@ -184,33 +184,3 @@ class Dashboard(models.Model):
             return dict(TEMPLATE_TYPE_CHOICES).get(
                 self.template_type, self.template_type.upper()
             )
-
-
-class DashboardReview(models.Model):
-    """User-authored review note tied to a saved dashboard."""
-
-    dashboard = models.ForeignKey(
-        Dashboard,
-        on_delete=models.CASCADE,
-        related_name="reviews",
-        verbose_name=_("Dashboard"),
-    )
-    author = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="dashboard_reviews",
-        verbose_name=_("Author"),
-    )
-    body = models.TextField(verbose_name=_("Review text"))
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
-
-    class Meta:
-        verbose_name = _("Dashboard review")
-        verbose_name_plural = _("Dashboard reviews")
-        ordering = ["created_at"]
-        indexes = [
-            models.Index(fields=["dashboard", "created_at"]),
-        ]
-
-    def __str__(self) -> str:
-        return f"Review #{self.pk} on {self.dashboard_id} by {self.author_id}"

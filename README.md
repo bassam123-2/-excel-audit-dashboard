@@ -6,6 +6,12 @@ Legacy logic from `ai_excel_dashboard.py` is reused through Django service modul
 
 Start with **[START_HERE.md](START_HERE.md)**, then **[docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)** and **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
+## Password storage (admin / auth users)
+
+User passwords are **never stored in plain text**. Django’s auth system hashes each password before it is written to the database. In this project the default hasher is **PBKDF2 with SHA-256** (`pbkdf2_sha256`), with **1,000,000 iterations**, plus a per-user random **salt** and the resulting **hash** stored in the `auth_user.password` field.
+
+That technical detail is intentionally **not shown** in the admin user edit screen. Admins change passwords via the inline **Password** / **Password confirmation** fields on the user form (or via the site profile page for their own account). The hash algorithm, iteration count, salt, and hash value are implementation details only and belong in this documentation—not in the UI.
+
 ## Quick start
 
 ```bash

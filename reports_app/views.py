@@ -20,12 +20,11 @@ if _BASE_DIR not in sys.path:
     sys.path.insert(0, _BASE_DIR)
 from web_strings import get_ui  # noqa: E402
 
-from audit_app.models import Dashboard, DashboardReview, DashboardTemplateType, ICON_CHOICES
+from audit_app.models import Dashboard, DashboardTemplateType, ICON_CHOICES
 from .services.report_generation import (
     html_no_cache_response,
     version_payload,
     generate_from_db_data,
-    inject_dashboard_reviews_api,
     inject_web_mail_api,
     report_locale_for_dashboard,
     store_upload_to_db,
@@ -164,75 +163,12 @@ def analyze(request):
     return redirect("dashboard_list")
 
 
-def _dashboard_reviews_url(request, dashboard: Dashboard) -> str:
-    return request.build_absolute_uri(f"/api/dashboards/{dashboard.pk}/reviews/")
-
-
 def _inject_served_dashboard_html(
     request, dashboard: Dashboard, html_content: str
 ) -> str:
     mail_url = request.build_absolute_uri("/api/send-obs-email")
     plan_url = request.build_absolute_uri("/api/parse-audit-plan-pptx")
-    reviews_url = _dashboard_reviews_url(request, dashboard)
-    html_content = inject_web_mail_api(html_content, mail_url, plan_url)
-    return inject_dashboard_reviews_api(html_content, reviews_url)
-
-
-def _review_author_display(user) -> str:
-    full = (user.get_full_name() or "").strip()
-    return full or user.username
-
-
-def _serialize_dashboard_review(review: DashboardReview) -> dict:
-    return {
-        "id": review.pk,
-        "body": review.body,
-        "author": review.author.username,
-        "author_display": _review_author_display(review.author),
-        "created_at": review.created_at.strftime("%Y-%m-%d %H:%M"),
-    }
-
-
-@login_required
-@csrf_exempt
-@require_http_methods(["GET", "POST", "OPTIONS"])
-def dashboard_reviews_api(request, pk: int):
-    if request.method == "OPTIONS":
-        return JsonResponse({}, status=204)
-    if not _has_view_perm(request.user):
-        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
-
-    dashboard = get_object_or_404(Dashboard, pk=pk)
-
-    if request.method == "GET":
-        reviews = dashboard.reviews.select_related("author").all()
-        return JsonResponse(
-            {
-                "ok": True,
-                "reviews": [_serialize_dashboard_review(r) for r in reviews],
-            }
-        )
-
-    try:
-        data = __import__("json").loads(request.body.decode("utf-8"))
-    except Exception:
-        return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
-
-    body = str(data.get("body", "")).strip()
-    if not body:
-        return JsonResponse({"ok": False, "error": "empty_body"}, status=400)
-    if len(body) > 8000:
-        return JsonResponse({"ok": False, "error": "body_too_long"}, status=400)
-
-    review = DashboardReview.objects.create(
-        dashboard=dashboard,
-        author=request.user,
-        body=body,
-    )
-    return JsonResponse(
-        {"ok": True, "review": _serialize_dashboard_review(review)},
-        status=201,
-    )
+    return inject_web_mail_api(html_content, mail_url, plan_url)
 
 
 @login_required

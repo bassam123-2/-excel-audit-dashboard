@@ -83,27 +83,27 @@ def switch_language(request):
 
 @login_required
 def profile_view(request):
+    from accounts_app.models import UserProfile
     from web_strings import get_ui
 
     lang = request.session.get("ui_lang", "ar")
     ui = get_ui(lang)
 
-    ctx: dict = {"pw_error": None, "pw_mismatch": None}
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+
+    ctx: dict = {
+        "pw_error": None,
+        "pw_mismatch": None,
+        "profile": profile,
+    }
 
     if request.method == "POST":
         action = request.POST.get("action")
 
-        if action == "update_info":
-            user = request.user
-            user.first_name = request.POST.get("first_name", "").strip()
-            user.last_name = request.POST.get("last_name", "").strip()
-            email = request.POST.get("email", "").strip()
-            user.email = email
-            user.save(update_fields=["first_name", "last_name", "email"])
-            messages.success(request, ui["profile_saved_ok"])
-            return redirect("profile")
+        if action == "change_password":
+            from django.contrib.auth.password_validation import validate_password
+            from django.core.exceptions import ValidationError
 
-        elif action == "change_password":
             old_pw = request.POST.get("old_password", "")
             new_pw1 = request.POST.get("new_password1", "")
             new_pw2 = request.POST.get("new_password2", "")
@@ -112,14 +112,17 @@ def profile_view(request):
                 ctx["pw_error"] = ui["profile_pw_wrong"]
             elif new_pw1 != new_pw2:
                 ctx["pw_mismatch"] = ui["profile_pw_mismatch"]
-            elif len(new_pw1) < 8:
-                ctx["pw_mismatch"] = ui["profile_pw_too_short"]
             else:
-                request.user.set_password(new_pw1)
-                request.user.save()
-                update_session_auth_hash(request, request.user)
-                messages.success(request, ui["profile_pw_changed_ok"])
-                return redirect("profile")
+                try:
+                    validate_password(new_pw1, request.user)
+                except ValidationError as exc:
+                    ctx["pw_mismatch"] = " ".join(exc.messages)
+                else:
+                    request.user.set_password(new_pw1)
+                    request.user.save()
+                    update_session_auth_hash(request, request.user)
+                    messages.success(request, ui["profile_pw_changed_ok"])
+                    return redirect("profile")
 
     return render(request, "accounts/profile.html", ctx)
 

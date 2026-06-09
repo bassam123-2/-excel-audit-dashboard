@@ -14,7 +14,6 @@ from django.utils.text import slugify
 from ai_excel_dashboard import (
     _MAIL_API_MARKER,
     _PLAN_PARSE_API_MARKER,
-    _REVIEWS_API_MARKER,
     AUDIT_BUNDLE_MAX_FILES,
     REPORT_VERSION,
     build_multi_dashboard_shell,
@@ -51,25 +50,6 @@ def inject_web_mail_api(html_out: str, mail_url: str, plan_url: str) -> str:
             f"window.__AI_EXCEL_PLAN_PARSE_URL__={json.dumps(plan_url)};",
         )
         return h
-    except Exception:
-        return html_out
-
-
-def inject_dashboard_reviews_api(html_out: str, reviews_url: str | None) -> str:
-    snippet = f"window.__AI_EXCEL_REVIEWS_API__={json.dumps(reviews_url)};"
-    try:
-        if _REVIEWS_API_MARKER in html_out:
-            return html_out.replace(_REVIEWS_API_MARKER, snippet)
-        import re
-
-        if re.search(r"window\.__AI_EXCEL_REVIEWS_API__=", html_out):
-            return re.sub(
-                r"window\.__AI_EXCEL_REVIEWS_API__=.+?;",
-                snippet,
-                html_out,
-                count=1,
-            )
-        return html_out
     except Exception:
         return html_out
 
@@ -193,6 +173,12 @@ def build_response_for_request(request) -> HttpResponse:
         high_risk_slots = [None, None, None, None]
         for i, d in enumerate(deck_uploads_from_request(request, "high_risk_deck")):
             high_risk_slots[i] = _persist_upload(d, tmp_dir)
+        tga_violations_slots = [None, None, None, None]
+        for i, d in enumerate(deck_uploads_from_request(request, "tga_violations_deck")):
+            tga_violations_slots[i] = _persist_upload(d, tmp_dir)
+        missing_vehicle_slots = [None, None, None, None]
+        for i, d in enumerate(deck_uploads_from_request(request, "missing_vehicle_deck")):
+            missing_vehicle_slots[i] = _persist_upload(d, tmp_dir)
 
         def deck_for_file_idx(i: int) -> str | None:
             nn = [p for p in deck_slots if p]
@@ -207,6 +193,16 @@ def build_response_for_request(request) -> HttpResponse:
                 [p for p in high_risk_slots if p], i, len(uploads)
             )
 
+        def tga_violations_for_file_idx(i: int) -> str | None:
+            return resolve_attached_deck_for_workbook_index(
+                [p for p in tga_violations_slots if p], i, len(uploads)
+            )
+
+        def missing_vehicle_for_file_idx(i: int) -> str | None:
+            return resolve_attached_deck_for_workbook_index(
+                [p for p in missing_vehicle_slots if p], i, len(uploads)
+            )
+
         if mode == "ai" and len(uploads) > 1:
             pages = []
             for i, df in enumerate(dfs):
@@ -218,6 +214,8 @@ def build_response_for_request(request) -> HttpResponse:
                     locale=locale,
                     attached_deck_path=deck_for_file_idx(i),
                     attached_high_risk_deck_path=high_risk_for_file_idx(i),
+                    attached_tga_violations_deck_path=tga_violations_for_file_idx(i),
+                    attached_missing_vehicle_deck_path=missing_vehicle_for_file_idx(i),
                     allow_multiple_audit_companies=False,
                 )
                 persist_report_result(
@@ -263,6 +261,8 @@ def build_response_for_request(request) -> HttpResponse:
                 locale=locale,
                 attached_deck_path=deck_for_file_idx(0),
                 attached_high_risk_deck_path=high_risk_for_file_idx(0),
+                attached_tga_violations_deck_path=tga_violations_for_file_idx(0),
+                attached_missing_vehicle_deck_path=missing_vehicle_for_file_idx(0),
                 allow_multiple_audit_companies=False,
             )
         except (ValueError, FileNotFoundError) as exc:
@@ -336,6 +336,12 @@ def process_uploads_to_html_and_meta(request) -> tuple[str, str, list[str]]:
         high_risk_slots = [None, None, None, None]
         for i, d in enumerate(deck_uploads_from_request(request, "high_risk_deck")):
             high_risk_slots[i] = _persist_upload(d, tmp_dir)
+        tga_violations_slots = [None, None, None, None]
+        for i, d in enumerate(deck_uploads_from_request(request, "tga_violations_deck")):
+            tga_violations_slots[i] = _persist_upload(d, tmp_dir)
+        missing_vehicle_slots = [None, None, None, None]
+        for i, d in enumerate(deck_uploads_from_request(request, "missing_vehicle_deck")):
+            missing_vehicle_slots[i] = _persist_upload(d, tmp_dir)
 
         def deck_for_file_idx(i: int) -> str | None:
             nn = [p for p in deck_slots if p]
@@ -348,6 +354,16 @@ def process_uploads_to_html_and_meta(request) -> tuple[str, str, list[str]]:
         def high_risk_for_file_idx(i: int) -> str | None:
             return resolve_attached_deck_for_workbook_index(
                 [p for p in high_risk_slots if p], i, len(uploads)
+            )
+
+        def tga_violations_for_file_idx(i: int) -> str | None:
+            return resolve_attached_deck_for_workbook_index(
+                [p for p in tga_violations_slots if p], i, len(uploads)
+            )
+
+        def missing_vehicle_for_file_idx(i: int) -> str | None:
+            return resolve_attached_deck_for_workbook_index(
+                [p for p in missing_vehicle_slots if p], i, len(uploads)
             )
 
         first_report_id = None
@@ -363,6 +379,8 @@ def process_uploads_to_html_and_meta(request) -> tuple[str, str, list[str]]:
                     locale=locale,
                     attached_deck_path=deck_for_file_idx(i),
                     attached_high_risk_deck_path=high_risk_for_file_idx(i),
+                    attached_tga_violations_deck_path=tga_violations_for_file_idx(i),
+                    attached_missing_vehicle_deck_path=missing_vehicle_for_file_idx(i),
                     allow_multiple_audit_companies=False,
                 )
                 if first_report_id is None:
@@ -406,6 +424,8 @@ def process_uploads_to_html_and_meta(request) -> tuple[str, str, list[str]]:
             locale=locale,
             attached_deck_path=deck_for_file_idx(0),
             attached_high_risk_deck_path=high_risk_for_file_idx(0),
+            attached_tga_violations_deck_path=tga_violations_for_file_idx(0),
+            attached_missing_vehicle_deck_path=missing_vehicle_for_file_idx(0),
             allow_multiple_audit_companies=False,
         )
         first_report_id = (audit_payload or {}).get("report_id") or str(uuid.uuid4())
@@ -438,7 +458,8 @@ def store_upload_to_db(
     row data in the DB as JSON, persist audit observation records, and create
     a Dashboard record.
 
-    Deck/plan files (deck1, high_risk_deck1) are saved to media/decks/<report_id>/
+    Deck/plan files (deck1, high_risk_deck1, tga_violations_deck1, missing_vehicle_deck1)
+    are saved to media/decks/<report_id>/
     and embedded in the dashboard HTML when it is generated on view.
 
     Returns the created Dashboard instance.
@@ -537,11 +558,25 @@ def store_upload_to_db(
             field_prefix="high_risk_deck",
             file_stem_prefix="high_risk_deck",
         )
+        tga_violations_paths = _save_uploaded_decks_to_media(
+            request,
+            report_id,
+            field_prefix="tga_violations_deck",
+            file_stem_prefix="tga_violations_deck",
+        )
+        missing_vehicle_paths = _save_uploaded_decks_to_media(
+            request,
+            report_id,
+            field_prefix="missing_vehicle_deck",
+            file_stem_prefix="missing_vehicle_deck",
+        )
 
         source_files_info = {
             "excel": all_names,
             "decks": deck_paths,
             "high_risk_decks": high_risk_paths,
+            "tga_violations_decks": tga_violations_paths,
+            "missing_vehicle_decks": missing_vehicle_paths,
         }
 
         dashboard = Dashboard.objects.create(
@@ -592,8 +627,12 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
         source_files = {}
     deck_rel = source_files.get("decks") or []
     high_risk_rel = source_files.get("high_risk_decks") or []
+    tga_violations_rel = source_files.get("tga_violations_decks") or []
+    missing_vehicle_rel = source_files.get("missing_vehicle_decks") or []
     deck_paths_abs = _abs_media_paths(deck_rel)
     high_risk_paths_abs = _abs_media_paths(high_risk_rel)
+    tga_violations_paths_abs = _abs_media_paths(tga_violations_rel)
+    missing_vehicle_paths_abs = _abs_media_paths(missing_vehicle_rel)
 
     # Support both single-file dict and multi-file list formats
     if isinstance(raw, list):
@@ -614,6 +653,8 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
             locale=locale,
             attached_deck_path=_first_attached_deck_path(deck_rel),
             attached_high_risk_deck_path=_first_attached_deck_path(high_risk_rel),
+            attached_tga_violations_deck_path=_first_attached_deck_path(tga_violations_rel),
+            attached_missing_vehicle_deck_path=_first_attached_deck_path(missing_vehicle_rel),
             allow_multiple_audit_companies=False,
         )
     else:
@@ -634,6 +675,12 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
                 attached_high_risk_deck_path=_attached_deck_for_index(
                     high_risk_paths_abs, i, n_entries
                 ),
+                attached_tga_violations_deck_path=_attached_deck_for_index(
+                    tga_violations_paths_abs, i, n_entries
+                ),
+                attached_missing_vehicle_deck_path=_attached_deck_for_index(
+                    missing_vehicle_paths_abs, i, n_entries
+                ),
                 allow_multiple_audit_companies=False,
             )
             title = workbook_dashboard_tab_title(df, source, locale)
@@ -646,10 +693,7 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
             plan_parse_api_url=plan_url,
         )
 
-    result = inject_dashboard_reviews_api(
-        inject_web_mail_api(html_out, mail_url, plan_url),
-        request.build_absolute_uri(f"/api/dashboards/{dashboard.pk}/reviews/"),
-    )
+    result = inject_web_mail_api(html_out, mail_url, plan_url)
 
     # Fix: ensure Plotly SVG overflow is visible so axis labels aren't clipped
     overflow_fix = (

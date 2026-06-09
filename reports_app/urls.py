@@ -6,7 +6,6 @@ from .views import (
     dashboard_detail,
     dashboard_delete,
     dashboard_list,
-    dashboard_reviews_api,
     dashboard_serve,
     favicon,
     index,
@@ -22,5 +21,4 @@ urlpatterns = [
     path("dashboards/<int:pk>/", dashboard_detail, name="dashboard_detail"),
     path("dashboards/<int:pk>/delete/", dashboard_delete, name="dashboard_delete"),
     path("dashboards/<int:pk>/serve/", dashboard_serve, name="dashboard_serve"),
-    path("api/dashboards/<int:pk>/reviews/", dashboard_reviews_api, name="dashboard_reviews_api"),
 ]
