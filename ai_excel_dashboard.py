@@ -38,7 +38,6 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from tkinter import Canvas, StringVar, Tk, filedialog, messagebox, ttk
 
 from dashboard_locale import AR_MONTH_HINTS, normalize_locale, tr
 from data_io import ATTR_READ_NOTES, read_input_file
@@ -62,6 +61,13 @@ _APP_ICON_CANDIDATES = [
 ]
 
 
+def _tk_widgets():
+    """Lazy tkinter import — used only by the optional desktop GUI, not the Django web app."""
+    from tkinter import Canvas, StringVar, Tk, filedialog, messagebox, ttk
+
+    return Canvas, StringVar, Tk, filedialog, messagebox, ttk
+
+
 def _get_app_icon_path() -> Path | None:
     for p in _APP_ICON_CANDIDATES:
         try:
@@ -72,7 +78,7 @@ def _get_app_icon_path() -> Path | None:
     return None
 
 
-def _apply_window_icon(root: Tk) -> None:
+def _apply_window_icon(root: Any) -> None:
     icon_path = _get_app_icon_path()
     if not icon_path:
         return
@@ -82,7 +88,7 @@ def _apply_window_icon(root: Tk) -> None:
         pass
 
 
-def _configure_tk_scaling(root: Tk) -> None:
+def _configure_tk_scaling(root: Any) -> None:
     """Apply DPI-based scaling to reduce blur/soft rendering on Windows."""
     if os.name != "nt":
         return
@@ -12075,6 +12081,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def prompt_run_config() -> dict[str, Any] | None:
+    Canvas, StringVar, Tk, filedialog, messagebox, ttk = _tk_widgets()
     root = Tk()
     _apply_window_icon(root)
     _configure_tk_scaling(root)
@@ -12516,6 +12523,7 @@ def prompt_run_config() -> dict[str, Any] | None:
 
 
 def show_error_dialog(message: str, *, locale: str = "en") -> None:
+    _, _, Tk, _, messagebox, _ = _tk_widgets()
     root = Tk()
     _apply_window_icon(root)
     _configure_tk_scaling(root)
@@ -12529,6 +12537,7 @@ def show_error_dialog(message: str, *, locale: str = "en") -> None:
 
 
 def show_info_dialog(message: str, *, locale: str = "en") -> None:
+    _, _, Tk, _, messagebox, _ = _tk_widgets()
     root = Tk()
     _apply_window_icon(root)
     _configure_tk_scaling(root)
@@ -12612,6 +12621,7 @@ def _is_audit_like_dataset(df: pd.DataFrame) -> bool:
 
 def prompt_audit_column_mapping(df: pd.DataFrame) -> dict[str, str] | None:
     """Let users manually map required audit columns when auto-detection fails."""
+    _, StringVar, Tk, _, _, ttk = _tk_widgets()
     root = Tk()
     _apply_window_icon(root)
     _configure_tk_scaling(root)
