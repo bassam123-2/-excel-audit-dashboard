@@ -145,11 +145,29 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
         candidate = get_dashboard_for_user(request.user, int(str(resubmit_id).strip()))
         if candidate and can_user_resubmit(request.user, candidate):
             resubmit_dashboard = candidate
+    selected_icon = (
+        form.get("icon")
+        or (resubmit_dashboard.icon if resubmit_dashboard else "")
+        or "bi-bar-chart-line-fill"
+    )
+    selected_template = (
+        form.get("template_type")
+        or (resubmit_dashboard.template_type if resubmit_dashboard else "")
+        or "ai"
+    )
+    dashboard_name_value = (
+        form.get("dashboard_name")
+        or (resubmit_dashboard.name if resubmit_dashboard else "")
+        or ""
+    )
     return {
         "icon_choices": ICON_CHOICES,
         "template_types": DashboardTemplateType.objects.filter(is_active=True),
         "resubmit_dashboard": resubmit_dashboard,
         "form": form,
+        "selected_icon": selected_icon,
+        "selected_template": selected_template,
+        "dashboard_name_value": dashboard_name_value,
     }
 
 
