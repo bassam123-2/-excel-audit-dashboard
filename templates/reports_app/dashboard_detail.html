@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}{{ dashboard.name }} — {{ ui.brand_name }}{% endblock %}
+
+{% block page_title %}
+<div class="breadcrumb-nav">
+    <a href="{% url 'dashboard_list' %}">
+        <i class="bi bi-grid-3x3-gap-fill me-1"></i>{{ ui.dd_breadcrumb }}
+    </a>
+    <span class="sep"><i class="bi bi-chevron-{% if is_rtl %}left{% else %}right{% endif %}"></i></span>
+    <span class="current text-truncate" style="max-width:220px;">{{ dashboard.name }}</span>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .page-body { padding: 0 !important; }
+    .dash-toolbar {
+        background: #fff; border-bottom: 1px solid var(--border);
+        padding: .55rem 1.25rem;
+        display: flex; align-items: center; gap: .65rem; flex-wrap: wrap;
+    }
+    .meta-pill {
+        display: inline-flex; align-items: center; gap: .35rem;
+        background: #f8fafc; border: 1px solid var(--border);
+        border-radius: 20px; padding: .2rem .75rem;
+        font-size: .73rem; color: var(--muted); white-space: nowrap;
+    }
+    .dash-frame { width: 100%; border: none; display: block; background: var(--bg); }
+    .toolbar-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+    .badge-status-draft { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
+    .badge-status-published { background: #f0fdf4; color: #047857; border: 1px solid #86efac; }
+    .badge-status-rejected { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .reject-log-panel {
+        background: #fff; border-top: 1px solid var(--border);
+        padding: .85rem 1.25rem;
+        position: static;
+    }
+    .reject-log-item {
+        border: 1px solid #fecaca; border-radius: 8px;
+        background: #fffbfb; padding: .65rem .85rem; margin-bottom: .5rem;
+        font-size: .82rem;
+    }
+    .reject-log-item:last-child { margin-bottom: 0; }
+    .reject-log-meta { font-size: .72rem; color: var(--muted); margin-bottom: .35rem; }
+    .badge-deleted { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dash-toolbar">
+    <span class="meta-pill" style="font-weight:600;font-size:.8rem;color:var(--accent-dark);">
+        <i class="bi {{ dashboard.icon|default:'bi-bar-chart-line-fill' }}" style="font-size:.9rem;"></i>
+        {{ dashboard.name }}
+    </span>
+    <span class="meta-pill"><i class="bi bi-calendar3"></i> {{ dashboard.created_at|date:"Y/m/d H:i" }}</span>
+    {% if dashboard.created_by %}
+    <span class="meta-pill"><i class="bi bi-person-fill"></i> {{ dashboard.created_by.get_full_name|default:dashboard.created_by.username }}</span>
+    {% endif %}
+    {% if dashboard.description %}
+    <span class="meta-pill"><i class="bi bi-info-circle"></i> {{ dashboard.description }}</span>
+    {% endif %}
+    <span class="meta-pill"><i class="bi bi-layout-wtf"></i> {{ dashboard.get_template_display_name }}</span>
+    {% if dashboard.status == "draft" %}
+    <span class="badge badge-status-draft"><i class="bi bi-pencil-square me-1"></i>{{ ui.wf_status_draft }}</span>
+    {% elif dashboard.status == "rejected" %}
+    <span class="badge badge-status-rejected"><i class="bi bi-x-circle me-1"></i>{{ ui.wf_status_rejected }}</span>
+    {% else %}
+    <span class="badge badge-status-published"><i class="bi bi-check-circle me-1"></i>{{ ui.wf_status_published }}</span>
+    {% endif %}
+    {% if is_deleted_view %}
+    <span class="badge badge-deleted"><i class="bi bi-trash me-1"></i>{{ ui.dl_deleted_badge }}</span>
+    {% endif %}
+
+    <div class="toolbar-actions {% if is_rtl %}me-auto{% else %}ms-auto{% endif %}">
+        {% if is_deleted_view and can_delete_dashboards %}
+        <form method="post" action="{% url 'dashboard_restore' dashboard.pk %}" class="d-inline"
+              onsubmit="return confirm('{{ ui.dl_restore_confirm|escapejs }}'.replace('{name}', '{{ dashboard.name|escapejs }}'));">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-success d-flex align-items-center gap-1">
+                <i class="bi bi-arrow-counterclockwise"></i> {{ ui.dl_restore_btn }}
+            </button>
+        </form>
+        <a href="{% url 'dashboard_list' %}?trash=1" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
+            <i class="bi bi-trash"></i> {{ ui.dl_trash_btn }}
+        </a>
+        {% endif %}
+        {% if can_approve_reject %}
+        <form method="post" action="{% url 'dashboard_approve' dashboard.pk %}" class="d-inline"
+              onsubmit="return confirm('{{ ui.wf_approve_confirm|escapejs }}');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-success d-flex align-items-center gap-1">
+                <i class="bi bi-check-lg"></i> {{ ui.wf_approve_btn }}
+            </button>
+        </form>
+        <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
+                data-bs-toggle="modal" data-bs-target="#rejectModal">
+            <i class="bi bi-x-lg"></i> {{ ui.wf_reject_btn }}
+        </button>
+        {% endif %}
+        {% if can_resubmit %}
+        <a href="{% url 'index' %}?resubmit={{ dashboard.pk }}"
+           class="btn btn-sm btn-warning d-flex align-items-center gap-1">
+            <i class="bi bi-arrow-repeat"></i> {{ ui.wf_resubmit_btn }}
+        </a>
+        {% endif %}
+        <a href="{% url 'dashboard_serve' dashboard.pk %}" target="_blank"
+           class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
+            <i class="bi bi-box-arrow-up-right"></i> {{ ui.dd_open_new }}
+        </a>
+        {% if can_upload_files %}
+        <a href="{% url 'index' %}" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
+            <i class="bi bi-plus-lg"></i> {{ ui.dd_new_btn }}
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+{% if can_approve_reject %}
+<div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{% url 'dashboard_reject' dashboard.pk %}" id="rejectDetailForm">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-x-octagon me-1 text-danger"></i>{{ ui.wf_reject_title }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ ui.wf_cancel }}"></button>
+                </div>
+                <div class="modal-body">
+                    <label for="rejectionReason" class="form-label fw-semibold">{{ ui.wf_reject_reason_label }}</label>
+                    <textarea name="rejection_reason" id="rejectionReason" class="form-control" required
+                              placeholder="{{ ui.wf_reject_reason_ph }}" style="min-height:110px;"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
+                    <button type="submit" class="btn btn-danger">{{ ui.wf_reject_submit }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<iframe id="dashFrame"
+        src="{% url 'dashboard_serve' dashboard.pk %}"
+        class="dash-frame"
+        style="height:calc(100vh - 130px);"
+        title="{{ dashboard.name }}">
+</iframe>
+
+{% if rejection_logs %}
+<div class="reject-log-panel" id="rejection-logs">
+    <div class="fw-semibold mb-2" style="font-size:.85rem;">
+        <i class="bi bi-journal-text me-1"></i>{{ ui.wf_reject_logs_title }}
+    </div>
+    {% for log in rejection_logs %}
+    <div class="reject-log-item">
+        <div class="reject-log-meta">
+            <i class="bi bi-clock"></i> {{ log.created_at|date:"Y/m/d H:i" }}
+            {% if log.rejected_by %}
+            &nbsp;·&nbsp;<i class="bi bi-person"></i> {{ ui.wf_reject_by }} {{ log.rejected_by.get_full_name|default:log.rejected_by.username }}
+            {% endif %}
+        </div>
+        <div>{{ log.reason|linebreaksbr }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var f = document.getElementById('dashFrame');
+    function resize() {
+        /* Fill viewport below toolbar only; rejection logs sit below and scroll with the page. */
+        f.style.height = Math.max(320, window.innerHeight - f.getBoundingClientRect().top) + 'px';
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    var rejectForm = document.getElementById('rejectDetailForm');
+    if (rejectForm) {
+        rejectForm.addEventListener('submit', function () {
+            var btn = rejectForm.querySelector('button[type="submit"]');
+            if (btn) btn.disabled = true;
+        });
+    }
+})();
+</script>
+{% endblock %}

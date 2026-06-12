@@ -1,0 +1,472 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ ui.profile_page_title }}{% endblock %}
+
+
+
+{% block page_title %}
+
+<span class="d-flex align-items-center gap-2">
+
+    <i class="bi bi-person-circle" style="color:var(--accent);"></i>
+
+    {{ ui.profile_heading }}
+
+</span>
+
+{% endblock %}
+
+
+
+{% block extra_head %}
+
+<link rel="stylesheet" href="{% static 'css/password_rules.css' %}">
+
+<style>
+
+    .profile-avatar {
+
+        width: 80px; height: 80px; border-radius: 50%;
+
+        background: linear-gradient(135deg, #3b82f6, #6366f1);
+
+        color: #fff; font-size: 2rem; font-weight: 800;
+
+        display: flex; align-items: center; justify-content: center;
+
+        box-shadow: 0 4px 14px rgba(59,130,246,.3);
+
+    }
+
+    .perm-item {
+
+        display: flex; align-items: center; gap: .75rem;
+
+        padding: .7rem 1.1rem; font-size: .875rem;
+
+        border-bottom: 1px solid var(--border);
+
+    }
+
+    .perm-item:last-child { border-bottom: none; }
+
+    .perm-check { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+
+        display: flex; align-items: center; justify-content: center; font-size: .8rem; }
+
+    .perm-check.yes { background: #ecfdf5; color: #059669; }
+
+    .perm-check.no  { background: #fef2f2; color: #dc2626; }
+
+    .badge-role {
+
+        display: inline-flex; align-items: center; gap: .3rem;
+
+        padding: .3rem .85rem; border-radius: 20px; font-size: .78rem; font-weight: 600;
+
+    }
+
+    .badge-admin { background: #eff6ff; color: #2563eb; }
+
+    .badge-user  { background: #f8fafc; color: #64748b; }
+
+</style>
+
+{% endblock %}
+
+
+
+{% block content %}
+
+
+
+<!-- Profile header card -->
+
+<div class="card mb-4" style="background:linear-gradient(135deg,#0f1f3d,#1e3a6e);border:none;color:#fff;">
+
+    <div class="card-body p-4">
+
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+
+            <div class="profile-avatar">{{ user.get_short_name|default:user.username|first|upper }}</div>
+
+            <div>
+
+                <h4 class="mb-1 fw-bold" style="color:#fff;">{{ user.get_full_name|default:user.username }}</h4>
+
+                {% if profile.job_title %}
+
+                <div style="color:rgba(255,255,255,.75);font-size:.84rem;font-weight:500;">{{ profile.job_title }}</div>
+
+                {% endif %}
+
+                {% if user.email %}<div style="color:rgba(255,255,255,.6);font-size:.875rem;">{{ user.email }}</div>{% endif %}
+
+                <div class="mt-2">
+
+                    {% if user.is_staff %}
+
+                    <span class="badge-role badge-admin"><i class="bi bi-shield-fill-check"></i> {{ ui.profile_role_staff }}</span>
+
+                    {% else %}
+
+                    <span class="badge-role badge-user"><i class="bi bi-person-fill"></i> {{ ui.profile_role_user }}</span>
+
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+            <div class="{% if is_rtl %}me-auto{% else %}ms-auto{% endif %} d-flex gap-3 flex-wrap" style="font-size:.8rem;color:rgba(255,255,255,.55);">
+
+                <div>
+
+                    <div style="color:rgba(255,255,255,.35);font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;">{{ ui.profile_joined }}</div>
+
+                    <div style="color:rgba(255,255,255,.85);font-weight:600;">{{ user.date_joined|date:"Y/m/d" }}</div>
+
+                </div>
+
+                {% if user.last_login %}
+
+                <div>
+
+                    <div style="color:rgba(255,255,255,.35);font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;">{{ ui.profile_last_login }}</div>
+
+                    <div style="color:rgba(255,255,255,.85);font-weight:600;">{{ user.last_login|date:"Y/m/d H:i" }}</div>
+
+                </div>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+
+<div class="row g-4">
+
+
+
+    <!-- Account info (read-only) -->
+
+    <div class="col-12 col-lg-7">
+
+        <div class="card">
+
+            <div class="card-header">
+
+                <i class="bi bi-person-vcard-fill" style="color:var(--accent);"></i>
+
+                {{ ui.profile_info_card }}
+
+            </div>
+
+            <div class="card-body p-4">
+
+                <div class="mb-3">
+
+                    <label class="form-label">{{ ui.profile_username }}</label>
+
+                    <input type="text" class="form-control profile-readonly" value="{{ user.username }}" readonly tabindex="-1">
+
+                </div>
+
+                <div class="row g-3 mb-3">
+
+                    <div class="col-6">
+
+                        <label class="form-label">{{ ui.profile_first_name }}</label>
+
+                        <input type="text" class="form-control profile-readonly"
+
+                               value="{{ user.first_name|default:'—' }}" readonly tabindex="-1">
+
+                    </div>
+
+                    <div class="col-6">
+
+                        <label class="form-label">{{ ui.profile_last_name }}</label>
+
+                        <input type="text" class="form-control profile-readonly"
+
+                               value="{{ user.last_name|default:'—' }}" readonly tabindex="-1">
+
+                    </div>
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label class="form-label">{{ ui.profile_job_title }}</label>
+
+                    <input type="text" class="form-control profile-readonly"
+
+                           value="{{ profile.job_title|default:'—' }}" readonly tabindex="-1">
+
+                </div>
+
+                <div class="mb-0">
+
+                    <label class="form-label">{{ ui.profile_email }}</label>
+
+                    <input type="text" class="form-control profile-readonly"
+
+                           value="{{ user.email|default:'—' }}" readonly tabindex="-1">
+
+                </div>
+
+                <div class="profile-readonly-hint">
+
+                    <i class="bi bi-info-circle"></i>
+
+                    {{ ui.profile_readonly_hint }}
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- Change password -->
+
+        <div class="card mt-4">
+
+            <div class="card-header">
+
+                <i class="bi bi-key-fill" style="color:var(--warn);"></i>
+
+                {{ ui.profile_change_pw_card }}
+
+            </div>
+
+            <div class="card-body p-4">
+
+                <form method="post" action="{% url 'profile' %}" id="changePwForm">
+
+                    {% csrf_token %}
+
+                    <input type="hidden" name="action" value="change_password">
+
+                    <div class="mb-3">
+
+                        <label for="opw" class="form-label">{{ ui.profile_old_pw }}</label>
+
+                        <input type="password" id="opw" name="old_password"
+
+                               class="form-control{% if pw_error %} is-invalid{% endif %}"
+
+                               placeholder="{{ ui.profile_old_pw_ph }}" required autocomplete="current-password">
+
+                        {% if pw_error %}<div class="invalid-feedback">{{ pw_error }}</div>{% endif %}
+
+                    </div>
+
+                    <div class="mb-3">
+
+                        <label for="np1" class="form-label">{{ ui.profile_new_pw }}</label>
+
+                        <input type="password" id="np1" name="new_password1"
+
+                               class="form-control{% if pw_mismatch %} is-invalid{% endif %}"
+
+                               placeholder="{{ ui.profile_new_pw_ph }}" required autocomplete="new-password">
+
+                    </div>
+
+                    <div class="mb-4">
+
+                        <label for="np2" class="form-label">{{ ui.profile_confirm_pw }}</label>
+
+                        <input type="password" id="np2" name="new_password2"
+
+                               class="form-control{% if pw_mismatch %} is-invalid{% endif %}"
+
+                               placeholder="{{ ui.profile_confirm_pw_ph }}" required autocomplete="new-password">
+
+                        {% if pw_mismatch %}<div class="invalid-feedback d-block">{{ pw_mismatch }}</div>{% endif %}
+
+                    </div>
+
+                    <button type="submit" class="btn btn-warning fw-semibold px-4" id="pwSubmitBtn">
+
+                        <i class="bi bi-key me-1"></i> {{ ui.profile_update_pw_btn }}
+
+                    </button>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- Permissions + sidebar info -->
+
+    <div class="col-12 col-lg-5">
+
+        <div class="card">
+
+            <div class="card-header">
+
+                <i class="bi bi-shield-check-fill" style="color:var(--success);"></i>
+
+                {{ ui.profile_perms_card }}
+
+            </div>
+
+            <div>
+
+                <div class="perm-item">
+
+                    <div class="perm-check {% if can_upload_files %}yes{% else %}no{% endif %}">
+
+                        <i class="bi bi-{% if can_upload_files %}check-lg{% else %}x-lg{% endif %}"></i>
+
+                    </div>
+
+                    <div>
+
+                        <div style="font-weight:600;font-size:.84rem;">{{ ui.profile_perm_upload }}</div>
+
+                        <div style="font-size:.73rem;color:var(--muted);">can_upload_files</div>
+
+                    </div>
+
+                </div>
+
+                <div class="perm-item">
+
+                    <div class="perm-check {% if can_view_dashboards %}yes{% else %}no{% endif %}">
+
+                        <i class="bi bi-{% if can_view_dashboards %}check-lg{% else %}x-lg{% endif %}"></i>
+
+                    </div>
+
+                    <div>
+
+                        <div style="font-weight:600;font-size:.84rem;">{{ ui.profile_perm_view }}</div>
+
+                        <div style="font-size:.73rem;color:var(--muted);">can_view_dashboards</div>
+
+                    </div>
+
+                </div>
+
+                <div class="perm-item">
+
+                    <div class="perm-check {% if can_delete_dashboards %}yes{% else %}no{% endif %}">
+
+                        <i class="bi bi-{% if can_delete_dashboards %}check-lg{% else %}x-lg{% endif %}"></i>
+
+                    </div>
+
+                    <div>
+
+                        <div style="font-weight:600;font-size:.84rem;">{{ ui.profile_perm_delete }}</div>
+
+                        <div style="font-size:.73rem;color:var(--muted);">can_delete_dashboards</div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        {% if user.is_staff %}
+
+        <div class="card mt-4">
+
+            <div class="card-header">
+
+                <i class="bi bi-gear-fill" style="color:var(--muted);"></i>
+
+                {% if is_rtl %}إجراءات سريعة{% else %}Quick Actions{% endif %}
+
+            </div>
+
+            <div class="card-body p-3">
+
+                <a href="{% url 'admin:index' %}" target="_blank"
+
+                   class="btn btn-outline-secondary btn-sm w-100 mb-2 d-flex align-items-center gap-2">
+
+                    <i class="bi bi-shield-lock-fill"></i>
+
+                    {% if is_rtl %}لوحة الإدارة{% else %}Admin Panel{% endif %}
+
+                </a>
+
+                <a href="{% url 'admin:auth_user_changelist' %}" target="_blank"
+
+                   class="btn btn-outline-secondary btn-sm w-100 d-flex align-items-center gap-2">
+
+                    <i class="bi bi-people-fill"></i>
+
+                    {% if is_rtl %}إدارة المستخدمين{% else %}Manage Users{% endif %}
+
+                </a>
+
+            </div>
+
+        </div>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+
+
+{% block extra_js %}
+<script>
+document.documentElement.setAttribute("data-pw-username", "{{ user.username|escapejs }}");
+</script>
+<script src="{% static 'js/password_rules.js' %}"></script>
+
+<script>
+
+(function () {
+
+    var form = document.getElementById("changePwForm");
+
+    if (!form) return;
+
+    form.addEventListener("submit", function (e) {
+
+        var p1 = document.getElementById("np1").value;
+
+        var p2 = document.getElementById("np2").value;
+
+        if (typeof window.pwRulesAllMet === "function" && !window.pwRulesAllMet(p1, p2)) {
+            e.preventDefault();
+        }
+
+    });
+
+})();
+
+</script>
+
+{% endblock %}
+
+

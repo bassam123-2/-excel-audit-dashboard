@@ -8,7 +8,12 @@ config/
 
 # Generated / local runtime
 audit_logs/*.json
-*.html
+
+# Generated HTML reports only — keep Django templates/ in Git
+ai_analysis_report.html
+*_analysis_report.html
+*_report.html
+media/dashboards/*.html
 _test_report.html
 dist/
 build/

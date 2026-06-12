@@ -1,0 +1,64 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls admin_modify static %}
+
+{% block extrahead %}
+{{ block.super }}
+{% if original %}
+<script>document.documentElement.setAttribute("data-pw-username", "{{ original.username|escapejs }}");</script>
+{% endif %}
+{% endblock %}
+
+{% block content_subtitle %}{% endblock %}
+
+{% block object-tools %}
+{% if change and not is_popup %}
+<div class="change-form-header-row">
+    {% if original %}<h2 class="change-form-object-title">{{ original }}</h2>{% endif %}
+    <ul class="object-tools change-form-object-tools">
+        {% block object-tools-items %}
+            {% change_form_object_tools %}
+        {% endblock %}
+    </ul>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block field_sets %}
+{% for fieldset in adminform %}
+    {% include "admin/includes/fieldset.html" with heading_level=2 prefix="fieldset" id_prefix=0 id_suffix=forloop.counter0 %}
+    {% if forloop.first and change and password_form %}
+        {% include "admin/auth/user/password_reset_form.html" %}
+    {% endif %}
+{% endfor %}
+{% endblock %}
+
+{% block submit_buttons_bottom %}
+{% if user_is_soft_deleted %}
+<div class="submit-row">
+    <p class="deletelink-box soft-deleted-notice">
+        {% translate "This user is soft-deleted and cannot sign in." %}
+    </p>
+    <input type="submit" value="{% translate 'Restore user' %}" class="default" name="_restore">
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}
+
+{% block extrabody %}
+{{ block.super }}
+{% if change and password_form and original and not user_is_soft_deleted %}
+<form method="post" id="user_password_form" class="password-reset-form-hidden"
+      action="{% url 'admin:auth_user_set_password' original.pk|admin_urlquote %}"
+      novalidate>
+    {% csrf_token %}
+</form>
+<script src="{% static 'js/password_rules.js' %}"></script>
+<script>
+(function () {
+    if (typeof window.initPasswordRules === "function") {
+        window.initPasswordRules();
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}
