@@ -44,6 +44,12 @@ def _save_user_job_title(user, job_title: str) -> None:
     profile.save(update_fields=["job_title"])
 
 
+def _save_user_two_factor(user, enabled: bool) -> None:
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile.two_factor_enabled = bool(enabled)
+    profile.save(update_fields=["two_factor_enabled"])
+
+
 def _initial_job_title(user) -> str:
     if not user.pk:
         return ""
@@ -79,6 +85,12 @@ class MandatoryPasswordAdminCreationForm(UserCreationForm):
         max_length=128,
         help_text=_("The user's job title or position."),
     )
+    two_factor_enabled = forms.BooleanField(
+        label=_("Email two-factor authentication"),
+        required=False,
+        initial=False,
+        help_text=_("When enabled, a one-time code is sent by email at sign-in."),
+    )
 
     class Meta(UserCreationForm.Meta):
         fields = ("username", "email", "first_name", "last_name")
@@ -94,6 +106,7 @@ class MandatoryPasswordAdminCreationForm(UserCreationForm):
     def save(self, commit=True):
         user = super().save(commit=commit)
         _save_user_job_title(user, self.cleaned_data.get("job_title", ""))
+        _save_user_two_factor(user, self.cleaned_data.get("two_factor_enabled", False))
         return user
 
 
@@ -106,6 +119,11 @@ class AdminUserChangeForm(UserChangeForm):
         max_length=128,
         help_text=_("The user's job title or position."),
     )
+    two_factor_enabled = forms.BooleanField(
+        label=_("Email two-factor authentication"),
+        required=False,
+        help_text=_("When enabled, a one-time code is sent by email at sign-in."),
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -113,6 +131,10 @@ class AdminUserChangeForm(UserChangeForm):
             del self.fields["password"]
         apply_is_staff_labels(self)
         self.fields["job_title"].initial = _initial_job_title(self.instance)
+        profile = getattr(self.instance, "profile", None)
+        self.fields["two_factor_enabled"].initial = (
+            profile.two_factor_enabled if profile else False
+        )
         if "email" in self.fields:
             self.fields["email"].required = True
             self.fields["email"].widget = forms.EmailInput(
@@ -125,6 +147,9 @@ class AdminUserChangeForm(UserChangeForm):
     def save(self, commit=True):
         user = super().save(commit=commit)
         _save_user_job_title(user, self.cleaned_data.get("job_title", ""))
+        _save_user_two_factor(
+            user, self.cleaned_data.get("two_factor_enabled", False)
+        )
         return user
 
 

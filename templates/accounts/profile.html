@@ -79,7 +79,15 @@
 
 {% block content %}
 
-
+{% if force_password %}
+<div class="alert alert-warning d-flex align-items-start gap-2 mb-4">
+    <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+    <div>
+        <strong>{{ ui.profile_force_password_title }}</strong>
+        <div class="small">{{ ui.profile_force_password_body }}</div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Profile header card -->
 
@@ -367,6 +375,24 @@
 
                 <div class="perm-item">
 
+                    <div class="perm-check {% if can_delete_drafts %}yes{% else %}no{% endif %}">
+
+                        <i class="bi bi-{% if can_delete_drafts %}check-lg{% else %}x-lg{% endif %}"></i>
+
+                    </div>
+
+                    <div>
+
+                        <div style="font-weight:600;font-size:.84rem;">{{ ui.profile_perm_delete_drafts }}</div>
+
+                        <div style="font-size:.73rem;color:var(--muted);">{{ active_company.code|default:"—" }}</div>
+
+                    </div>
+
+                </div>
+
+                <div class="perm-item">
+
                     <div class="perm-check {% if can_delete_dashboards %}yes{% else %}no{% endif %}">
 
                         <i class="bi bi-{% if can_delete_dashboards %}check-lg{% else %}x-lg{% endif %}"></i>
@@ -377,7 +403,7 @@
 
                         <div style="font-weight:600;font-size:.84rem;">{{ ui.profile_perm_delete }}</div>
 
-                        <div style="font-size:.73rem;color:var(--muted);">can_delete_dashboards</div>
+                        <div style="font-size:.73rem;color:var(--muted);">superuser</div>
 
                     </div>
 

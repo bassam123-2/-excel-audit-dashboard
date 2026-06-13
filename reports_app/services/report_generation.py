@@ -234,14 +234,39 @@ def _resolve_all_deck_attachments(
     *,
     existing_source: dict | None,
     is_resubmit: bool,
+    company=None,
 ) -> dict[str, list[str]]:
+    from audit_app.company_access import get_enabled_attachment_kinds
+    from dashboard_locale import normalize_locale, tr
+
     existing_source = existing_source if isinstance(existing_source, dict) else {}
+    enabled_kinds = get_enabled_attachment_kinds(company)
+    locale = normalize_locale(request.session.get("ui_lang", "ar"))
     resolved: dict[str, list[str]] = {}
     for spec in ATTACHMENT_SPECS:
+        kind = spec["kind"]
+        field_prefix = spec["field_prefix"]
+        has_upload = bool(
+            request.FILES.get(f"{field_prefix}1")
+            and str(getattr(request.FILES.get(f"{field_prefix}1"), "name", "")).strip()
+        )
+        wants_remove = request.POST.get(f"remove_{field_prefix}") == "1"
+
+        if kind not in enabled_kinds:
+            if has_upload or (wants_remove and not is_resubmit):
+                raise ValueError(tr(locale, "err_attachment_disabled", label=spec["kind"]))
+            if is_resubmit:
+                resolved[spec["source_key"]] = list(
+                    _existing_media_paths(existing_source.get(spec["source_key"]))
+                )
+            else:
+                resolved[spec["source_key"]] = []
+            continue
+
         resolved[spec["source_key"]] = _resolve_deck_attachment_paths(
             request,
             report_id,
-            field_prefix=spec["field_prefix"],
+            field_prefix=field_prefix,
             file_stem_prefix=spec["file_stem_prefix"],
             existing_paths=existing_source.get(spec["source_key"]),
             is_resubmit=is_resubmit,
@@ -249,13 +274,21 @@ def _resolve_all_deck_attachments(
     return resolved
 
 
-def build_attachment_form_slots(dashboard, locale: str = "en") -> list[dict[str, Any]]:
+def build_attachment_form_slots(
+    dashboard,
+    locale: str = "en",
+    company=None,
+) -> list[dict[str, Any]]:
+    from audit_app.company_access import get_enabled_attachment_kinds
     from web_strings import get_ui
 
     ui = get_ui(locale)
+    enabled_kinds = get_enabled_attachment_kinds(company)
     source = dashboard.source_files if dashboard and isinstance(dashboard.source_files, dict) else {}
     slots: list[dict[str, Any]] = []
     for spec in ATTACHMENT_SPECS:
+        if spec["kind"] not in enabled_kinds:
+            continue
         paths = _existing_media_paths(source.get(spec["source_key"]))
         hint_key = spec.get("ui_hint") or ""
         slots.append(
@@ -291,6 +324,43 @@ def _attached_deck_for_index(
 def _first_attached_deck_path(relative_paths: list[str] | None) -> str | None:
     abs_paths = _abs_media_paths(relative_paths)
     return abs_paths[0] if abs_paths else None
+
+
+def _attachment_path_kwargs(
+    source_files: dict,
+    enabled_kinds: set[str],
+    *,
+    multi_index: int | None = None,
+    multi_total: int | None = None,
+) -> dict[str, str | None]:
+    """Build generate_finance_report attachment path kwargs, scoped by company settings."""
+    rel_by_kind = {
+        "deck": source_files.get("decks") or [],
+        "highRisk": source_files.get("high_risk_decks") or [],
+        "tgaViolations": source_files.get("tga_violations_decks") or [],
+        "missingVehicle": source_files.get("missing_vehicle_decks") or [],
+        "internalAuditQuarterly": source_files.get("internal_audit_quarterly_decks") or [],
+        "specialAssignment": source_files.get("special_assignment_decks") or [],
+    }
+    param_by_kind = {
+        "deck": "attached_deck_path",
+        "highRisk": "attached_high_risk_deck_path",
+        "tgaViolations": "attached_tga_violations_deck_path",
+        "missingVehicle": "attached_missing_vehicle_deck_path",
+        "internalAuditQuarterly": "attached_internal_audit_quarterly_deck_path",
+        "specialAssignment": "attached_special_assignment_deck_path",
+    }
+    kwargs: dict[str, str | None] = {}
+    for kind, param in param_by_kind.items():
+        rel = rel_by_kind[kind]
+        if kind not in enabled_kinds:
+            kwargs[param] = None
+        elif multi_index is None:
+            kwargs[param] = _first_attached_deck_path(rel)
+        else:
+            abs_paths = _abs_media_paths(rel)
+            kwargs[param] = _attached_deck_for_index(abs_paths, multi_index, multi_total or 1)
+    return kwargs
 
 
 def report_locale_for_dashboard(dashboard, request) -> str:
@@ -685,9 +755,16 @@ def store_upload_to_db(
     import pandas as pd
     from django.conf import settings as _settings
     from audit_app.models import Dashboard, DashboardStatus, ICON_CHOICES, UploadSession
+    from audit_app.company_access import (
+        extract_excel_company_names_from_df,
+        validate_excel_company_for_tenant,
+    )
     from reports_app.dashboard_workflow import mark_dashboard_draft
 
     ui_locale = normalize_locale(request.session.get("ui_lang", "ar"))
+    active_company = getattr(request, "active_company", None)
+    if active_company is None:
+        raise ValueError(tr(ui_locale, "err_no_active_company"))
     sheet = None
     uploads = excel_uploads_from_request(request)
 
@@ -732,6 +809,9 @@ def store_upload_to_db(
 
         if not file_entries or primary_df is None:
             raise ValueError(tr(ui_locale, "web_err_empty"))
+
+        excel_companies = extract_excel_company_names_from_df(primary_df, ui_locale)
+        validate_excel_company_for_tenant(active_company, excel_companies, locale=ui_locale)
 
         # ── Persist audit observation records (primary file only) ─────
         _, audit_payload = generate_finance_report(
@@ -790,6 +870,7 @@ def store_upload_to_db(
             report_id,
             existing_source=existing_source,
             is_resubmit=is_resubmit,
+            company=active_company,
         )
 
         source_files_info = {
@@ -807,6 +888,8 @@ def store_upload_to_db(
             resubmit_dashboard.upload_session = (
                 session if isinstance(session, UploadSession) else None
             )
+            if not resubmit_dashboard.company_id:
+                resubmit_dashboard.company = active_company
             mark_dashboard_draft(resubmit_dashboard)
             resubmit_dashboard.save(
                 update_fields=[
@@ -817,6 +900,7 @@ def store_upload_to_db(
                     "html_file",
                     "source_files",
                     "upload_session",
+                    "company",
                     "status",
                     "published_at",
                 ]
@@ -831,6 +915,7 @@ def store_upload_to_db(
             report_id=report_id,
             html_file="",
             source_files=source_files_info,
+            company=active_company,
             created_by=request.user if request.user.is_authenticated else None,
             upload_session=session if isinstance(session, UploadSession) else None,
             status=DashboardStatus.DRAFT,
@@ -851,6 +936,8 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
     """
     import pandas as pd
 
+    from audit_app.company_access import get_enabled_attachment_kinds
+
     session = dashboard.upload_session
     if not session or not session.raw_data_json:
         raise ValueError("No stored data for this dashboard.")
@@ -870,18 +957,8 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
     source_files = dashboard.source_files or {}
     if not isinstance(source_files, dict):
         source_files = {}
-    deck_rel = source_files.get("decks") or []
-    high_risk_rel = source_files.get("high_risk_decks") or []
-    tga_violations_rel = source_files.get("tga_violations_decks") or []
-    missing_vehicle_rel = source_files.get("missing_vehicle_decks") or []
-    internal_audit_quarterly_rel = source_files.get("internal_audit_quarterly_decks") or []
-    special_assignment_rel = source_files.get("special_assignment_decks") or []
-    deck_paths_abs = _abs_media_paths(deck_rel)
-    high_risk_paths_abs = _abs_media_paths(high_risk_rel)
-    tga_violations_paths_abs = _abs_media_paths(tga_violations_rel)
-    missing_vehicle_paths_abs = _abs_media_paths(missing_vehicle_rel)
-    internal_audit_quarterly_paths_abs = _abs_media_paths(internal_audit_quarterly_rel)
-    special_assignment_paths_abs = _abs_media_paths(special_assignment_rel)
+    enabled_kinds = get_enabled_attachment_kinds(dashboard.company)
+    attachment_kwargs = _attachment_path_kwargs(source_files, enabled_kinds)
 
     # Support both single-file dict and multi-file list formats
     if isinstance(raw, list):
@@ -900,13 +977,9 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
             source_name=source,
             sheet_name=session.sheet_name or None,
             locale=locale,
-            attached_deck_path=_first_attached_deck_path(deck_rel),
-            attached_high_risk_deck_path=_first_attached_deck_path(high_risk_rel),
-            attached_tga_violations_deck_path=_first_attached_deck_path(tga_violations_rel),
-            attached_missing_vehicle_deck_path=_first_attached_deck_path(missing_vehicle_rel),
-            attached_internal_audit_quarterly_deck_path=_first_attached_deck_path(internal_audit_quarterly_rel),
-            attached_special_assignment_deck_path=_first_attached_deck_path(special_assignment_rel),
             allow_multiple_audit_companies=False,
+            enabled_attachment_kinds=enabled_kinds,
+            **attachment_kwargs,
         )
     else:
         # Multi-file: build tabs
@@ -915,30 +988,20 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
         for i, e in enumerate(entries):
             df = pd.DataFrame(e["data"], columns=e["columns"])
             source = e.get("source_name", "file")
+            tab_attachment_kwargs = _attachment_path_kwargs(
+                source_files,
+                enabled_kinds,
+                multi_index=i,
+                multi_total=n_entries,
+            )
             tab_html, _ = generate_finance_report(
                 df,
                 source_name=source,
                 sheet_name=session.sheet_name or None,
                 locale=locale,
-                attached_deck_path=_attached_deck_for_index(
-                    deck_paths_abs, i, n_entries
-                ),
-                attached_high_risk_deck_path=_attached_deck_for_index(
-                    high_risk_paths_abs, i, n_entries
-                ),
-                attached_tga_violations_deck_path=_attached_deck_for_index(
-                    tga_violations_paths_abs, i, n_entries
-                ),
-                attached_missing_vehicle_deck_path=_attached_deck_for_index(
-                    missing_vehicle_paths_abs, i, n_entries
-                ),
-                attached_internal_audit_quarterly_deck_path=_attached_deck_for_index(
-                    internal_audit_quarterly_paths_abs, i, n_entries
-                ),
-                attached_special_assignment_deck_path=_attached_deck_for_index(
-                    special_assignment_paths_abs, i, n_entries
-                ),
                 allow_multiple_audit_companies=False,
+                enabled_attachment_kinds=enabled_kinds,
+                **tab_attachment_kwargs,
             )
             title = workbook_dashboard_tab_title(df, source, locale)
             tabs.append((tab_html, title))

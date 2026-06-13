@@ -278,7 +278,7 @@
 
     <nav class="sb-nav">
         {% if user.is_authenticated %}
-            {% if can_upload_files %}
+            {% if can_upload_files and not needs_company_selection %}
             <div class="sb-section">{{ ui.section_uploads }}</div>
             <a href="{% url 'index' %}"
                class="sb-link {% if request.resolver_match.url_name == 'index' %}active{% endif %}">
@@ -286,7 +286,7 @@
             </a>
             {% endif %}
 
-            {% if can_view_dashboards %}
+            {% if can_view_dashboards and not needs_company_selection %}
             <div class="sb-section">{{ ui.section_reports }}</div>
             <a href="{% url 'dashboard_list' %}"
                class="sb-link {% if 'dashboard' in request.resolver_match.url_name|default:'' %}active{% endif %}">
@@ -330,6 +330,20 @@
     <header class="topbar">
         <div class="topbar-title">{% block page_title %}{% endblock %}</div>
         <div class="topbar-actions">
+            {% if show_company_switcher and user_companies %}
+            <form method="post" action="{% url 'switch_company' %}" class="d-flex align-items-center gap-2 me-2">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <label for="companySwitch" class="small text-muted mb-0">{{ ui.company_switch_label }}</label>
+                <select id="companySwitch" name="company_id" class="form-select form-select-sm" style="width:auto; min-width:120px;" onchange="this.form.submit()">
+                    {% for co in user_companies %}
+                    <option value="{{ co.pk }}" {% if active_company and active_company.pk == co.pk %}selected{% endif %}>{{ co.code }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            {% elif active_company %}
+            <span class="badge bg-light text-dark border me-2">{{ active_company.code }}</span>
+            {% endif %}
             <span class="topbar-date">{% now "Y/m/d" %}</span>
             <a href="{% url 'switch_language' %}?next={{ request.path }}" class="btn-lang">
                 <i class="bi bi-translate"></i> {{ ui.lang_toggle }}

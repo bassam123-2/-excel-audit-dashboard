@@ -5,6 +5,157 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 
+ATTACHMENT_KIND_CHOICES = [
+    ("deck", _("Company wise Audit committee report")),
+    ("highRisk", _("High Risk Observations & Emerging Risks")),
+    ("tgaViolations", _("TGA Violations Report")),
+    ("missingVehicle", _("Missing Vehicle Report")),
+    ("internalAuditQuarterly", _("Internal Audit Quarterly Report")),
+    ("specialAssignment", _("Special Assignment Report")),
+]
+
+ATTACHMENT_KIND_CODES = [code for code, _ in ATTACHMENT_KIND_CHOICES]
+
+
+class Company(models.Model):
+    """Tenant organization — dashboards and permissions are scoped per company."""
+
+    code = models.SlugField(
+        max_length=32,
+        unique=True,
+        verbose_name=_("Company code"),
+        help_text=_("Short identifier, e.g. BTC, NAT"),
+    )
+    name = models.CharField(max_length=255, verbose_name=_("Display name"))
+    excel_company_names = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name=_("Excel company names"),
+        help_text=_(
+            "Names accepted in the Excel Company column for this tenant "
+            "(defaults to the company code if empty)."
+        ),
+    )
+    is_active = models.BooleanField(default=True, verbose_name=_("Active"))
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
+
+    class Meta:
+        verbose_name = _("Company")
+        verbose_name_plural = _("Companies")
+        ordering = ["code"]
+
+    def __str__(self) -> str:
+        return f"{self.code} — {self.name}"
+
+    def accepted_excel_names(self) -> list[str]:
+        names = [str(n).strip() for n in (self.excel_company_names or []) if str(n).strip()]
+        if not names:
+            names = [self.code]
+        return names
+
+    def matches_excel_company(self, excel_name: str) -> bool:
+        token = str(excel_name or "").strip()
+        if not token:
+            return False
+        normalized = token.casefold()
+        return any(n.casefold() == normalized for n in self.accepted_excel_names())
+
+    def ensure_attachment_settings(self) -> None:
+        existing = set(
+            self.attachment_settings.values_list("attachment_kind", flat=True)
+        )
+        for kind in ATTACHMENT_KIND_CODES:
+            if kind not in existing:
+                CompanyAttachmentSetting.objects.create(
+                    company=self,
+                    attachment_kind=kind,
+                    is_enabled=True,
+                )
+
+
+class CompanyMembership(models.Model):
+    """User access and permissions within a single company."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="company_memberships",
+        verbose_name=_("User"),
+    )
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+        verbose_name=_("Company"),
+    )
+    can_upload = models.BooleanField(
+        default=False,
+        verbose_name=_("Can upload files and create dashboards"),
+    )
+    can_view = models.BooleanField(
+        default=False,
+        verbose_name=_("Can view dashboards"),
+        help_text=_("View all published dashboards in this company."),
+    )
+    can_view_own_only = models.BooleanField(
+        default=False,
+        verbose_name=_("Can view own dashboards only"),
+        help_text=_(
+            "View only dashboards this user created in this company "
+            "(draft, rejected, or published)."
+        ),
+    )
+    can_review = models.BooleanField(
+        default=False,
+        verbose_name=_("Can approve or reject dashboards"),
+    )
+    can_delete_drafts = models.BooleanField(
+        default=False,
+        verbose_name=_("Can delete draft dashboards"),
+        help_text=_(
+            "Remove draft dashboards in this company only. "
+            "Published dashboards cannot be deleted."
+        ),
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
+
+    class Meta:
+        verbose_name = _("Company membership")
+        verbose_name_plural = _("Company memberships")
+        unique_together = ("user", "company")
+        ordering = ["company__code", "user__username"]
+
+    def __str__(self) -> str:
+        return f"{self.user} @ {self.company.code}"
+
+
+class CompanyAttachmentSetting(models.Model):
+    """Enable or disable optional upload attachments per company."""
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="attachment_settings",
+        verbose_name=_("Company"),
+    )
+    attachment_kind = models.CharField(
+        max_length=32,
+        choices=ATTACHMENT_KIND_CHOICES,
+        verbose_name=_("Attachment type"),
+    )
+    is_enabled = models.BooleanField(default=True, verbose_name=_("Enabled"))
+
+    class Meta:
+        verbose_name = _("Company attachment setting")
+        verbose_name_plural = _("Company attachment settings")
+        unique_together = ("company", "attachment_kind")
+        ordering = ["company__code", "attachment_kind"]
+
+    def __str__(self) -> str:
+        state = _("enabled") if self.is_enabled else _("disabled")
+        return f"{self.company.code} — {self.attachment_kind} ({state})"
+
+
 class UploadSession(models.Model):
     source_name = models.CharField(max_length=255)
     sheet_name = models.CharField(max_length=255, blank=True)
@@ -152,6 +303,14 @@ class Dashboard(models.Model):
         max_length=512, blank=True, default="", verbose_name=_("Cached HTML file")
     )
     source_files = models.JSONField(default=list, blank=True, verbose_name=_("Source files"))
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        related_name="dashboards",
+        null=True,
+        blank=True,
+        verbose_name=_("Company"),
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

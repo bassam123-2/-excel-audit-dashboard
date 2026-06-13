@@ -42,7 +42,29 @@ import pandas as pd
 from dashboard_locale import AR_MONTH_HINTS, normalize_locale, tr
 from data_io import ATTR_READ_NOTES, read_input_file
 
-REPORT_VERSION = "dashboard-v1.0.3"
+REPORT_VERSION = "dashboard-v1.0.4"
+ALL_ATTACHMENT_KINDS = frozenset(
+    {
+        "deck",
+        "highRisk",
+        "tgaViolations",
+        "missingVehicle",
+        "internalAuditQuarterly",
+        "specialAssignment",
+    }
+)
+_ATTACHMENT_TOGGLE_SPECS = (
+    ("deck", "audit-deck-attach-cb", "audit-deck-attach-label"),
+    ("highRisk", "audit-high-risk-cb", "audit-high-risk-label"),
+    ("tgaViolations", "audit-tga-violations-cb", "audit-tga-violations-label"),
+    ("missingVehicle", "audit-missing-vehicle-cb", "audit-missing-vehicle-label"),
+    (
+        "internalAuditQuarterly",
+        "audit-internal-audit-quarterly-cb",
+        "audit-internal-audit-quarterly-label",
+    ),
+    ("specialAssignment", "audit-special-assignment-cb", "audit-special-assignment-label"),
+)
 # Injected into generated HTML; replaced with a live URL when the Tk UI serves the report over HTTP.
 _MAIL_API_MARKER = "window.__AI_EXCEL_MAIL_API__=null;"
 _PLAN_PARSE_API_MARKER = "window.__AI_EXCEL_PLAN_PARSE_URL__=null;"
@@ -2016,6 +2038,32 @@ def build_multi_dashboard_shell(
 </html>"""
 
 
+def build_deck_attach_toggle_html(
+    locale: str,
+    enabled_attachment_kinds: set[str] | frozenset[str] | None = None,
+) -> str:
+    """Render attachment toggle checkboxes; omit kinds disabled for the tenant company."""
+    loc = normalize_locale(locale)
+    enabled = (
+        ALL_ATTACHMENT_KINDS
+        if enabled_attachment_kinds is None
+        else frozenset(enabled_attachment_kinds)
+    )
+    parts: list[str] = []
+    for kind, cb_id, lbl_id in _ATTACHMENT_TOGGLE_SPECS:
+        if kind not in enabled:
+            continue
+        if loc != "en" and kind != "deck":
+            continue
+        parts.append(
+            '<label class="audit-obs-aging-toggle">'
+            f'<input type="checkbox" id="{cb_id}" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
+            f'<span id="{lbl_id}"></span>'
+            "</label>"
+        )
+    return "".join(parts)
+
+
 def generate_finance_report(
     df: pd.DataFrame,
     source_name: str,
@@ -2035,8 +2083,14 @@ def generate_finance_report(
     attached_special_assignment_deck_path: str | None = None,
     embedded_special_assignment_decks_by_company_path: dict[str, str] | None = None,
     allow_multiple_audit_companies: bool = False,
+    enabled_attachment_kinds: set[str] | frozenset[str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     loc = normalize_locale(locale)
+    enabled_kinds = (
+        ALL_ATTACHMENT_KINDS
+        if enabled_attachment_kinds is None
+        else frozenset(enabled_attachment_kinds)
+    )
     read_note_codes: list[str] = list(
         getattr(df, "attrs", {}).get(ATTR_READ_NOTES, [])
     ) if hasattr(df, "attrs") else []
@@ -2194,47 +2248,56 @@ def generate_finance_report(
             "ftDefaultReason": tr(loc, "ft_unavailable_default"),
         },
     }
-    chart_payload["embedded_slide_deck"] = build_embedded_slide_deck_bundle(
-        fallback_path=attached_deck_path,
-        by_company_paths=embedded_decks_by_company_path,
-        locale=loc,
+    chart_payload["embedded_slide_deck"] = (
+        build_embedded_slide_deck_bundle(
+            fallback_path=attached_deck_path,
+            by_company_paths=embedded_decks_by_company_path,
+            locale=loc,
+        )
+        if "deck" in enabled_kinds
+        else None
     )
     if normalize_locale(locale) == "en":
-        hr_embedded = build_embedded_slide_deck_bundle(
-            fallback_path=attached_high_risk_deck_path,
-            by_company_paths=embedded_high_risk_decks_by_company_path,
-            locale=loc,
-        )
-        if hr_embedded:
-            chart_payload["embedded_high_risk_slide_deck"] = hr_embedded
-        tga_embedded = build_embedded_slide_deck_bundle(
-            fallback_path=attached_tga_violations_deck_path,
-            by_company_paths=embedded_tga_violations_decks_by_company_path,
-            locale=loc,
-        )
-        if tga_embedded:
-            chart_payload["embedded_tga_violations_slide_deck"] = tga_embedded
-        mv_embedded = build_embedded_slide_deck_bundle(
-            fallback_path=attached_missing_vehicle_deck_path,
-            by_company_paths=embedded_missing_vehicle_decks_by_company_path,
-            locale=loc,
-        )
-        if mv_embedded:
-            chart_payload["embedded_missing_vehicle_slide_deck"] = mv_embedded
-        iaq_embedded = build_embedded_slide_deck_bundle(
-            fallback_path=attached_internal_audit_quarterly_deck_path,
-            by_company_paths=embedded_internal_audit_quarterly_decks_by_company_path,
-            locale=loc,
-        )
-        if iaq_embedded:
-            chart_payload["embedded_internal_audit_quarterly_slide_deck"] = iaq_embedded
-        sa_embedded = build_embedded_slide_deck_bundle(
-            fallback_path=attached_special_assignment_deck_path,
-            by_company_paths=embedded_special_assignment_decks_by_company_path,
-            locale=loc,
-        )
-        if sa_embedded:
-            chart_payload["embedded_special_assignment_slide_deck"] = sa_embedded
+        if "highRisk" in enabled_kinds:
+            hr_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_high_risk_deck_path,
+                by_company_paths=embedded_high_risk_decks_by_company_path,
+                locale=loc,
+            )
+            if hr_embedded:
+                chart_payload["embedded_high_risk_slide_deck"] = hr_embedded
+        if "tgaViolations" in enabled_kinds:
+            tga_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_tga_violations_deck_path,
+                by_company_paths=embedded_tga_violations_decks_by_company_path,
+                locale=loc,
+            )
+            if tga_embedded:
+                chart_payload["embedded_tga_violations_slide_deck"] = tga_embedded
+        if "missingVehicle" in enabled_kinds:
+            mv_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_missing_vehicle_deck_path,
+                by_company_paths=embedded_missing_vehicle_decks_by_company_path,
+                locale=loc,
+            )
+            if mv_embedded:
+                chart_payload["embedded_missing_vehicle_slide_deck"] = mv_embedded
+        if "internalAuditQuarterly" in enabled_kinds:
+            iaq_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_internal_audit_quarterly_deck_path,
+                by_company_paths=embedded_internal_audit_quarterly_decks_by_company_path,
+                locale=loc,
+            )
+            if iaq_embedded:
+                chart_payload["embedded_internal_audit_quarterly_slide_deck"] = iaq_embedded
+        if "specialAssignment" in enabled_kinds:
+            sa_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_special_assignment_deck_path,
+                by_company_paths=embedded_special_assignment_decks_by_company_path,
+                locale=loc,
+            )
+            if sa_embedded:
+                chart_payload["embedded_special_assignment_slide_deck"] = sa_embedded
     logo_catalog = build_company_logo_catalog()
     chart_payload["brand_logo_catalog"] = logo_catalog
 
@@ -2328,6 +2391,7 @@ def generate_finance_report(
     logo_display = "flex"
     logo_button_display = "inline-flex" if logo_data_uri else "none"
     logo_src_attr = html.escape(logo_data_uri)
+    deck_attach_toggle_html = build_deck_attach_toggle_html(loc, enabled_kinds)
     html_out = f"""<!DOCTYPE html>
 <html lang="{html_lang}" dir="{html_dir}">
 <head>
@@ -5564,32 +5628,7 @@ def generate_finance_report(
                   </div>
                 </div>
                 <div class="audit-deck-attach-corner">
-                  <label class="audit-obs-aging-toggle">
-                    <input type="checkbox" id="audit-deck-attach-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />
-                    <span id="audit-deck-attach-label"></span>
-                  </label>
-                  {(
-                    '<label class="audit-obs-aging-toggle">'
-                    '<input type="checkbox" id="audit-high-risk-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
-                    '<span id="audit-high-risk-label"></span>'
-                    '</label>'
-                    '<label class="audit-obs-aging-toggle">'
-                    '<input type="checkbox" id="audit-tga-violations-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
-                    '<span id="audit-tga-violations-label"></span>'
-                    '</label>'
-                    '<label class="audit-obs-aging-toggle">'
-                    '<input type="checkbox" id="audit-missing-vehicle-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
-                    '<span id="audit-missing-vehicle-label"></span>'
-                    '</label>'
-                    '<label class="audit-obs-aging-toggle">'
-                    '<input type="checkbox" id="audit-internal-audit-quarterly-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
-                    '<span id="audit-internal-audit-quarterly-label"></span>'
-                    '</label>'
-                    '<label class="audit-obs-aging-toggle">'
-                    '<input type="checkbox" id="audit-special-assignment-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
-                    '<span id="audit-special-assignment-label"></span>'
-                    '</label>'
-                  ) if loc == "en" else ""}
+                  {deck_attach_toggle_html}
                   <label class="audit-obs-aging-toggle">
                     <input type="checkbox" id="audit-additional-notes-cb" aria-controls="audit-additional-notes-inline-panel" />
                     <span id="audit-additional-notes-label"></span>

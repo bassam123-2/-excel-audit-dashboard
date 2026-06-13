@@ -244,7 +244,7 @@
                 </button>
             </div>
             {% endif %}
-            {% if can_delete_dashboards and not show_trash %}
+            {% if db.pk in deletable_dashboard_ids and not show_trash %}
             <form method="post" action="{% url 'dashboard_delete' db.pk %}" class="db-card-delete"
                   onsubmit="return confirm('{{ ui.dl_delete_confirm|escapejs }}'.replace('{name}', '{{ db.name|escapejs }}'));">
                 {% csrf_token %}

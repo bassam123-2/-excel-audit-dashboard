@@ -21,18 +21,25 @@ if _BASE_DIR not in sys.path:
 from web_strings import get_ui  # noqa: E402
 from dashboard_locale import normalize_locale  # noqa: E402
 
-from audit_app.models import Dashboard, DashboardTemplateType, ICON_CHOICES
-from audit_app.models import DashboardStatus
+from audit_app.company_access import user_must_select_company
+from audit_app.models import Dashboard, DashboardTemplateType, DashboardStatus, ICON_CHOICES
 from .dashboard_workflow import (
+    activate_company_for_dashboard,
     approve_dashboard,
     can_user_resubmit,
     can_user_review,
     dashboards_queryset_for_user,
+    can_user_delete_dashboard,
     deleted_dashboards_queryset_for_user,
     get_dashboard_for_review,
     get_dashboard_for_user,
+    has_delete_draft_perm,
     has_delete_perm,
     has_review_perm,
+    has_upload_perm,
+    has_dashboard_list_perm,
+    has_view_perm,
+    load_dashboard_cross_company,
     reject_dashboard,
     restore_dashboard,
     soft_delete_dashboard,
@@ -51,17 +58,30 @@ from .services.report_generation import (
 # ── Permission helpers ────────────────────────────────────────────────
 
 
-def _has_upload_perm(user) -> bool:
-    return user.is_staff or user.is_superuser or user.has_perm("audit_app.can_upload_files")
+def _active_company(request):
+    return getattr(request, "active_company", None)
 
 
-def _has_view_perm(user) -> bool:
-    return (
-        user.is_staff
-        or user.is_superuser
-        or user.has_perm("audit_app.can_view_dashboards")
-        or user.has_perm("audit_app.can_upload_files")
+def _resolve_dashboard_request(request, pk: int, *, allow_deleted: bool = False):
+    """Load a dashboard and align active company with its tenant."""
+    dashboard = load_dashboard_cross_company(
+        request.user,
+        pk,
+        allow_deleted=allow_deleted,
     )
+    if not dashboard:
+        return None
+    if not activate_company_for_dashboard(request, dashboard):
+        return None
+    return dashboard
+
+
+def _has_upload_perm(user, request) -> bool:
+    return has_upload_perm(user, _active_company(request))
+
+
+def _has_view_perm(user, request) -> bool:
+    return has_dashboard_list_perm(user, _active_company(request))
 
 
 def _has_delete_perm(user) -> bool:
@@ -144,8 +164,12 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
         or request.GET.get("resubmit", "")
     )
     if str(resubmit_id).strip().isdigit():
-        candidate = get_dashboard_for_user(request.user, int(str(resubmit_id).strip()))
-        if candidate and can_user_resubmit(request.user, candidate):
+        candidate = get_dashboard_for_user(
+            request.user,
+            int(str(resubmit_id).strip()),
+            company=_active_company(request),
+        )
+        if candidate and can_user_resubmit(request.user, candidate, _active_company(request)):
             resubmit_dashboard = candidate
     selected_icon = (
         form.get("icon")
@@ -168,7 +192,11 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
         "template_types": DashboardTemplateType.objects.filter(is_active=True),
         "resubmit_dashboard": resubmit_dashboard,
         "is_edit_mode": resubmit_dashboard is not None,
-        "attachment_slots": build_attachment_form_slots(resubmit_dashboard, locale=lang),
+        "attachment_slots": build_attachment_form_slots(
+            resubmit_dashboard,
+            locale=lang,
+            company=_active_company(request),
+        ),
         "form": form,
         "selected_icon": selected_icon,
         "selected_template": selected_template,
@@ -186,8 +214,11 @@ def _render_upload_page(request, form: dict | None = None):
 @login_required
 def index(request):
     """Show the clean upload form (Django template)."""
-    if not _has_upload_perm(request.user):
-        if _has_view_perm(request.user):
+    if user_must_select_company(request.user) and not _active_company(request):
+        return redirect("select_company")
+
+    if not _has_upload_perm(request.user, request):
+        if _has_view_perm(request.user, request):
             return redirect("dashboard_list")
         lang = request.session.get("ui_lang", "ar")
         messages.error(request, get_ui(lang)["alert_no_upload_perm"])
@@ -203,7 +234,10 @@ def analyze(request):
     POST-only: read the uploaded Excel, store data in DB, redirect to dashboard list.
     No HTML generation at upload time — dashboards are generated on first view.
     """
-    if not _has_upload_perm(request.user):
+    if user_must_select_company(request.user) and not _active_company(request):
+        return redirect("select_company")
+
+    if not _has_upload_perm(request.user, request):
         lang = request.session.get("ui_lang", "ar")
         messages.error(request, get_ui(lang)["alert_no_upload_perm"])
         return redirect("index")
@@ -234,8 +268,10 @@ def analyze(request):
     resubmit_raw = form["resubmit_dashboard_id"]
     was_draft_edit = False
     if resubmit_raw.isdigit():
-        candidate = get_dashboard_for_user(request.user, int(resubmit_raw))
-        if candidate and can_user_resubmit(request.user, candidate):
+        candidate = get_dashboard_for_user(
+            request.user, int(resubmit_raw), company=_active_company(request)
+        )
+        if candidate and can_user_resubmit(request.user, candidate, _active_company(request)):
             resubmit_dashboard = candidate
             was_draft_edit = candidate.status == DashboardStatus.DRAFT
         else:
@@ -281,22 +317,38 @@ def _inject_served_dashboard_html(
 
 @login_required
 def dashboard_list(request):
-    if not _has_view_perm(request.user):
+    if user_must_select_company(request.user) and not _active_company(request):
+        return redirect("select_company")
+
+    if not _has_view_perm(request.user, request):
         lang = request.session.get("ui_lang", "ar")
         messages.error(request, get_ui(lang)["alert_no_view_perm"])
         return redirect("index")
 
     show_trash = request.GET.get("trash") == "1" and _has_delete_perm(request.user)
     if show_trash:
-        dashboards = deleted_dashboards_queryset_for_user(request.user)
+        dashboards = deleted_dashboards_queryset_for_user(
+            request.user, _active_company(request)
+        )
     else:
-        dashboards = dashboards_queryset_for_user(request.user)
+        dashboards = dashboards_queryset_for_user(
+            request.user, _active_company(request)
+        )
+    company = _active_company(request)
+    deletable_dashboard_ids = {
+        dashboard.pk
+        for dashboard in dashboards
+        if can_user_delete_dashboard(request.user, dashboard, company)
+    }
     return render(
         request,
         "reports_app/dashboard_list.html",
         {
             "dashboards": dashboards,
-            "can_review_dashboards": has_review_perm(request.user),
+            "deletable_dashboard_ids": deletable_dashboard_ids,
+            "can_review_dashboards": has_review_perm(
+                request.user, company
+            ),
             "show_trash": show_trash,
         },
     )
@@ -304,26 +356,32 @@ def dashboard_list(request):
 
 @login_required
 def dashboard_detail(request, pk: int):
-    if not _has_view_perm(request.user):
+    if not _has_view_perm(request.user, request):
         lang = request.session.get("ui_lang", "ar")
         messages.error(request, get_ui(lang)["alert_no_view_perm"])
         return redirect("index")
 
-    dashboard = get_dashboard_for_user(
-        request.user, pk, allow_deleted=_has_delete_perm(request.user)
+    dashboard = _resolve_dashboard_request(
+        request,
+        pk,
+        allow_deleted=_has_delete_perm(request.user),
     )
     if not dashboard:
         raise Http404
     rejection_logs = dashboard.rejection_logs.select_related("rejected_by").all()
+    company = _active_company(request)
     return render(
         request,
         "reports_app/dashboard_detail.html",
         {
             "dashboard": dashboard,
             "rejection_logs": rejection_logs,
-            "can_review_dashboards": has_review_perm(request.user),
-            "can_resubmit": can_user_resubmit(request.user, dashboard),
-            "can_approve_reject": can_user_review(request.user, dashboard),
+            "can_review_dashboards": has_review_perm(request.user, company),
+            "can_resubmit": can_user_resubmit(request.user, dashboard, company),
+            "can_approve_reject": can_user_review(request.user, dashboard, company),
+            "can_delete_dashboard": can_user_delete_dashboard(
+                request.user, dashboard, company
+            ),
             "is_deleted_view": dashboard.is_deleted,
         },
     )
@@ -335,13 +393,19 @@ def dashboard_delete(request, pk: int):
     lang = request.session.get("ui_lang", "ar")
     ui = get_ui(lang)
 
-    if not _has_delete_perm(request.user):
+    dashboard = _resolve_dashboard_request(request, pk)
+    if not dashboard or dashboard.is_deleted:
+        raise Http404
+
+    company = _active_company(request)
+    if dashboard.status == DashboardStatus.PUBLISHED:
+        messages.error(request, ui.get("dl_delete_published_forbidden", "Published dashboards cannot be deleted."))
+        return redirect("dashboard_detail", pk=pk)
+
+    if not can_user_delete_dashboard(request.user, dashboard, company):
         messages.error(request, ui["alert_no_delete_perm"])
         return redirect("dashboard_list")
 
-    dashboard = get_dashboard_for_user(request.user, pk)
-    if not dashboard or dashboard.is_deleted:
-        raise Http404
     name = dashboard.name
     soft_delete_dashboard(dashboard, request.user)
     messages.success(request, ui["dl_delete_success"] + f" ({name})")
@@ -358,7 +422,7 @@ def dashboard_restore(request, pk: int):
         messages.error(request, ui["alert_no_delete_perm"])
         return redirect("dashboard_list")
 
-    dashboard = get_dashboard_for_user(request.user, pk, allow_deleted=True)
+    dashboard = _resolve_dashboard_request(request, pk, allow_deleted=True)
     if not dashboard or not dashboard.is_deleted:
         raise Http404
     name = dashboard.name
@@ -381,11 +445,13 @@ def dashboard_serve(request, pk: int):
       3. Legacy html_file (old architecture) → serve it.
       4. Nothing → 404.
     """
-    if not _has_view_perm(request.user):
+    if not _has_view_perm(request.user, request):
         return HttpResponse("403 Forbidden", status=403)
 
-    dashboard = get_dashboard_for_user(
-        request.user, pk, allow_deleted=_has_delete_perm(request.user)
+    dashboard = _resolve_dashboard_request(
+        request,
+        pk,
+        allow_deleted=_has_delete_perm(request.user),
     )
     if not dashboard:
         return HttpResponse("404 Not Found", status=404)
@@ -442,7 +508,9 @@ def dashboard_serve(request, pk: int):
 
 def _review_action_redirect(request, dashboard, *, not_pending_msg: str):
     """Redirect after a failed approve/reject with a clear message (never 404)."""
-    if get_dashboard_for_user(request.user, dashboard.pk):
+    if get_dashboard_for_user(
+        request.user, dashboard.pk, company=_active_company(request)
+    ):
         messages.warning(request, not_pending_msg)
         return redirect("dashboard_detail", pk=dashboard.pk)
     messages.warning(request, not_pending_msg)
@@ -454,16 +522,17 @@ def _review_action_redirect(request, dashboard, *, not_pending_msg: str):
 def dashboard_approve(request, pk: int):
     lang = request.session.get("ui_lang", "ar")
     ui = get_ui(lang)
-    if not has_review_perm(request.user):
-        messages.error(request, ui.get("wf_review_forbidden", "No permission to review dashboards."))
-        return redirect("dashboard_list")
-
-    dashboard = get_dashboard_for_review(request.user, pk)
+    dashboard = _resolve_dashboard_request(request, pk)
     if not dashboard:
         messages.error(request, ui.get("wf_dashboard_not_found", "Dashboard not found."))
         return redirect("dashboard_list")
 
-    if not can_user_review(request.user, dashboard):
+    company = _active_company(request)
+    if not has_review_perm(request.user, company):
+        messages.error(request, ui.get("wf_review_forbidden", "No permission to review dashboards."))
+        return redirect("dashboard_list")
+
+    if not can_user_review(request.user, dashboard, company):
         if dashboard.status == DashboardStatus.PUBLISHED:
             msg = ui.get("wf_already_published", "This dashboard is already published.")
         elif dashboard.status == DashboardStatus.REJECTED:
@@ -482,16 +551,17 @@ def dashboard_approve(request, pk: int):
 def dashboard_reject(request, pk: int):
     lang = request.session.get("ui_lang", "ar")
     ui = get_ui(lang)
-    if not has_review_perm(request.user):
-        messages.error(request, ui.get("wf_review_forbidden", "No permission to review dashboards."))
-        return redirect("dashboard_list")
-
-    dashboard = get_dashboard_for_review(request.user, pk)
+    dashboard = _resolve_dashboard_request(request, pk)
     if not dashboard:
         messages.error(request, ui.get("wf_dashboard_not_found", "Dashboard not found."))
         return redirect("dashboard_list")
 
-    if not can_user_review(request.user, dashboard):
+    company = _active_company(request)
+    if not has_review_perm(request.user, company):
+        messages.error(request, ui.get("wf_review_forbidden", "No permission to review dashboards."))
+        return redirect("dashboard_list")
+
+    if not can_user_review(request.user, dashboard, company):
         if dashboard.status == DashboardStatus.REJECTED:
             msg = ui.get("wf_already_rejected", "This dashboard was already rejected.")
         elif dashboard.status == DashboardStatus.PUBLISHED:

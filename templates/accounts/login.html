@@ -133,7 +133,13 @@
         <h2>{{ ui.login_title }}</h2>
         <p>{{ ui.login_subtitle }}</p>
 
-        {% if form.errors %}
+        {% if form.non_field_errors %}
+        {% for error in form.non_field_errors %}
+        <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-exclamation-triangle-fill"></i> {{ error }}
+        </div>
+        {% endfor %}
+        {% elif form.errors %}
         <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
             <i class="bi bi-exclamation-triangle-fill"></i> {{ ui.login_error }}
         </div>
@@ -202,7 +208,13 @@
         <h2>{{ ui.login_title }}</h2>
         <p>{{ ui.login_subtitle }}</p>
 
-        {% if form.errors %}
+        {% if form.non_field_errors %}
+        {% for error in form.non_field_errors %}
+        <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-exclamation-triangle-fill"></i> {{ error }}
+        </div>
+        {% endfor %}
+        {% elif form.errors %}
         <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
             <i class="bi bi-exclamation-triangle-fill"></i> {{ ui.login_error }}
         </div>

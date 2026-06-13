@@ -2,8 +2,9 @@ from django.contrib import admin, messages
 from django.contrib.admin.options import IS_POPUP_VAR, TO_FIELD_VAR
 from django.contrib.admin.utils import unquote
 from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, Permission, User
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.http import Http404, HttpResponseRedirect, QueryDict
@@ -25,6 +26,10 @@ from .admin_forms import (
     MandatoryPasswordAdminCreationForm,
 )
 from .models import (
+    ATTACHMENT_KIND_CODES,
+    Company,
+    CompanyAttachmentSetting,
+    CompanyMembership,
     CompanyLogo,
     Dashboard,
     DashboardRejectionLog,
@@ -36,6 +41,22 @@ from .models import (
 )
 
 # ── Protected User Admin ─────────────────────────────────────────────
+
+DASHBOARD_LEGACY_PERMISSION_CODENAMES = (
+    "can_upload_files",
+    "can_view_dashboards",
+    "can_review_dashboards",
+    "can_delete_dashboards",
+)
+DASHBOARD_AUTH_MODEL = "dashboard"
+
+
+def permissions_queryset_without_dashboard_legacy():
+    """Hide all Dashboard model auth permissions; use Company memberships instead."""
+    return Permission.objects.exclude(
+        content_type__app_label="audit_app",
+        content_type__model=DASHBOARD_AUTH_MODEL,
+    )
 
 
 class DeletedUserFilter(admin.SimpleListFilter):
@@ -61,34 +82,80 @@ class DeletedUserFilter(admin.SimpleListFilter):
         )
 
 
+class TwoFactorFilter(admin.SimpleListFilter):
+    title = _("Two-factor authentication")
+    parameter_name = "two_factor"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", _("Enabled")),
+            ("no", _("Disabled")),
+        )
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "yes":
+            return queryset.filter(profile__two_factor_enabled=True)
+        if value == "no":
+            return queryset.filter(
+                Q(profile__two_factor_enabled=False) | Q(profile__isnull=True)
+            )
+        return queryset
+
+
+class CompanyMembershipInline(admin.TabularInline):
+    model = CompanyMembership
+    extra = 1
+    autocomplete_fields = ("company",)
+    fk_name = "user"
+    fields = (
+        "company",
+        "can_upload",
+        "can_view",
+        "can_view_own_only",
+        "can_review",
+        "can_delete_drafts",
+    )
+
+
 class ProtectedUserAdmin(BaseUserAdmin):
     """
     Blocks any modification or deletion of the default superadmin account ('myadmin').
     All other users can be managed normally by staff with user-management permissions.
     Password-based authentication is always required (no disable-password option).
     User deletion is soft — records stay in the database and can be restored.
+
+    Dashboard upload/view/review/draft-delete are configured in Company memberships
+    (inline below), not via Groups or User permissions.
     """
 
     PROTECTED_USERNAME = "myadmin"
     form = AdminUserChangeForm
     add_form = MandatoryPasswordAdminCreationForm
     change_form_template = "admin/auth/user/change_form.html"
+    inlines = [CompanyMembershipInline]
     delete_confirmation_template = "admin/auth/user/delete_confirmation.html"
     delete_selected_confirmation_template = "admin/auth/user/delete_selected_confirmation.html"
     readonly_fields = ("last_login", "date_joined")
-    actions = ["restore_users"]
-    list_filter = BaseUserAdmin.list_filter + (DeletedUserFilter,)
+    actions = [
+        "restore_users",
+        "enable_two_factor_selected",
+        "disable_two_factor_selected",
+        "enable_two_factor_all",
+        "disable_two_factor_all",
+    ]
+    list_filter = BaseUserAdmin.list_filter + (DeletedUserFilter, TwoFactorFilter)
 
     class Media:
         css = {"all": ("css/password_rules.css",)}
         js = ("js/password_rules.js", "js/admin_email_validate.js")
 
-    list_display = BaseUserAdmin.list_display + ("job_title_display",)
+    list_display = BaseUserAdmin.list_display + ("job_title_display", "two_factor_display")
     search_fields = BaseUserAdmin.search_fields + ("profile__job_title",)
 
     fieldsets = (
         (None, {"fields": ("username",)}),
-        (_("Personal info"), {"fields": ("first_name", "last_name", "email", "job_title")}),
+        (_("Personal info"), {"fields": ("first_name", "last_name", "email", "job_title", "two_factor_enabled")}),
         (
             _("Permissions"),
             {
@@ -113,9 +180,28 @@ class ProtectedUserAdmin(BaseUserAdmin):
         ),
         (
             _("Personal info"),
-            {"fields": ("first_name", "last_name", "email", "job_title")},
+            {"fields": ("first_name", "last_name", "email", "job_title", "two_factor_enabled")},
         ),
     )
+
+    def get_fieldsets(self, request, obj=None):
+        if obj is None:
+            return self.add_fieldsets
+        fieldsets = super().get_fieldsets(request, obj)
+        if request.user.is_superuser:
+            return fieldsets
+        cleaned = []
+        for name, opts in fieldsets:
+            fields = tuple(
+                f for f in opts.get("fields", ()) if f != "user_permissions"
+            )
+            cleaned.append((name, {**opts, "fields": fields}))
+        return cleaned
+
+    def formfield_for_manytomany(self, db_field, request, **kwargs):
+        if db_field.name == "user_permissions":
+            kwargs["queryset"] = permissions_queryset_without_dashboard_legacy()
+        return super().formfield_for_manytomany(db_field, request, **kwargs)
 
     def get_urls(self):
         return [
@@ -150,6 +236,9 @@ class ProtectedUserAdmin(BaseUserAdmin):
         form = MandatoryPasswordAdminChangeForm(obj, request.POST)
         if form.is_valid():
             user = form.save()
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.password_changed_at = timezone.now()
+            profile.save(update_fields=["password_changed_at"])
             self.log_change(request, user, [{"changed": {"fields": ["password"]}}])
             if request.user.pk == user.pk:
                 update_session_auth_hash(request, user)
@@ -230,7 +319,77 @@ class ProtectedUserAdmin(BaseUserAdmin):
         rf = list(super().get_readonly_fields(request, obj))
         if not request.user.is_superuser:
             rf += ["is_superuser", "user_permissions"]
+        if not self._can_manage_two_factor(request):
+            rf += ["two_factor_enabled"]
         return rf
+
+    def _can_manage_two_factor(self, request) -> bool:
+        return request.user.is_superuser or request.user.has_perm("auth.change_user")
+
+    @admin.display(description=_("2FA"), boolean=True, ordering="profile__two_factor_enabled")
+    def two_factor_display(self, obj):
+        profile = getattr(obj, "profile", None)
+        return bool(profile and profile.two_factor_enabled)
+
+    @admin.action(description=_("Enable email 2FA for selected users"))
+    def enable_two_factor_selected(self, request, queryset):
+        if not self._can_manage_two_factor(request):
+            self.message_user(request, _("Permission denied."), messages.ERROR)
+            return
+        count = UserProfile.bulk_set_two_factor(enabled=True, users=queryset)
+        self.message_user(
+            request,
+            _("Email two-factor authentication enabled for %(count)d user(s).")
+            % {"count": count},
+            messages.SUCCESS,
+        )
+
+    @admin.action(description=_("Disable email 2FA for selected users"))
+    def disable_two_factor_selected(self, request, queryset):
+        if not self._can_manage_two_factor(request):
+            self.message_user(request, _("Permission denied."), messages.ERROR)
+            return
+        count = UserProfile.bulk_set_two_factor(enabled=False, users=queryset)
+        self.message_user(
+            request,
+            _("Email two-factor authentication disabled for %(count)d user(s).")
+            % {"count": count},
+            messages.SUCCESS,
+        )
+
+    @admin.action(description=_("Enable email 2FA for ALL users"))
+    def enable_two_factor_all(self, request, queryset):
+        if not request.user.is_superuser:
+            self.message_user(
+                request,
+                _("Only a superuser can change 2FA for all users."),
+                messages.ERROR,
+            )
+            return
+        count = UserProfile.bulk_set_two_factor(enabled=True)
+        self.message_user(
+            request,
+            _("Email two-factor authentication enabled for %(count)d user(s).")
+            % {"count": count},
+            messages.SUCCESS,
+        )
+
+    @admin.action(description=_("Disable email 2FA for ALL users"))
+    def disable_two_factor_all(self, request, queryset):
+        if not request.user.is_superuser:
+            self.message_user(
+                request,
+                _("Only a superuser can change 2FA for all users."),
+                messages.ERROR,
+            )
+            return
+        count = UserProfile.bulk_set_two_factor(enabled=False)
+        self.message_user(
+            request,
+            _("Email two-factor authentication disabled for %(count)d user(s).")
+            % {"count": count},
+            messages.SUCCESS,
+        )
 
     @admin.display(description=_("Job title"), ordering="profile__job_title")
     def job_title_display(self, obj):
@@ -360,11 +519,82 @@ class ProtectedUserAdmin(BaseUserAdmin):
         return super().change_view(request, object_id, form_url, extra_context)
 
 
+class ProtectedGroupAdmin(BaseGroupAdmin):
+    """Hide legacy dashboard permissions — use Company memberships instead."""
+
+    def formfield_for_manytomany(self, db_field, request, **kwargs):
+        if db_field.name == "permissions":
+            kwargs["queryset"] = permissions_queryset_without_dashboard_legacy()
+        return super().formfield_for_manytomany(db_field, request, **kwargs)
+
+
 admin.site.unregister(User)
 admin.site.register(User, ProtectedUserAdmin)
+admin.site.unregister(Group)
+admin.site.register(Group, ProtectedGroupAdmin)
 
 
 # ── App models ───────────────────────────────────────────────────────
+
+
+class CompanyAttachmentSettingInline(admin.TabularInline):
+    """
+    Fixed list of attachment kinds per company — enable/disable only.
+    New kinds are defined in code (ATTACHMENT_KIND_CHOICES), not via admin.
+    """
+
+    model = CompanyAttachmentSetting
+    extra = 0
+    max_num = len(ATTACHMENT_KIND_CODES)
+    can_delete = False
+    readonly_fields = ("attachment_kind",)
+    fields = ("attachment_kind", "is_enabled")
+    verbose_name = _("Attachment")
+    verbose_name_plural = _("Attachments (enable or disable per company)")
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    list_display = ("code", "name", "is_active", "created_at")
+    search_fields = ("code", "name")
+    list_filter = ("is_active",)
+    prepopulated_fields = {"code": ("name",)}
+    inlines = [CompanyAttachmentSettingInline]
+    fieldsets = (
+        (None, {"fields": ("code", "name", "is_active")}),
+        (_("Excel mapping"), {"fields": ("excel_company_names",)}),
+    )
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        form.instance.ensure_attachment_settings()
+
+
+@admin.register(CompanyMembership)
+class CompanyMembershipAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "company",
+        "can_upload",
+        "can_view",
+        "can_view_own_only",
+        "can_review",
+        "can_delete_drafts",
+        "created_at",
+    )
+    list_filter = (
+        "company",
+        "can_upload",
+        "can_view",
+        "can_view_own_only",
+        "can_review",
+        "can_delete_drafts",
+    )
+    search_fields = ("user__username", "user__email", "company__code")
+    autocomplete_fields = ("user", "company")
 
 
 @admin.register(UploadSession)
@@ -427,10 +657,10 @@ class DashboardRejectionLogAdmin(admin.ModelAdmin):
 @admin.register(Dashboard)
 class DashboardAdmin(admin.ModelAdmin):
     list_display = (
-        "id", "name", "status", "is_deleted", "icon", "template_type", "created_by", "created_at",
+        "id", "name", "company", "status", "is_deleted", "icon", "template_type", "created_by", "created_at",
     )
     search_fields = ("name", "report_id", "description")
-    list_filter = ("is_deleted", "status", "template_type", "icon", "created_at", "created_by")
+    list_filter = ("company", "is_deleted", "status", "template_type", "icon", "created_at", "created_by")
     readonly_fields = (
         "report_id", "html_file", "source_files", "created_at", "upload_session",
         "published_at", "deleted_at", "deleted_by",
@@ -438,7 +668,7 @@ class DashboardAdmin(admin.ModelAdmin):
     inlines = [DashboardRejectionLogInline]
     actions = ["restore_dashboards"]
     fieldsets = (
-        (_("Basic information"), {"fields": ("name", "description", "icon", "template_type", "created_by")}),
+        (_("Basic information"), {"fields": ("name", "description", "icon", "template_type", "company", "created_by")}),
         (_("Workflow"), {"fields": ("status", "published_at", "reviewed_by")}),
         (_("Soft delete"), {"fields": ("is_deleted", "deleted_at", "deleted_by")}),
         (_("Report data"), {"fields": ("report_id", "html_file", "source_files", "upload_session")}),
