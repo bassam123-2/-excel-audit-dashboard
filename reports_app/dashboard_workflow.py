@@ -130,7 +130,7 @@ def mark_dashboard_draft(dashboard: Dashboard) -> None:
 def can_user_resubmit(user, dashboard: Dashboard) -> bool:
     return (
         not dashboard.is_deleted
-        and dashboard.status == DashboardStatus.REJECTED
+        and dashboard.status in (DashboardStatus.REJECTED, DashboardStatus.DRAFT)
         and user_is_creator(user, dashboard)
         and has_upload_perm(user)
     )

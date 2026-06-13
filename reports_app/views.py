@@ -19,6 +19,7 @@ _BASE_DIR = str(Path(__file__).resolve().parents[1])
 if _BASE_DIR not in sys.path:
     sys.path.insert(0, _BASE_DIR)
 from web_strings import get_ui  # noqa: E402
+from dashboard_locale import normalize_locale  # noqa: E402
 
 from audit_app.models import Dashboard, DashboardTemplateType, ICON_CHOICES
 from audit_app.models import DashboardStatus
@@ -37,6 +38,7 @@ from .dashboard_workflow import (
     soft_delete_dashboard,
 )
 from .services.report_generation import (
+    build_attachment_form_slots,
     html_no_cache_response,
     version_payload,
     generate_from_db_data,
@@ -160,10 +162,13 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
         or (resubmit_dashboard.name if resubmit_dashboard else "")
         or ""
     )
+    lang = normalize_locale(request.session.get("ui_lang", "ar"))
     return {
         "icon_choices": ICON_CHOICES,
         "template_types": DashboardTemplateType.objects.filter(is_active=True),
         "resubmit_dashboard": resubmit_dashboard,
+        "is_edit_mode": resubmit_dashboard is not None,
+        "attachment_slots": build_attachment_form_slots(resubmit_dashboard, locale=lang),
         "form": form,
         "selected_icon": selected_icon,
         "selected_template": selected_template,
@@ -227,10 +232,12 @@ def analyze(request):
 
     resubmit_dashboard = None
     resubmit_raw = form["resubmit_dashboard_id"]
+    was_draft_edit = False
     if resubmit_raw.isdigit():
         candidate = get_dashboard_for_user(request.user, int(resubmit_raw))
         if candidate and can_user_resubmit(request.user, candidate):
             resubmit_dashboard = candidate
+            was_draft_edit = candidate.status == DashboardStatus.DRAFT
         else:
             messages.error(request, ui.get("wf_resubmit_forbidden", "Cannot resubmit this dashboard."))
             return redirect("dashboard_list")
@@ -255,7 +262,10 @@ def analyze(request):
     if resubmit_dashboard:
         _clear_dashboard_html_cache(dashboard)
         dashboard.save(update_fields=["html_file"])
-        messages.success(request, ui.get("wf_resubmit_success", ui["upload_success"]))
+        if was_draft_edit:
+            messages.success(request, ui.get("wf_edit_draft_success", ui["upload_success"]))
+        else:
+            messages.success(request, ui.get("wf_resubmit_success", ui["upload_success"]))
     else:
         messages.success(request, ui.get("upload_success_draft", ui["upload_success"]))
     return redirect("dashboard_list")

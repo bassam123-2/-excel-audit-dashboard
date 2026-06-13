@@ -30,6 +30,81 @@ from export_bundle import build_summary_pptx, create_export_zip
 
 REFERENCE_DASHBOARD = os.environ.get("EXACT_DASHBOARD_TEMPLATE", "").strip()
 
+ATTACHMENT_SPECS: list[dict[str, str]] = [
+    {
+        "kind": "deck",
+        "source_key": "decks",
+        "field_prefix": "deck",
+        "file_stem_prefix": "deck",
+        "ui_label": "upload_deck_label",
+        "ui_hint": "",
+        "ui_drop": "upload_deck_drop",
+        "summary_icon": "bi-file-earmark-slides",
+        "zone_icon": "bi-file-slides",
+        "details_id": "deckFilesDetails",
+    },
+    {
+        "kind": "highRisk",
+        "source_key": "high_risk_decks",
+        "field_prefix": "high_risk_deck",
+        "file_stem_prefix": "high_risk_deck",
+        "ui_label": "upload_high_risk_label",
+        "ui_hint": "upload_high_risk_hint",
+        "ui_drop": "upload_high_risk_drop",
+        "summary_icon": "bi-exclamation-triangle-fill",
+        "zone_icon": "bi-file-earmark-medical",
+        "details_id": "highRiskDeckDetails",
+    },
+    {
+        "kind": "tgaViolations",
+        "source_key": "tga_violations_decks",
+        "field_prefix": "tga_violations_deck",
+        "file_stem_prefix": "tga_violations_deck",
+        "ui_label": "upload_tga_violations_label",
+        "ui_hint": "upload_tga_violations_hint",
+        "ui_drop": "upload_tga_violations_drop",
+        "summary_icon": "bi-shield-exclamation",
+        "zone_icon": "bi-file-earmark-ruled",
+        "details_id": "tgaViolationsDeckDetails",
+    },
+    {
+        "kind": "missingVehicle",
+        "source_key": "missing_vehicle_decks",
+        "field_prefix": "missing_vehicle_deck",
+        "file_stem_prefix": "missing_vehicle_deck",
+        "ui_label": "upload_missing_vehicle_label",
+        "ui_hint": "upload_missing_vehicle_hint",
+        "ui_drop": "upload_missing_vehicle_drop",
+        "summary_icon": "bi-truck",
+        "zone_icon": "bi-truck-front",
+        "details_id": "missingVehicleDeckDetails",
+    },
+    {
+        "kind": "internalAuditQuarterly",
+        "source_key": "internal_audit_quarterly_decks",
+        "field_prefix": "internal_audit_quarterly_deck",
+        "file_stem_prefix": "internal_audit_quarterly_deck",
+        "ui_label": "upload_internal_audit_quarterly_label",
+        "ui_hint": "upload_internal_audit_quarterly_hint",
+        "ui_drop": "upload_internal_audit_quarterly_drop",
+        "summary_icon": "bi-calendar3",
+        "zone_icon": "bi-file-earmark-bar-graph",
+        "details_id": "internalAuditQuarterlyDeckDetails",
+    },
+    {
+        "kind": "specialAssignment",
+        "source_key": "special_assignment_decks",
+        "field_prefix": "special_assignment_deck",
+        "file_stem_prefix": "special_assignment_deck",
+        "ui_label": "upload_special_assignment_label",
+        "ui_hint": "upload_special_assignment_hint",
+        "ui_drop": "upload_special_assignment_drop",
+        "summary_icon": "bi-briefcase",
+        "zone_icon": "bi-file-earmark-person",
+        "details_id": "specialAssignmentDeckDetails",
+    },
+]
+
 
 def html_no_cache_response(text: str, status: int = 200) -> HttpResponse:
     response = HttpResponse(
@@ -95,6 +170,105 @@ def _save_uploaded_decks_to_media(
         for chunk in deck_up.chunks():
             fh.write(chunk)
     return [f"{media_subdir}/{report_id}/{fname}"]
+
+
+def _existing_media_paths(relative_paths: list[str] | None) -> list[str]:
+    from django.conf import settings as _settings
+
+    root = Path(_settings.MEDIA_ROOT)
+    return [rel for rel in (relative_paths or []) if (root / rel).is_file()]
+
+
+def _delete_media_relative_files(relative_paths: list[str]) -> None:
+    from django.conf import settings as _settings
+
+    root = Path(_settings.MEDIA_ROOT)
+    for rel in relative_paths:
+        p = root / rel
+        if p.is_file():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+
+def _resolve_deck_attachment_paths(
+    request,
+    report_id: str,
+    *,
+    field_prefix: str,
+    file_stem_prefix: str,
+    existing_paths: list[str] | None,
+    is_resubmit: bool,
+) -> list[str]:
+    existing_valid = _existing_media_paths(existing_paths)
+    new_upload = request.FILES.get(f"{field_prefix}1")
+    has_new = bool(new_upload and str(getattr(new_upload, "name", "")).strip())
+    remove = request.POST.get(f"remove_{field_prefix}") == "1"
+
+    if has_new:
+        new_paths = _save_uploaded_decks_to_media(
+            request,
+            report_id,
+            field_prefix=field_prefix,
+            file_stem_prefix=file_stem_prefix,
+        )
+        old_to_delete = [p for p in existing_valid if p not in new_paths]
+        if old_to_delete:
+            _delete_media_relative_files(old_to_delete)
+        return new_paths
+
+    if is_resubmit:
+        if remove:
+            if existing_valid:
+                _delete_media_relative_files(existing_valid)
+            return []
+        return list(existing_valid)
+
+    return []
+
+
+def _resolve_all_deck_attachments(
+    request,
+    report_id: str,
+    *,
+    existing_source: dict | None,
+    is_resubmit: bool,
+) -> dict[str, list[str]]:
+    existing_source = existing_source if isinstance(existing_source, dict) else {}
+    resolved: dict[str, list[str]] = {}
+    for spec in ATTACHMENT_SPECS:
+        resolved[spec["source_key"]] = _resolve_deck_attachment_paths(
+            request,
+            report_id,
+            field_prefix=spec["field_prefix"],
+            file_stem_prefix=spec["file_stem_prefix"],
+            existing_paths=existing_source.get(spec["source_key"]),
+            is_resubmit=is_resubmit,
+        )
+    return resolved
+
+
+def build_attachment_form_slots(dashboard, locale: str = "en") -> list[dict[str, Any]]:
+    from web_strings import get_ui
+
+    ui = get_ui(locale)
+    source = dashboard.source_files if dashboard and isinstance(dashboard.source_files, dict) else {}
+    slots: list[dict[str, Any]] = []
+    for spec in ATTACHMENT_SPECS:
+        paths = _existing_media_paths(source.get(spec["source_key"]))
+        hint_key = spec.get("ui_hint") or ""
+        slots.append(
+            {
+                **spec,
+                "label": ui.get(spec["ui_label"], ""),
+                "hint": ui.get(hint_key, "") if hint_key else "",
+                "drop": ui.get(spec["ui_drop"], ""),
+                "has_existing": bool(paths),
+                "existing_name": Path(paths[0]).name if paths else "",
+            }
+        )
+    return slots
 
 
 def _abs_media_paths(relative_paths: list[str] | None) -> list[str]:
@@ -179,6 +353,12 @@ def build_response_for_request(request) -> HttpResponse:
         missing_vehicle_slots = [None, None, None, None]
         for i, d in enumerate(deck_uploads_from_request(request, "missing_vehicle_deck")):
             missing_vehicle_slots[i] = _persist_upload(d, tmp_dir)
+        internal_audit_quarterly_slots = [None, None, None, None]
+        for i, d in enumerate(deck_uploads_from_request(request, "internal_audit_quarterly_deck")):
+            internal_audit_quarterly_slots[i] = _persist_upload(d, tmp_dir)
+        special_assignment_slots = [None, None, None, None]
+        for i, d in enumerate(deck_uploads_from_request(request, "special_assignment_deck")):
+            special_assignment_slots[i] = _persist_upload(d, tmp_dir)
 
         def deck_for_file_idx(i: int) -> str | None:
             nn = [p for p in deck_slots if p]
@@ -203,6 +383,16 @@ def build_response_for_request(request) -> HttpResponse:
                 [p for p in missing_vehicle_slots if p], i, len(uploads)
             )
 
+        def internal_audit_quarterly_for_file_idx(i: int) -> str | None:
+            return resolve_attached_deck_for_workbook_index(
+                [p for p in internal_audit_quarterly_slots if p], i, len(uploads)
+            )
+
+        def special_assignment_for_file_idx(i: int) -> str | None:
+            return resolve_attached_deck_for_workbook_index(
+                [p for p in special_assignment_slots if p], i, len(uploads)
+            )
+
         if mode == "ai" and len(uploads) > 1:
             pages = []
             for i, df in enumerate(dfs):
@@ -216,6 +406,8 @@ def build_response_for_request(request) -> HttpResponse:
                     attached_high_risk_deck_path=high_risk_for_file_idx(i),
                     attached_tga_violations_deck_path=tga_violations_for_file_idx(i),
                     attached_missing_vehicle_deck_path=missing_vehicle_for_file_idx(i),
+                    attached_internal_audit_quarterly_deck_path=internal_audit_quarterly_for_file_idx(i),
+                    attached_special_assignment_deck_path=special_assignment_for_file_idx(i),
                     allow_multiple_audit_companies=False,
                 )
                 persist_report_result(
@@ -263,6 +455,8 @@ def build_response_for_request(request) -> HttpResponse:
                 attached_high_risk_deck_path=high_risk_for_file_idx(0),
                 attached_tga_violations_deck_path=tga_violations_for_file_idx(0),
                 attached_missing_vehicle_deck_path=missing_vehicle_for_file_idx(0),
+                attached_internal_audit_quarterly_deck_path=internal_audit_quarterly_for_file_idx(0),
+                attached_special_assignment_deck_path=special_assignment_for_file_idx(0),
                 allow_multiple_audit_companies=False,
             )
         except (ValueError, FileNotFoundError) as exc:
@@ -342,6 +536,12 @@ def process_uploads_to_html_and_meta(request) -> tuple[str, str, list[str]]:
         missing_vehicle_slots = [None, None, None, None]
         for i, d in enumerate(deck_uploads_from_request(request, "missing_vehicle_deck")):
             missing_vehicle_slots[i] = _persist_upload(d, tmp_dir)
+        internal_audit_quarterly_slots = [None, None, None, None]
+        for i, d in enumerate(deck_uploads_from_request(request, "internal_audit_quarterly_deck")):
+            internal_audit_quarterly_slots[i] = _persist_upload(d, tmp_dir)
+        special_assignment_slots = [None, None, None, None]
+        for i, d in enumerate(deck_uploads_from_request(request, "special_assignment_deck")):
+            special_assignment_slots[i] = _persist_upload(d, tmp_dir)
 
         def deck_for_file_idx(i: int) -> str | None:
             nn = [p for p in deck_slots if p]
@@ -366,6 +566,16 @@ def process_uploads_to_html_and_meta(request) -> tuple[str, str, list[str]]:
                 [p for p in missing_vehicle_slots if p], i, len(uploads)
             )
 
+        def internal_audit_quarterly_for_file_idx(i: int) -> str | None:
+            return resolve_attached_deck_for_workbook_index(
+                [p for p in internal_audit_quarterly_slots if p], i, len(uploads)
+            )
+
+        def special_assignment_for_file_idx(i: int) -> str | None:
+            return resolve_attached_deck_for_workbook_index(
+                [p for p in special_assignment_slots if p], i, len(uploads)
+            )
+
         first_report_id = None
 
         if mode == "ai" and len(uploads) > 1:
@@ -381,6 +591,8 @@ def process_uploads_to_html_and_meta(request) -> tuple[str, str, list[str]]:
                     attached_high_risk_deck_path=high_risk_for_file_idx(i),
                     attached_tga_violations_deck_path=tga_violations_for_file_idx(i),
                     attached_missing_vehicle_deck_path=missing_vehicle_for_file_idx(i),
+                    attached_internal_audit_quarterly_deck_path=internal_audit_quarterly_for_file_idx(i),
+                    attached_special_assignment_deck_path=special_assignment_for_file_idx(i),
                     allow_multiple_audit_companies=False,
                 )
                 if first_report_id is None:
@@ -426,6 +638,8 @@ def process_uploads_to_html_and_meta(request) -> tuple[str, str, list[str]]:
             attached_high_risk_deck_path=high_risk_for_file_idx(0),
             attached_tga_violations_deck_path=tga_violations_for_file_idx(0),
             attached_missing_vehicle_deck_path=missing_vehicle_for_file_idx(0),
+            attached_internal_audit_quarterly_deck_path=internal_audit_quarterly_for_file_idx(0),
+            attached_special_assignment_deck_path=special_assignment_for_file_idx(0),
             allow_multiple_audit_companies=False,
         )
         first_report_id = (audit_payload or {}).get("report_id") or str(uuid.uuid4())
@@ -460,7 +674,8 @@ def store_upload_to_db(
     row data in the DB as JSON, persist audit observation records, and create
     a Dashboard record.
 
-    Deck/plan files (deck1, high_risk_deck1, tga_violations_deck1, missing_vehicle_deck1)
+    Deck/plan files (deck1, high_risk_deck1, tga_violations_deck1, missing_vehicle_deck1,
+    internal_audit_quarterly_deck1, special_assignment_deck1)
     are saved to media/decks/<report_id>/
     and embedded in the dashboard HTML when it is generated on view.
 
@@ -564,34 +779,22 @@ def store_upload_to_db(
         )
 
         # ── Save deck/plan files to media ────────────────────────────
-        deck_paths = _save_uploaded_decks_to_media(
-            request, report_id, field_prefix="deck", file_stem_prefix="deck"
+        existing_source = (
+            resubmit_dashboard.source_files
+            if resubmit_dashboard and isinstance(resubmit_dashboard.source_files, dict)
+            else {}
         )
-        high_risk_paths = _save_uploaded_decks_to_media(
+        is_resubmit = resubmit_dashboard is not None
+        resolved_decks = _resolve_all_deck_attachments(
             request,
             report_id,
-            field_prefix="high_risk_deck",
-            file_stem_prefix="high_risk_deck",
-        )
-        tga_violations_paths = _save_uploaded_decks_to_media(
-            request,
-            report_id,
-            field_prefix="tga_violations_deck",
-            file_stem_prefix="tga_violations_deck",
-        )
-        missing_vehicle_paths = _save_uploaded_decks_to_media(
-            request,
-            report_id,
-            field_prefix="missing_vehicle_deck",
-            file_stem_prefix="missing_vehicle_deck",
+            existing_source=existing_source,
+            is_resubmit=is_resubmit,
         )
 
         source_files_info = {
             "excel": all_names,
-            "decks": deck_paths,
-            "high_risk_decks": high_risk_paths,
-            "tga_violations_decks": tga_violations_paths,
-            "missing_vehicle_decks": missing_vehicle_paths,
+            **resolved_decks,
         }
 
         if resubmit_dashboard:
@@ -671,10 +874,14 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
     high_risk_rel = source_files.get("high_risk_decks") or []
     tga_violations_rel = source_files.get("tga_violations_decks") or []
     missing_vehicle_rel = source_files.get("missing_vehicle_decks") or []
+    internal_audit_quarterly_rel = source_files.get("internal_audit_quarterly_decks") or []
+    special_assignment_rel = source_files.get("special_assignment_decks") or []
     deck_paths_abs = _abs_media_paths(deck_rel)
     high_risk_paths_abs = _abs_media_paths(high_risk_rel)
     tga_violations_paths_abs = _abs_media_paths(tga_violations_rel)
     missing_vehicle_paths_abs = _abs_media_paths(missing_vehicle_rel)
+    internal_audit_quarterly_paths_abs = _abs_media_paths(internal_audit_quarterly_rel)
+    special_assignment_paths_abs = _abs_media_paths(special_assignment_rel)
 
     # Support both single-file dict and multi-file list formats
     if isinstance(raw, list):
@@ -697,6 +904,8 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
             attached_high_risk_deck_path=_first_attached_deck_path(high_risk_rel),
             attached_tga_violations_deck_path=_first_attached_deck_path(tga_violations_rel),
             attached_missing_vehicle_deck_path=_first_attached_deck_path(missing_vehicle_rel),
+            attached_internal_audit_quarterly_deck_path=_first_attached_deck_path(internal_audit_quarterly_rel),
+            attached_special_assignment_deck_path=_first_attached_deck_path(special_assignment_rel),
             allow_multiple_audit_companies=False,
         )
     else:
@@ -722,6 +931,12 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
                 ),
                 attached_missing_vehicle_deck_path=_attached_deck_for_index(
                     missing_vehicle_paths_abs, i, n_entries
+                ),
+                attached_internal_audit_quarterly_deck_path=_attached_deck_for_index(
+                    internal_audit_quarterly_paths_abs, i, n_entries
+                ),
+                attached_special_assignment_deck_path=_attached_deck_for_index(
+                    special_assignment_paths_abs, i, n_entries
                 ),
                 allow_multiple_audit_companies=False,
             )

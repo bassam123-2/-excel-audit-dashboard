@@ -100,7 +100,8 @@
         {% if can_resubmit %}
         <a href="{% url 'index' %}?resubmit={{ dashboard.pk }}"
            class="btn btn-sm btn-warning d-flex align-items-center gap-1">
-            <i class="bi bi-arrow-repeat"></i> {{ ui.wf_resubmit_btn }}
+            <i class="bi bi-arrow-repeat"></i>
+            {% if dashboard.status == "draft" %}{{ ui.wf_edit_draft_btn }}{% else %}{{ ui.wf_resubmit_btn }}{% endif %}
         </a>
         {% endif %}
         <a href="{% url 'dashboard_serve' dashboard.pk %}" target="_blank"

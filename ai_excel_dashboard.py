@@ -1385,6 +1385,12 @@ def build_audit_observation_payload(
                     "missingVehicleToggleLabel": tr("en", "audit_missing_vehicle_toggle_label"),
                     "missingVehicleUploadTitle": tr("en", "audit_missing_vehicle_upload_title"),
                     "missingVehicleUploadHint": tr("en", "audit_missing_vehicle_upload_hint"),
+                    "internalAuditQuarterlyToggleLabel": tr("en", "audit_internal_audit_quarterly_toggle_label"),
+                    "internalAuditQuarterlyUploadTitle": tr("en", "audit_internal_audit_quarterly_upload_title"),
+                    "internalAuditQuarterlyUploadHint": tr("en", "audit_internal_audit_quarterly_upload_hint"),
+                    "specialAssignmentToggleLabel": tr("en", "audit_special_assignment_toggle_label"),
+                    "specialAssignmentUploadTitle": tr("en", "audit_special_assignment_upload_title"),
+                    "specialAssignmentUploadHint": tr("en", "audit_special_assignment_upload_hint"),
                 }
                 if loc == "en"
                 else {}
@@ -2024,6 +2030,10 @@ def generate_finance_report(
     embedded_tga_violations_decks_by_company_path: dict[str, str] | None = None,
     attached_missing_vehicle_deck_path: str | None = None,
     embedded_missing_vehicle_decks_by_company_path: dict[str, str] | None = None,
+    attached_internal_audit_quarterly_deck_path: str | None = None,
+    embedded_internal_audit_quarterly_decks_by_company_path: dict[str, str] | None = None,
+    attached_special_assignment_deck_path: str | None = None,
+    embedded_special_assignment_decks_by_company_path: dict[str, str] | None = None,
     allow_multiple_audit_companies: bool = False,
 ) -> tuple[str, dict[str, Any]]:
     loc = normalize_locale(locale)
@@ -2211,6 +2221,20 @@ def generate_finance_report(
         )
         if mv_embedded:
             chart_payload["embedded_missing_vehicle_slide_deck"] = mv_embedded
+        iaq_embedded = build_embedded_slide_deck_bundle(
+            fallback_path=attached_internal_audit_quarterly_deck_path,
+            by_company_paths=embedded_internal_audit_quarterly_decks_by_company_path,
+            locale=loc,
+        )
+        if iaq_embedded:
+            chart_payload["embedded_internal_audit_quarterly_slide_deck"] = iaq_embedded
+        sa_embedded = build_embedded_slide_deck_bundle(
+            fallback_path=attached_special_assignment_deck_path,
+            by_company_paths=embedded_special_assignment_decks_by_company_path,
+            locale=loc,
+        )
+        if sa_embedded:
+            chart_payload["embedded_special_assignment_slide_deck"] = sa_embedded
     logo_catalog = build_company_logo_catalog()
     chart_payload["brand_logo_catalog"] = logo_catalog
 
@@ -3386,6 +3410,8 @@ def generate_finance_report(
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-high-risk-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-tga-violations-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-missing-vehicle-cb,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-internal-audit-quarterly-cb,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-special-assignment-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-additional-notes-cb {{
       -webkit-appearance: none;
       appearance: none;
@@ -3409,6 +3435,8 @@ def generate_finance_report(
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-high-risk-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-tga-violations-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-missing-vehicle-cb:checked,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-internal-audit-quarterly-cb:checked,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-special-assignment-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-additional-notes-cb:checked {{
       border-radius: 0 !important;
       -webkit-border-radius: 0;
@@ -3419,6 +3447,8 @@ def generate_finance_report(
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-high-risk-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-tga-violations-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-missing-vehicle-cb:focus-visible),
+    .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-internal-audit-quarterly-cb:focus-visible),
+    .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-special-assignment-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-additional-notes-cb:focus-visible) {{
       box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45);
     }}
@@ -5551,6 +5581,14 @@ def generate_finance_report(
                     '<input type="checkbox" id="audit-missing-vehicle-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
                     '<span id="audit-missing-vehicle-label"></span>'
                     '</label>'
+                    '<label class="audit-obs-aging-toggle">'
+                    '<input type="checkbox" id="audit-internal-audit-quarterly-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
+                    '<span id="audit-internal-audit-quarterly-label"></span>'
+                    '</label>'
+                    '<label class="audit-obs-aging-toggle">'
+                    '<input type="checkbox" id="audit-special-assignment-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
+                    '<span id="audit-special-assignment-label"></span>'
+                    '</label>'
                   ) if loc == "en" else ""}
                   <label class="audit-obs-aging-toggle">
                     <input type="checkbox" id="audit-additional-notes-cb" aria-controls="audit-additional-notes-inline-panel" />
@@ -6287,13 +6325,17 @@ def generate_finance_report(
       const tgaViolationsLbl = document.getElementById("audit-tga-violations-label");
       const missingVehicleCb = document.getElementById("audit-missing-vehicle-cb");
       const missingVehicleLbl = document.getElementById("audit-missing-vehicle-label");
+      const internalAuditQuarterlyCb = document.getElementById("audit-internal-audit-quarterly-cb");
+      const internalAuditQuarterlyLbl = document.getElementById("audit-internal-audit-quarterly-label");
+      const specialAssignmentCb = document.getElementById("audit-special-assignment-cb");
+      const specialAssignmentLbl = document.getElementById("audit-special-assignment-label");
       const deckUploadLayer = document.getElementById("audit-deck-upload-layer");
       const deckUploadLayerTitle = document.getElementById("audit-deck-upload-layer-title");
       const deckUploadLayerHint = document.getElementById("audit-deck-upload-layer-hint");
       const deckUploadLayerBrowse = document.getElementById("audit-deck-upload-layer-browse");
       let deckPanelMode = "committee";
-      const deckFilesByMode = {{ committee: null, highRisk: null, tgaViolations: null, missingVehicle: null }};
-      const deckAttachToggles = [deckAttachCb, highRiskCb, tgaViolationsCb, missingVehicleCb];
+      const deckFilesByMode = {{ committee: null, highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null }};
+      const deckAttachToggles = [deckAttachCb, highRiskCb, tgaViolationsCb, missingVehicleCb, internalAuditQuarterlyCb, specialAssignmentCb];
       const deckBackdrop = document.getElementById("audit-deck-backdrop");
       const deckModal = document.getElementById("audit-deck-modal");
       const deckModalClose = document.getElementById("audit-deck-modal-close");
@@ -6315,7 +6357,7 @@ def generate_finance_report(
       let deckBlobUrls = [];
       let deckLastFile = null;
       let embeddedDeckLoadSig = null;
-      const embeddedAltDeckLoadSig = {{ highRisk: null, tgaViolations: null, missingVehicle: null }};
+      const embeddedAltDeckLoadSig = {{ highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null }};
       let deckLastObjectUrl = null;
       let deckPptxViewer = null;
       let deckPptxSvgViewer = null;
@@ -7973,6 +8015,8 @@ def generate_finance_report(
       if (highRiskLbl) highRiskLbl.textContent = ui.highRiskToggleLabel || "High Risk Observations & Emerging Risks";
       if (tgaViolationsLbl) tgaViolationsLbl.textContent = ui.tgaViolationsToggleLabel || "TGA Violations Report";
       if (missingVehicleLbl) missingVehicleLbl.textContent = ui.missingVehicleToggleLabel || "Missing Vehicle Report";
+      if (internalAuditQuarterlyLbl) internalAuditQuarterlyLbl.textContent = ui.internalAuditQuarterlyToggleLabel || "Internal Audit Quarterly Report";
+      if (specialAssignmentLbl) specialAssignmentLbl.textContent = ui.specialAssignmentToggleLabel || "Special Assignment Report";
       if (deckUploadLayerTitle) {{
         deckUploadLayerTitle.textContent = ui.deckUploadTitle || "Upload document";
       }}
@@ -8007,6 +8051,18 @@ def generate_finance_report(
           uploadTitle: function () {{ return ui.missingVehicleUploadTitle || ui.deckUploadTitle || "Upload document"; }},
           uploadHint: function () {{ return ui.missingVehicleUploadHint || ui.deckUploadHint || ""; }},
         }},
+        internalAuditQuarterly: {{
+          title: function () {{ return ui.internalAuditQuarterlyToggleLabel || "Internal Audit Quarterly Report"; }},
+          hint: function () {{ return ui.internalAuditQuarterlyUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.internalAuditQuarterlyUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.internalAuditQuarterlyUploadHint || ui.deckUploadHint || ""; }},
+        }},
+        specialAssignment: {{
+          title: function () {{ return ui.specialAssignmentToggleLabel || "Special Assignment Report"; }},
+          hint: function () {{ return ui.specialAssignmentUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.specialAssignmentUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.specialAssignmentUploadHint || ui.deckUploadHint || ""; }},
+        }},
       }};
       function deckIsAltMode(mode) {{
         const m = mode != null ? mode : deckPanelMode;
@@ -8019,6 +8075,8 @@ def generate_finance_report(
         if (mode === "highRisk") return payload.embedded_high_risk_slide_deck;
         if (mode === "tgaViolations") return payload.embedded_tga_violations_slide_deck;
         if (mode === "missingVehicle") return payload.embedded_missing_vehicle_slide_deck;
+        if (mode === "internalAuditQuarterly") return payload.embedded_internal_audit_quarterly_slide_deck;
+        if (mode === "specialAssignment") return payload.embedded_special_assignment_slide_deck;
         return null;
       }}
       function deckUncheckOtherAttachToggles(activeCb) {{
@@ -8196,6 +8254,8 @@ def generate_finance_report(
           mode === "highRisk" ? "high-risk-slides.pptx"
           : mode === "tgaViolations" ? "tga-violations-report.pptx"
           : mode === "missingVehicle" ? "missing-vehicle-report.pptx"
+          : mode === "internalAuditQuarterly" ? "internal-audit-quarterly-report.pptx"
+          : mode === "specialAssignment" ? "special-assignment-report.pptx"
           : "slides.pptx";
         return loadEmbeddedDeckBundleEntry(entry, defaultName);
       }}
@@ -8205,6 +8265,8 @@ def generate_finance_report(
           highRisk: highRiskCb,
           tgaViolations: tgaViolationsCb,
           missingVehicle: missingVehicleCb,
+          internalAuditQuarterly: internalAuditQuarterlyCb,
+          specialAssignment: specialAssignmentCb,
         }};
         const cb = cbByMode[deckPanelMode];
         if (!cb || !cb.checked) return;
@@ -9260,6 +9322,8 @@ def generate_finance_report(
         if (highRiskCb) highRiskCb.checked = false;
         if (tgaViolationsCb) tgaViolationsCb.checked = false;
         if (missingVehicleCb) missingVehicleCb.checked = false;
+        if (internalAuditQuarterlyCb) internalAuditQuarterlyCb.checked = false;
+        if (specialAssignmentCb) specialAssignmentCb.checked = false;
         if (deckFileInput) deckFileInput.value = "";
         deckSetUploadFirstMode(false);
         deckClearViewer();
@@ -9389,6 +9453,8 @@ def generate_finance_report(
       const highRiskDeckSyncPanel = makeAltDeckSyncPanel(highRiskCb, "highRisk");
       const tgaViolationsDeckSyncPanel = makeAltDeckSyncPanel(tgaViolationsCb, "tgaViolations");
       const missingVehicleDeckSyncPanel = makeAltDeckSyncPanel(missingVehicleCb, "missingVehicle");
+      const internalAuditQuarterlyDeckSyncPanel = makeAltDeckSyncPanel(internalAuditQuarterlyCb, "internalAuditQuarterly");
+      const specialAssignmentDeckSyncPanel = makeAltDeckSyncPanel(specialAssignmentCb, "specialAssignment");
       function deckShowPdf(file) {{
         if (!deckPdfFrame) return;
         deckDestroyPptxViewer();
@@ -9463,6 +9529,8 @@ def generate_finance_report(
       bindAltDeckToggle(highRiskCb, highRiskDeckSyncPanel);
       bindAltDeckToggle(tgaViolationsCb, tgaViolationsDeckSyncPanel);
       bindAltDeckToggle(missingVehicleCb, missingVehicleDeckSyncPanel);
+      bindAltDeckToggle(internalAuditQuarterlyCb, internalAuditQuarterlyDeckSyncPanel);
+      bindAltDeckToggle(specialAssignmentCb, specialAssignmentDeckSyncPanel);
       if (deckMissingOk) deckMissingOk.addEventListener("click", deckCloseNoAttachmentNotice);
       if (deckMissingBackdrop) deckMissingBackdrop.addEventListener("click", deckCloseNoAttachmentNotice);
       document.addEventListener("keydown", function (ev) {{
