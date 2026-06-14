@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -37,6 +39,14 @@ class UserProfile(models.Model):
         default=timezone.now,
         verbose_name=_("Password last changed"),
     )
+    password_expiry_enabled = models.BooleanField(
+        default=True,
+        verbose_name=_("Require password change every 6 months"),
+        help_text=_(
+            "When enabled, the user must change their password "
+            f"every {PASSWORD_MAX_AGE_DAYS} days."
+        ),
+    )
     two_factor_enabled = models.BooleanField(
         default=False,
         verbose_name=_("Email two-factor authentication"),
@@ -45,6 +55,35 @@ class UserProfile(models.Model):
             "Disabled by default — enable per user or for all users from the admin."
         ),
     )
+
+    def is_password_expired(self) -> bool:
+        if not self.password_expiry_enabled:
+            return False
+        if not self.password_changed_at:
+            return True
+        age = timezone.now() - self.password_changed_at
+        return age > timedelta(days=PASSWORD_MAX_AGE_DAYS)
+
+    @classmethod
+    def bulk_set_password_expiry(
+        cls,
+        *,
+        enabled: bool,
+        users=None,
+    ) -> int:
+        """Enable or disable 6-month password expiry; creates missing profiles."""
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        user_qs = users if users is not None else User.objects.all()
+        updated = 0
+        for user in user_qs.iterator():
+            profile, _ = cls.objects.get_or_create(user=user)
+            if profile.password_expiry_enabled != enabled:
+                profile.password_expiry_enabled = enabled
+                profile.save(update_fields=["password_expiry_enabled"])
+                updated += 1
+        return updated
 
     @classmethod
     def bulk_set_two_factor(

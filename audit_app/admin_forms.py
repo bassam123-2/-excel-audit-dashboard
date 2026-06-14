@@ -52,6 +52,12 @@ def _save_user_two_factor(user, enabled: bool) -> None:
     profile.save(update_fields=["two_factor_enabled"])
 
 
+def _save_user_password_expiry(user, enabled: bool) -> None:
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile.password_expiry_enabled = bool(enabled)
+    profile.save(update_fields=["password_expiry_enabled"])
+
+
 def _initial_job_title(user) -> str:
     if not user.pk:
         return ""
@@ -93,6 +99,12 @@ class MandatoryPasswordAdminCreationForm(UserCreationForm):
         initial=False,
         help_text=_("When enabled, a one-time code is sent by email at sign-in."),
     )
+    password_expiry_enabled = forms.BooleanField(
+        label=_("Require password change every 6 months"),
+        required=False,
+        initial=True,
+        help_text=_("When enabled, the user must change their password every 180 days."),
+    )
 
     class Meta(UserCreationForm.Meta):
         fields = ("username", "email", "first_name", "last_name")
@@ -109,6 +121,9 @@ class MandatoryPasswordAdminCreationForm(UserCreationForm):
         user = super().save(commit=commit)
         _save_user_job_title(user, self.cleaned_data.get("job_title", ""))
         _save_user_two_factor(user, self.cleaned_data.get("two_factor_enabled", False))
+        _save_user_password_expiry(
+            user, self.cleaned_data.get("password_expiry_enabled", True)
+        )
         return user
 
 
@@ -126,6 +141,11 @@ class AdminUserChangeForm(UserChangeForm):
         required=False,
         help_text=_("When enabled, a one-time code is sent by email at sign-in."),
     )
+    password_expiry_enabled = forms.BooleanField(
+        label=_("Require password change every 6 months"),
+        required=False,
+        help_text=_("When enabled, the user must change their password every 180 days."),
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -136,6 +156,9 @@ class AdminUserChangeForm(UserChangeForm):
         profile = getattr(self.instance, "profile", None)
         self.fields["two_factor_enabled"].initial = (
             profile.two_factor_enabled if profile else False
+        )
+        self.fields["password_expiry_enabled"].initial = (
+            profile.password_expiry_enabled if profile else True
         )
         if "email" in self.fields:
             self.fields["email"].required = True
@@ -151,6 +174,9 @@ class AdminUserChangeForm(UserChangeForm):
         _save_user_job_title(user, self.cleaned_data.get("job_title", ""))
         _save_user_two_factor(
             user, self.cleaned_data.get("two_factor_enabled", False)
+        )
+        _save_user_password_expiry(
+            user, self.cleaned_data.get("password_expiry_enabled", True)
         )
         return user
 

@@ -67,7 +67,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "setup_required_admin_btn": "إضافة شركة في لوحة الإدارة",
         "setup_required_user_body": "النظام غير جاهز للاستخدام بعد. يرجى التواصل مع مسؤول النظام لإضافة شركتك وتعيين الصلاحيات.",
         "profile_force_password_title": "يجب تحديث كلمة المرور",
-        "profile_force_password_body": "مرّ أكثر من 6 أشهر على آخر تغيير لكلمة المرور. يرجى تعيين كلمة مرور جديدة للمتابعة.",
+        "profile_force_password_body": "كلمة مرورك قديمة. قم بتعيين كلمة مرور جديدة للمتابعة.",
         "profile_active_company": "الشركة النشطة",
         "profile_perm_review": "الموافقة أو الرفض على لوحات التحكم",
         # ── Topbar ────────────────────────────────
@@ -302,7 +302,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "setup_required_admin_btn": "Add company in Admin",
         "setup_required_user_body": "The system is not ready yet. Contact your administrator to add your company and assign permissions.",
         "profile_force_password_title": "Password update required",
-        "profile_force_password_body": "Your password is older than 6 months. Set a new password to continue.",
+        "profile_force_password_body": "Your password is older. Set a new password to continue.",
         "profile_active_company": "Active company",
         "profile_perm_review": "Approve or reject dashboards",
         # ── Topbar ────────────────────────────────

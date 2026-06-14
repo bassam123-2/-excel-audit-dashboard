@@ -278,7 +278,11 @@ def profile_view(request):
 
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
-    force_password = request.GET.get("force_password") == "1"
+    force_password = (
+        request.GET.get("force_password") == "1"
+        and profile.password_expiry_enabled
+        and profile.is_password_expired()
+    )
 
     ctx: dict = {
         "pw_error": None,

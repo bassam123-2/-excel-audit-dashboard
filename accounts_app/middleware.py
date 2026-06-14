@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from datetime import timedelta
-
 from django.shortcuts import redirect
 from django.urls import reverse
-from django.utils import timezone
 
-from accounts_app.models import PASSWORD_MAX_AGE_DAYS, UserProfile
+from accounts_app.models import UserProfile
 from audit_app.company_access import active_companies_exist, get_active_company, user_must_select_company
 
 
@@ -86,7 +83,4 @@ class PasswordExpiryMiddleware:
 
     def _password_expired(self, user) -> bool:
         profile, _ = UserProfile.objects.get_or_create(user=user)
-        if not profile.password_changed_at:
-            return False
-        age = timezone.now() - profile.password_changed_at
-        return age > timedelta(days=PASSWORD_MAX_AGE_DAYS)
+        return profile.is_password_expired()

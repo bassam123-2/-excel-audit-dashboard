@@ -226,8 +226,9 @@ class CompanyAccessTests(TestCase):
 
     def test_password_expiry_redirect(self):
         profile = self.btc_uploader.profile
+        profile.password_expiry_enabled = True
         profile.password_changed_at = timezone.now() - timedelta(days=200)
-        profile.save(update_fields=["password_changed_at"])
+        profile.save(update_fields=["password_expiry_enabled", "password_changed_at"])
 
         from accounts_app.middleware import PasswordExpiryMiddleware
         from django.test import RequestFactory
@@ -240,6 +241,24 @@ class CompanyAccessTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/profile/", response.url)
         self.assertIn("force_password=1", response.url)
+
+    def test_password_expiry_skipped_when_disabled(self):
+        profile = self.btc_uploader.profile
+        profile.password_expiry_enabled = False
+        profile.password_changed_at = timezone.now() - timedelta(days=200)
+        profile.save(update_fields=["password_expiry_enabled", "password_changed_at"])
+
+        from accounts_app.middleware import PasswordExpiryMiddleware
+        from django.test import RequestFactory
+
+        factory = RequestFactory()
+        request = factory.get("/dashboards/")
+        request.user = self.btc_uploader
+        from django.http import HttpResponseRedirect
+
+        middleware = PasswordExpiryMiddleware(lambda req: req)
+        response = middleware(request)
+        self.assertNotIsInstance(response, HttpResponseRedirect)
 
     def test_two_factor_otp_roundtrip(self):
         code = two_factor.generate_and_store_otp(self.btc_uploader.pk)

@@ -105,6 +105,27 @@ class TwoFactorFilter(admin.SimpleListFilter):
         return queryset
 
 
+class PasswordExpiryFilter(admin.SimpleListFilter):
+    title = _("6-month password expiry")
+    parameter_name = "password_expiry"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", _("Enabled")),
+            ("no", _("Disabled")),
+        )
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "yes":
+            return queryset.filter(profile__password_expiry_enabled=True)
+        if value == "no":
+            return queryset.filter(
+                Q(profile__password_expiry_enabled=False) | Q(profile__isnull=True)
+            )
+        return queryset
+
+
 class CompanyMembershipInline(admin.TabularInline):
     model = CompanyMembership
     extra = 1
@@ -145,19 +166,31 @@ class ProtectedUserAdmin(BaseUserAdmin):
         "disable_two_factor_selected",
         "enable_two_factor_all",
         "disable_two_factor_all",
+        "enable_password_expiry_selected",
+        "disable_password_expiry_selected",
+        "enable_password_expiry_all",
+        "disable_password_expiry_all",
     ]
-    list_filter = BaseUserAdmin.list_filter + (DeletedUserFilter, TwoFactorFilter)
+    list_filter = BaseUserAdmin.list_filter + (
+        DeletedUserFilter,
+        TwoFactorFilter,
+        PasswordExpiryFilter,
+    )
 
     class Media:
         css = {"all": ("css/password_rules.css",)}
         js = ("js/password_rules.js", "js/admin_email_validate.js")
 
-    list_display = BaseUserAdmin.list_display + ("job_title_display", "two_factor_display")
+    list_display = BaseUserAdmin.list_display + (
+        "job_title_display",
+        "two_factor_display",
+        "password_expiry_display",
+    )
     search_fields = BaseUserAdmin.search_fields + ("profile__job_title",)
 
     fieldsets = (
         (None, {"fields": ("username",)}),
-        (_("Personal info"), {"fields": ("first_name", "last_name", "email", "job_title", "two_factor_enabled")}),
+        (_("Personal info"), {"fields": ("first_name", "last_name", "email", "job_title", "two_factor_enabled", "password_expiry_enabled")}),
         (
             _("Permissions"),
             {
@@ -182,7 +215,16 @@ class ProtectedUserAdmin(BaseUserAdmin):
         ),
         (
             _("Personal info"),
-            {"fields": ("first_name", "last_name", "email", "job_title", "two_factor_enabled")},
+            {
+                "fields": (
+                    "first_name",
+                    "last_name",
+                    "email",
+                    "job_title",
+                    "two_factor_enabled",
+                    "password_expiry_enabled",
+                ),
+            },
         ),
     )
 
@@ -321,17 +363,29 @@ class ProtectedUserAdmin(BaseUserAdmin):
         rf = list(super().get_readonly_fields(request, obj))
         if not request.user.is_superuser:
             rf += ["is_superuser", "user_permissions"]
-        if not self._can_manage_two_factor(request):
-            rf += ["two_factor_enabled"]
+        if not self._can_manage_user_security(request):
+            rf += ["two_factor_enabled", "password_expiry_enabled"]
         return rf
 
-    def _can_manage_two_factor(self, request) -> bool:
+    def _can_manage_user_security(self, request) -> bool:
         return request.user.is_superuser or request.user.has_perm("auth.change_user")
+
+    def _can_manage_two_factor(self, request) -> bool:
+        return self._can_manage_user_security(request)
 
     @admin.display(description=_("2FA"), boolean=True, ordering="profile__two_factor_enabled")
     def two_factor_display(self, obj):
         profile = getattr(obj, "profile", None)
         return bool(profile and profile.two_factor_enabled)
+
+    @admin.display(
+        description=_("Pwd expiry"),
+        boolean=True,
+        ordering="profile__password_expiry_enabled",
+    )
+    def password_expiry_display(self, obj):
+        profile = getattr(obj, "profile", None)
+        return bool(profile and profile.password_expiry_enabled)
 
     @admin.action(description=_("Enable email 2FA for selected users"))
     def enable_two_factor_selected(self, request, queryset):
@@ -390,6 +444,62 @@ class ProtectedUserAdmin(BaseUserAdmin):
             request,
             _("Email two-factor authentication disabled for %(count)d user(s).")
             % {"count": count},
+            messages.SUCCESS,
+        )
+
+    @admin.action(description=_("Enable 6-month password expiry for selected users"))
+    def enable_password_expiry_selected(self, request, queryset):
+        if not self._can_manage_user_security(request):
+            self.message_user(request, _("Permission denied."), messages.ERROR)
+            return
+        count = UserProfile.bulk_set_password_expiry(enabled=True, users=queryset)
+        self.message_user(
+            request,
+            _("6-month password expiry enabled for %(count)d user(s).") % {"count": count},
+            messages.SUCCESS,
+        )
+
+    @admin.action(description=_("Disable 6-month password expiry for selected users"))
+    def disable_password_expiry_selected(self, request, queryset):
+        if not self._can_manage_user_security(request):
+            self.message_user(request, _("Permission denied."), messages.ERROR)
+            return
+        count = UserProfile.bulk_set_password_expiry(enabled=False, users=queryset)
+        self.message_user(
+            request,
+            _("6-month password expiry disabled for %(count)d user(s).") % {"count": count},
+            messages.SUCCESS,
+        )
+
+    @admin.action(description=_("Enable 6-month password expiry for ALL users"))
+    def enable_password_expiry_all(self, request, queryset):
+        if not request.user.is_superuser:
+            self.message_user(
+                request,
+                _("Only a superuser can change password expiry for all users."),
+                messages.ERROR,
+            )
+            return
+        count = UserProfile.bulk_set_password_expiry(enabled=True)
+        self.message_user(
+            request,
+            _("6-month password expiry enabled for %(count)d user(s).") % {"count": count},
+            messages.SUCCESS,
+        )
+
+    @admin.action(description=_("Disable 6-month password expiry for ALL users"))
+    def disable_password_expiry_all(self, request, queryset):
+        if not request.user.is_superuser:
+            self.message_user(
+                request,
+                _("Only a superuser can change password expiry for all users."),
+                messages.ERROR,
+            )
+            return
+        count = UserProfile.bulk_set_password_expiry(enabled=False)
+        self.message_user(
+            request,
+            _("6-month password expiry disabled for %(count)d user(s).") % {"count": count},
             messages.SUCCESS,
         )
 
