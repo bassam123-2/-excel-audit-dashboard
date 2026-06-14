@@ -5,13 +5,15 @@ import re
 from django.db.models import Q, QuerySet
 from django.utils import timezone
 
-from audit_app.company_access import has_company_perm, user_must_select_company
+from audit_app.company_access import active_companies_exist, has_company_perm, user_must_select_company
 from audit_app.models import Company, Dashboard, DashboardRejectionLog, DashboardStatus
 
 _DASHBOARD_PK_URL = re.compile(r"^/dashboards/(\d+)(?:/|$)")
 
 
 def has_review_perm(user, company: Company | None = None) -> bool:
+    if not active_companies_exist():
+        return False
     if company is None:
         if user.is_superuser and not user_must_select_company(user):
             return True
@@ -20,6 +22,8 @@ def has_review_perm(user, company: Company | None = None) -> bool:
 
 
 def has_upload_perm(user, company: Company | None = None) -> bool:
+    if not active_companies_exist():
+        return False
     if company is None:
         if user.is_superuser and not user_must_select_company(user):
             return True
@@ -28,6 +32,8 @@ def has_upload_perm(user, company: Company | None = None) -> bool:
 
 
 def has_view_perm(user, company: Company | None = None) -> bool:
+    if not active_companies_exist():
+        return False
     if company is None:
         if user.is_superuser and not user_must_select_company(user):
             return True
@@ -59,6 +65,8 @@ def has_delete_perm(user) -> bool:
 
 
 def has_delete_draft_perm(user, company: Company | None = None) -> bool:
+    if not active_companies_exist():
+        return False
     if company is None:
         return False
     if user.is_superuser:

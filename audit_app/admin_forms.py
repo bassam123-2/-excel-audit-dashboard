@@ -8,6 +8,8 @@ from django.utils.translation import gettext_lazy as _
 
 from accounts_app.models import UserProfile
 
+from audit_app.models import ATTACHMENT_KIND_CHOICES, ATTACHMENT_KIND_CODES, Company, CompanyAttachmentSetting
+
 IS_STAFF_LABEL = _("Admin")
 IS_STAFF_HELP = _(
     "Designates whether this user has admin access to the administration site."
@@ -179,3 +181,52 @@ class MandatoryPasswordAdminChangeForm(SetPasswordMixin, forms.Form):
         if "password1" in data and "password2" in data:
             return ["password"]
         return []
+
+
+def company_attachment_field_name(kind: str) -> str:
+    return f"att_{kind}"
+
+
+class _CompanyAdminFormBase(forms.ModelForm):
+    """Company form with attachment enable/disable toggles on add and edit."""
+
+    class Meta:
+        model = Company
+        fields = ("code", "name", "is_active", "excel_company_names")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            for code, _ in ATTACHMENT_KIND_CHOICES:
+                field_name = company_attachment_field_name(code)
+                setting = self.instance.attachment_settings.filter(
+                    attachment_kind=code
+                ).first()
+                if setting is not None:
+                    self.fields[field_name].initial = setting.is_enabled
+
+    def save(self, commit=True):
+        company = super().save(commit=commit)
+        if commit:
+            for code in ATTACHMENT_KIND_CODES:
+                enabled = self.cleaned_data.get(company_attachment_field_name(code), True)
+                CompanyAttachmentSetting.objects.update_or_create(
+                    company=company,
+                    attachment_kind=code,
+                    defaults={"is_enabled": bool(enabled)},
+                )
+        return company
+
+
+CompanyAdminForm = type(
+    "CompanyAdminForm",
+    (_CompanyAdminFormBase,),
+    {
+        company_attachment_field_name(code): forms.BooleanField(
+            label=label,
+            required=False,
+            initial=True,
+        )
+        for code, label in ATTACHMENT_KIND_CHOICES
+    },
+)

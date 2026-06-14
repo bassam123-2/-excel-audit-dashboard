@@ -9,7 +9,13 @@ if _BASE not in sys.path:
 
 from django.utils import translation
 
-from audit_app.company_access import get_active_company, user_companies, user_must_select_company
+from audit_app.company_access import (
+    active_companies_exist,
+    get_active_company,
+    user_can_manage_companies,
+    user_companies,
+    user_must_select_company,
+)
 from reports_app.dashboard_workflow import (
     has_dashboard_list_perm,
     has_delete_draft_perm,
@@ -42,6 +48,8 @@ def ui_context(request) -> dict:
     active_company = None
     user_company_list = []
     needs_company_selection = False
+    no_companies_configured = not active_companies_exist()
+    can_manage_companies = False
 
     if hasattr(request, "user") and request.user.is_authenticated:
         u = request.user
@@ -55,8 +63,11 @@ def ui_context(request) -> dict:
         can_manage_users = u.is_superuser or u.has_perm("auth.change_user")
         can_review_dashboards = has_review_perm(u, active_company)
         can_delete_drafts = has_delete_draft_perm(u, active_company)
+        can_manage_companies = user_can_manage_companies(u)
         needs_company_selection = (
-            user_must_select_company(u) and active_company is None
+            not no_companies_configured
+            and user_must_select_company(u)
+            and active_company is None
         )
 
     return {
@@ -74,4 +85,6 @@ def ui_context(request) -> dict:
         "user_companies": user_company_list,
         "show_company_switcher": len(user_company_list) > 1,
         "needs_company_selection": needs_company_selection,
+        "no_companies_configured": no_companies_configured,
+        "can_manage_companies": can_manage_companies,
     }

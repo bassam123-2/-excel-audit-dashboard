@@ -7,6 +7,18 @@ from audit_app.models import ATTACHMENT_KIND_CODES, Company, CompanyAttachmentSe
 SESSION_ACTIVE_COMPANY_KEY = "active_company_id"
 
 
+def active_companies_exist() -> bool:
+    return Company.objects.filter(is_active=True).exists()
+
+
+def user_can_manage_companies(user) -> bool:
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return user.has_perm("audit_app.add_company") or user.has_perm("audit_app.change_company")
+
+
 def user_companies(user) -> QuerySet[Company]:
     if not user.is_authenticated:
         return Company.objects.none()
@@ -47,7 +59,7 @@ def user_must_select_company(user) -> bool:
 
 
 def has_company_perm(user, company: Company | None, perm: str) -> bool:
-    if not user.is_authenticated:
+    if not user.is_authenticated or not active_companies_exist():
         return False
     if user.is_superuser:
         return True

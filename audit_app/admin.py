@@ -22,8 +22,10 @@ from accounts_app.models import UserProfile
 
 from .admin_forms import (
     AdminUserChangeForm,
+    CompanyAdminForm,
     MandatoryPasswordAdminChangeForm,
     MandatoryPasswordAdminCreationForm,
+    company_attachment_field_name,
 )
 from .models import (
     ATTACHMENT_KIND_CODES,
@@ -537,40 +539,26 @@ admin.site.register(Group, ProtectedGroupAdmin)
 # ── App models ───────────────────────────────────────────────────────
 
 
-class CompanyAttachmentSettingInline(admin.TabularInline):
-    """
-    Fixed list of attachment kinds per company — enable/disable only.
-    New kinds are defined in code (ATTACHMENT_KIND_CHOICES), not via admin.
-    """
-
-    model = CompanyAttachmentSetting
-    extra = 0
-    max_num = len(ATTACHMENT_KIND_CODES)
-    can_delete = False
-    readonly_fields = ("attachment_kind",)
-    fields = ("attachment_kind", "is_enabled")
-    verbose_name = _("Attachment")
-    verbose_name_plural = _("Attachments (enable or disable per company)")
-
-    def has_add_permission(self, request, obj=None):
-        return False
-
-
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
+    form = CompanyAdminForm
     list_display = ("code", "name", "is_active", "created_at")
     search_fields = ("code", "name")
     list_filter = ("is_active",)
     prepopulated_fields = {"code": ("name",)}
-    inlines = [CompanyAttachmentSettingInline]
     fieldsets = (
         (None, {"fields": ("code", "name", "is_active")}),
         (_("Excel mapping"), {"fields": ("excel_company_names",)}),
+        (
+            _("Attachments (enable or disable per company)"),
+            {
+                "fields": [
+                    company_attachment_field_name(code)
+                    for code in ATTACHMENT_KIND_CODES
+                ],
+            },
+        ),
     )
-
-    def save_related(self, request, form, formsets, change):
-        super().save_related(request, form, formsets, change)
-        form.instance.ensure_attachment_settings()
 
 
 @admin.register(CompanyMembership)

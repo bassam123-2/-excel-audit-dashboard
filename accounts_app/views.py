@@ -13,9 +13,11 @@ from urllib.parse import quote
 
 from audit_app.company_access import (
     SESSION_ACTIVE_COMPANY_KEY,
+    active_companies_exist,
     clear_active_company,
     get_active_company,
     set_active_company,
+    user_can_manage_companies,
     user_companies,
     user_must_select_company,
 )
@@ -25,6 +27,8 @@ from web_strings import get_ui
 
 def login_view(request):
     if request.user.is_authenticated:
+        if not active_companies_exist():
+            return redirect("setup_required")
         if user_must_select_company(request.user) and not get_active_company(request):
             return redirect("select_company")
         return _redirect_after_login(request.user)
@@ -183,7 +187,29 @@ def switch_language(request):
 
 
 @login_required
+def setup_required_view(request):
+    if active_companies_exist():
+        return _redirect_after_login(request.user)
+
+    lang = request.session.get("ui_lang", "ar")
+    ui = get_ui(lang)
+    admin_add_company_url = reverse("admin:audit_app_company_add")
+
+    return render(
+        request,
+        "accounts/setup_required.html",
+        {
+            "can_manage_companies": user_can_manage_companies(request.user),
+            "admin_add_company_url": admin_add_company_url,
+        },
+    )
+
+
+@login_required
 def select_company_view(request):
+    if not active_companies_exist():
+        return redirect("setup_required")
+
     companies = user_companies(request.user)
     lang = request.session.get("ui_lang", "ar")
     ui = get_ui(lang)
@@ -316,6 +342,9 @@ def _finish_login(request, user, next_url: str = ""):
     _prepare_company_session_after_login(request, user)
     safe_next = next_url if next_url.startswith("/") and not next_url.startswith("//") else ""
 
+    if not active_companies_exist():
+        return redirect("setup_required")
+
     if user_must_select_company(user):
         url = reverse("select_company")
         if safe_next:
@@ -329,6 +358,9 @@ def _finish_login(request, user, next_url: str = ""):
 
 def _redirect_after_login(user):
     from reports_app.dashboard_workflow import has_upload_perm, has_view_perm
+
+    if not active_companies_exist():
+        return redirect(reverse("setup_required"))
 
     companies = user_companies(user)
     if companies.count() > 1:

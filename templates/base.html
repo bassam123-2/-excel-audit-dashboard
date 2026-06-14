@@ -278,7 +278,7 @@
 
     <nav class="sb-nav">
         {% if user.is_authenticated %}
-            {% if can_upload_files and not needs_company_selection %}
+            {% if can_upload_files and not needs_company_selection and not no_companies_configured %}
             <div class="sb-section">{{ ui.section_uploads }}</div>
             <a href="{% url 'index' %}"
                class="sb-link {% if request.resolver_match.url_name == 'index' %}active{% endif %}">
@@ -286,7 +286,7 @@
             </a>
             {% endif %}
 
-            {% if can_view_dashboards and not needs_company_selection %}
+            {% if can_view_dashboards and not needs_company_selection and not no_companies_configured %}
             <div class="sb-section">{{ ui.section_reports }}</div>
             <a href="{% url 'dashboard_list' %}"
                class="sb-link {% if 'dashboard' in request.resolver_match.url_name|default:'' %}active{% endif %}">

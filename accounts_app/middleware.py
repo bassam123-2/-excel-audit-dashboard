@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from accounts_app.models import PASSWORD_MAX_AGE_DAYS, UserProfile
-from audit_app.company_access import get_active_company, user_must_select_company
+from audit_app.company_access import active_companies_exist, get_active_company, user_must_select_company
 
 
 class ActiveCompanyMiddleware:
@@ -24,6 +24,7 @@ class ActiveCompanyMiddleware:
         "/verify-2fa/",
         "/select-company/",
         "/switch-company/",
+        "/setup-required/",
         "/profile/",
         "/lang/switch/",
         "/api/",
@@ -41,7 +42,11 @@ class ActiveCompanyMiddleware:
 
             path = request.path
             if not self._is_exempt(path):
-                if user_must_select_company(user) and request.active_company is None:
+                if not active_companies_exist():
+                    setup_path = reverse("setup_required")
+                    if path != setup_path:
+                        return redirect(setup_path)
+                elif user_must_select_company(user) and request.active_company is None:
                     if path != reverse("select_company"):
                         return redirect("select_company")
 

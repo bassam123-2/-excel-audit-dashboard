@@ -275,6 +275,39 @@ class CompanyAccessTests(TestCase):
         self.assertFalse(ctx["can_review_dashboards"])
         self.assertTrue(ctx["needs_company_selection"])
 
+    def test_no_companies_blocks_app_and_redirects(self):
+        from django.contrib.auth.models import User
+        from django.test import RequestFactory
+
+        from reports_app.context_processors import ui_context
+
+        Company.objects.all().delete()
+        admin = User.objects.create_superuser(
+            "no_co_admin", password="Test@1234", email="noco@example.com"
+        )
+        factory = RequestFactory()
+        request = factory.get("/")
+        request.user = admin
+        request.session = {}
+        ctx = ui_context(request)
+        self.assertTrue(ctx["no_companies_configured"])
+        self.assertFalse(ctx["can_upload_files"])
+        self.assertFalse(ctx["can_view_dashboards"])
+        self.assertTrue(ctx["can_manage_companies"])
+
+        client = Client()
+        client.force_login(admin)
+        response = client.get("/")
+        self.assertRedirects(response, "/setup-required/")
+
+    def test_company_admin_form_shows_all_attachment_toggles(self):
+        from audit_app.admin_forms import CompanyAdminForm
+        from audit_app.models import ATTACHMENT_KIND_CODES
+
+        form = CompanyAdminForm()
+        for code in ATTACHMENT_KIND_CODES:
+            self.assertIn(f"att_{code}", form.fields)
+
     def test_multi_company_user_redirected_to_select_company(self):
         multi = User.objects.create_user(
             "multi_user", password="Test@1234", email="multi@example.com"
