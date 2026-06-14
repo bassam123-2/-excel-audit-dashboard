@@ -67,7 +67,7 @@ Check version: http://127.0.0.1:8000/api/version
 
 ## 6. Before you push to GitHub
 
-- Do **not** commit `smtp_config.json`, `.env`, `.venv/`, `dist/`, or real audit Excel with personal data
+- Do **not** commit `.env`, `.venv/`, `dist/`, or real audit Excel with personal data
 - Put a **small anonymized** sample in `examples/` if you add one
 
 ## 7. Common gotcha

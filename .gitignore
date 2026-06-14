@@ -24,8 +24,5 @@ tmp_*.pptx
 _pptx_inspect.txt
 _pv.txt
 
-# Secrets (keep example in dist/)
-smtp_config.json
-
 # Server-side application and error logs (never commit)
 logs/

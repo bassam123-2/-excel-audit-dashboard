@@ -12110,57 +12110,6 @@ def generate_finance_report(
     return html_out, audit_payload
 
 
-def _smtp_config_candidate_paths() -> list[Path]:
-    """Locations tried in order; first readable smtp_config.json wins."""
-    raw: list[Path] = []
-    # Only real config files — never smtp_config.example.json (template only).
-    names = ("smtp_config.json",)
-    env = os.environ.get("AI_EXCEL_SMTP_CONFIG", "").strip()
-    if env:
-        raw.append(Path(env).expanduser())
-    try:
-        cwd = Path.cwd().resolve()
-        for nm in names:
-            raw.append(cwd / nm)
-    except Exception:
-        pass
-    try:
-        argv0 = Path(sys.argv[0]).resolve()
-        if argv0.suffix.lower() in (".py", ".pyw"):
-            for nm in names:
-                raw.append(argv0.parent / nm)
-    except Exception:
-        pass
-    try:
-        sdir = Path(__file__).resolve().parent
-        for nm in names:
-            raw.append(sdir / nm)
-    except Exception:
-        pass
-    if sys.platform == "win32":
-        lad = os.environ.get("LOCALAPPDATA", "").strip()
-        if lad:
-            ldir = Path(lad) / "ai_excel_dashboard"
-            for nm in names:
-                raw.append(ldir / nm)
-    else:
-        cdir = Path.home() / ".config" / "ai_excel_dashboard"
-        for nm in names:
-            raw.append(cdir / nm)
-    seen: set[Path] = set()
-    paths: list[Path] = []
-    for p in raw:
-        try:
-            k = p.resolve()
-        except Exception:
-            k = p
-        if k in seen:
-            continue
-        seen.add(k)
-        paths.append(k)
-    return paths
-
-
 def _smtp_env_pick(*keys: str) -> str:
     for k in keys:
         v = os.environ.get(k, "").strip()
@@ -12170,7 +12119,7 @@ def _smtp_env_pick(*keys: str) -> str:
 
 
 def _smtp_config_from_env() -> dict[str, Any] | None:
-    """SMTP from CMD/session env (no JSON file). Tried before smtp_config.json paths."""
+    """SMTP from .env (via load_dotenv) or OS/session environment variables."""
     host = _smtp_env_pick("EXCEL_ARABIC_SMTP_HOST", "AI_EXCEL_SMTP_HOST")
     if not host:
         return None
@@ -12217,52 +12166,14 @@ def _smtp_config_from_env() -> dict[str, Any] | None:
 
 
 def load_smtp_config() -> dict[str, Any] | None:
-    env_cfg = _smtp_config_from_env()
-    if env_cfg is not None:
-        return env_cfg
-    for p in _smtp_config_candidate_paths():
-        try:
-            if not p.is_file():
-                continue
-            raw = json.loads(p.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                cfg = dict(raw)
-                pw = cfg.get("password")
-                if isinstance(pw, str):
-                    cfg["password"] = pw.replace(" ", "").strip()
-                return cfg
-        except Exception:
-            continue
-    return None
-
-
-def ensure_smtp_example_file(base_dir: str | Path) -> None:
-    """Drop a shareable SMTP template next to app/report outputs."""
+    """Load SMTP settings from project .env / environment variables only."""
     try:
-        root = Path(base_dir).resolve()
-        root.mkdir(parents=True, exist_ok=True)
-        p = root / "smtp_config.example.json"
-        if p.exists():
-            return
-        p.write_text(
-            json.dumps(
-                {
-                    "host": "smtp.gmail.com",
-                    "port": 587,
-                    "use_tls": True,
-                    "username": "your@gmail.com",
-                    "password": "your-app-password",
-                    "from": "your@gmail.com",
-                    "from_name": "ادارة المراجعة",
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        from dotenv import load_dotenv
+
+        load_dotenv(Path(__file__).resolve().parent / ".env")
     except Exception:
         pass
+    return _smtp_config_from_env()
 
 
 _OBS_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")

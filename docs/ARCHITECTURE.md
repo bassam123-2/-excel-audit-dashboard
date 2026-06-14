@@ -82,7 +82,7 @@ Legacy Flask-style “upload → HTML immediately” was removed. The active pat
 | `build_audit_observation_payload` | ~1096 | Rows + filters for audit UI |
 | `_audit_observation_row_is_usable` | ~829 | Drops empty trailing Excel rows |
 | `generate_finance_report` | ~2067 | Main HTML generator |
-| `load_smtp_config` | ~12126 | SMTP from env / file |
+| `load_smtp_config` | ~12168 | SMTP from `.env` / environment |
 
 Full index: **[CODE_MAP.md](CODE_MAP.md)**.
 

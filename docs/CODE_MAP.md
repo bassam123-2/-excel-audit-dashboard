@@ -66,7 +66,7 @@ flowchart LR
 
 | Symbol | ~Line | Role |
 |--------|-------|------|
-| `load_smtp_config`, `_smtp_config_from_env` | ~12120–12225 | Resolve SMTP from env/file |
+| `load_smtp_config`, `_smtp_config_from_env` | ~12120–12176 | Resolve SMTP from `.env` / environment |
 | `send_audit_observation_email_smtp` | ~13006 | Send observation email |
 | `parse_audit_plan_pptx_bytes` | ~13051 | Parse audit plan PPTX |
 | `send_obs_email` | — | `mail_app/views.py` — Django API wrapper |

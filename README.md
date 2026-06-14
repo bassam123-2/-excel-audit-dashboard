@@ -69,12 +69,21 @@ Full tree and “where to change what”: **[docs/FOLDER_MAP.md](docs/FOLDER_MAP
 | `examples/` | Optional anonymized sample `.xlsx` for testing |
 | `docs/EXCEL_SCHEMA.md` | Expected Excel columns and row rules |
 
-## SMTP (optional — send observation email)
+## SMTP (optional — send observation email and 2FA)
 
-1. Copy `smtp_config.example.json` → `smtp_config.json` in the project root.
-2. **Do not commit** `smtp_config.json` (it is in `.gitignore`).
+Set SMTP variables in **`.env`** in the project root (copy from `.env.example`). Restart the server after changes.
 
-Alternatively set environment variables (see `_smtp_config_from_env()` in `ai_excel_dashboard.py`), e.g. `AI_EXCEL_SMTP_HOST`, `AI_EXCEL_SMTP_USER`, `AI_EXCEL_SMTP_PASSWORD`.
+| Variable | Example |
+|----------|---------|
+| `AI_EXCEL_SMTP_HOST` | `smtp.gmail.com` |
+| `AI_EXCEL_SMTP_PORT` | `587` |
+| `AI_EXCEL_SMTP_USER` | `noreply@YourDomain.com` |
+| `AI_EXCEL_SMTP_PASSWORD` | `your-smtp-password` |
+| `AI_EXCEL_SMTP_FROM` | `noreply@YourDomain.com` |
+| `AI_EXCEL_SMTP_FROM_NAME` | `Audit Dashboard` |
+| `AI_EXCEL_SMTP_USE_TLS` | `true` |
+
+Verify: `python manage.py test_smtp` (add `--send --to you@example.com` to send a probe message).
 
 ## Web API (Django)
 

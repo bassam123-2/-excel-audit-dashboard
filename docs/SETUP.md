@@ -57,8 +57,12 @@ SMTP (optional — needed for observation email and 2FA):
 | `AI_EXCEL_SMTP_USER` | `noreply@YourDomain.com` |
 | `AI_EXCEL_SMTP_PASSWORD` | `your-smtp-password` |
 | `AI_EXCEL_SMTP_FROM` | `noreply@YourDomain.com` |
+| `AI_EXCEL_SMTP_FROM_NAME` | `Audit Dashboard` |
+| `AI_EXCEL_SMTP_USE_TLS` | `true` |
 
-Alternatively copy `smtp_config.example.json` → `smtp_config.json` in the project root (gitignored).
+All SMTP settings live in **`.env`** only. Restart Django after editing.
+
+Verify: `python manage.py test_smtp`
 
 ## 3. MySQL database
 

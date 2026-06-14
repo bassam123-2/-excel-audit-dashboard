@@ -9,8 +9,7 @@ excel-audit-dashboard/
 ├── README.md                    ← overview, APIs, SMTP
 ├── requirements.txt             ← runtime Python packages
 ├── requirements-dev.txt         ← pytest, ruff, black
-├── smtp_config.example.json     ← copy → smtp_config.json (never commit real config)
-├── .env.example                 ← copy → .env (secrets, DB, SMTP)
+├── .env.example                 ← copy → .env (secrets, DB, SMTP — sole SMTP source)
 │
 ├── manage.py                    ← ENTRY: Django commands / runserver
 ├── config/                      ← Django settings + urls (copy from config.example/)
@@ -59,9 +58,8 @@ excel-audit-dashboard/
 | Path | Why |
 |------|-----|
 | `config/` | Copied from `config.example/` per environment |
-| `.env` | Secrets |
+| `.env` | Secrets (DB, Django, SMTP) |
 | `.venv/` | Python virtual environment |
-| `smtp_config.json` | SMTP secrets |
 | `media/` | Uploads, generated HTML cache, decks |
 
 ## If you need to change…
