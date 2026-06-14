@@ -68,10 +68,10 @@ def has_delete_perm(user) -> bool:
 def has_delete_draft_perm(user, company: Company | None = None) -> bool:
     if not active_companies_exist():
         return False
-    if company is None:
-        return False
     if user.is_superuser:
         return True
+    if company is None:
+        return False
     return has_company_perm(user, company, "delete_draft")
 
 
@@ -80,15 +80,12 @@ def can_user_delete_dashboard(
     dashboard: Dashboard,
     company: Company | None = None,
 ) -> bool:
-    """Draft-only deletion scoped by company membership. Published dashboards are never deletable."""
+    """Superuser-only soft delete for any active dashboard (including published)."""
     if dashboard.is_deleted:
         return False
-    if dashboard.status == DashboardStatus.PUBLISHED:
-        return False
-    if dashboard.status != DashboardStatus.DRAFT:
-        return False
-    active = company or dashboard.company
-    return has_delete_draft_perm(user, active)
+    if has_delete_perm(user):
+        return True
+    return False
 
 
 def user_is_creator(user, dashboard: Dashboard) -> bool:

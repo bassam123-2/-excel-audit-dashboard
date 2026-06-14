@@ -1,6 +1,7 @@
 """URL routes for upload, dashboards, and /api/version."""
 
 from django.urls import path
+from django.views.generic import RedirectView
 
 from .views import (
     analyze,
@@ -17,12 +18,17 @@ from .views import (
 )
 
 urlpatterns = [
-    path("", index, name="index"),
+    path("", dashboard_list, name="dashboard_list"),
+    path("upload/", index, name="upload"),
+    path(
+        "dashboards/",
+        RedirectView.as_view(url="/", permanent=False),
+        name="dashboard_list_legacy",
+    ),
     path("analyze", analyze, name="analyze"),
     path("analyze/", analyze, name="analyze_slash"),
     path("api/version", api_version, name="api_version"),
     path("favicon.ico", favicon, name="favicon"),
-    path("dashboards/", dashboard_list, name="dashboard_list"),
     path("dashboards/<int:pk>/", dashboard_detail, name="dashboard_detail"),
     path("dashboards/<int:pk>/delete/", dashboard_delete, name="dashboard_delete"),
     path("dashboards/<int:pk>/restore/", dashboard_restore, name="dashboard_restore"),

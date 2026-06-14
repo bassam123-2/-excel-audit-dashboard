@@ -126,6 +126,13 @@ LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "excel-audit-dashboard",
+    }
+}
+
 # ── Centralized error tracking ────────────────────────────────────────
 # Error logs are written to BASE_DIR/logs/errors/ (server-side only).
 # Override ERROR_LOGGING_ENABLED in test settings to disable file output.

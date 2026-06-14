@@ -13,6 +13,21 @@
     <style>
         body { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f0f4f9; }
         .card-box { max-width: 390px; width: 100%; background: #fff; border-radius: 18px; padding: 2rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 30px rgba(0,0,0,.08); }
+        .btn.is-loading { pointer-events: none; opacity: .85; }
+        @keyframes btnSpin { to { transform: rotate(360deg); } }
+        .btn .btn-spinner {
+            width: 1rem; height: 1rem;
+            border: 2px solid rgba(255,255,255,.35);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: btnSpin .7s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .btn-link .btn-spinner {
+            border-color: rgba(13,110,253,.25);
+            border-top-color: #0d6efd;
+        }
     </style>
 </head>
 <body>
@@ -21,18 +36,34 @@
     <h2 class="h5 fw-bold">{{ ui.verify_2fa_title }}</h2>
     <p class="text-muted small">{{ subtitle }}</p>
     {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
-    <form method="post">
+    <form method="post" class="js-2fa-form">
         {% csrf_token %}
         <label class="form-label fw-semibold">{{ ui.verify_2fa_code_label }}</label>
         <input type="text" name="otp_code" class="form-control mb-3" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" placeholder="{{ ui.verify_2fa_code_ph }}" required autofocus>
-        <button type="submit" class="btn btn-primary w-100 mb-2">{{ ui.verify_2fa_submit }}</button>
+        <button type="submit" class="btn btn-primary w-100 mb-2" data-loading-text="{{ ui.verify_2fa_submit_loading }}">{{ ui.verify_2fa_submit }}</button>
     </form>
-    <form method="post" class="mt-2">
+    <form method="post" class="mt-2 js-2fa-form">
         {% csrf_token %}
         <input type="hidden" name="action" value="resend">
-        <button type="submit" class="btn btn-link w-100">{{ ui.verify_2fa_resend }}</button>
+        <button type="submit" class="btn btn-link w-100" data-loading-text="{{ ui.verify_2fa_resend_loading }}">{{ ui.verify_2fa_resend }}</button>
     </form>
     <a href="{% url 'logout' %}" class="btn btn-outline-secondary w-100 mt-2">{{ ui.nav_logout }}</a>
 </div>
+<script>
+document.querySelectorAll('.js-2fa-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        var btn = form.querySelector('button[type="submit"]');
+        if (!btn || btn.classList.contains('is-loading')) {
+            e.preventDefault();
+            return;
+        }
+        btn.classList.add('is-loading');
+        btn.setAttribute('aria-busy', 'true');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-spinner" role="status" aria-hidden="true"></span> ' +
+            (btn.getAttribute('data-loading-text') || '…');
+    });
+});
+</script>
 </body>
 </html>

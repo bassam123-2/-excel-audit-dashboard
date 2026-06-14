@@ -10,6 +10,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
@@ -86,6 +87,13 @@ def _has_view_perm(user, request) -> bool:
 
 def _has_delete_perm(user) -> bool:
     return has_delete_perm(user)
+
+
+def _wants_json(request) -> bool:
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return True
+    accept = request.headers.get("Accept", "")
+    return "application/json" in accept
 
 
 def _clear_dashboard_html_cache(dashboard: Dashboard) -> None:
@@ -222,7 +230,7 @@ def index(request):
             return redirect("dashboard_list")
         lang = request.session.get("ui_lang", "ar")
         messages.error(request, get_ui(lang)["alert_no_upload_perm"])
-        return redirect("login")
+        return redirect("profile")
 
     return _render_upload_page(request)
 
@@ -240,10 +248,10 @@ def analyze(request):
     if not _has_upload_perm(request.user, request):
         lang = request.session.get("ui_lang", "ar")
         messages.error(request, get_ui(lang)["alert_no_upload_perm"])
-        return redirect("index")
+        return redirect("upload")
 
     if request.method == "GET":
-        return redirect("index")
+        return redirect("upload")
     if request.method != "POST":
         return HttpResponse("Method not allowed", status=405)
 
@@ -323,7 +331,7 @@ def dashboard_list(request):
     if not _has_view_perm(request.user, request):
         lang = request.session.get("ui_lang", "ar")
         messages.error(request, get_ui(lang)["alert_no_view_perm"])
-        return redirect("index")
+        return redirect("profile")
 
     show_trash = request.GET.get("trash") == "1" and _has_delete_perm(request.user)
     if show_trash:
@@ -340,6 +348,13 @@ def dashboard_list(request):
         for dashboard in dashboards
         if can_user_delete_dashboard(request.user, dashboard, company)
     }
+    undo_deleted_pk = None
+    undo_deleted_name = ""
+    if _has_delete_perm(request.user) and not show_trash:
+        raw_deleted = request.GET.get("deleted", "").strip()
+        if raw_deleted.isdigit():
+            undo_deleted_pk = int(raw_deleted)
+            undo_deleted_name = request.GET.get("deleted_name", "").strip()
     return render(
         request,
         "reports_app/dashboard_list.html",
@@ -350,6 +365,8 @@ def dashboard_list(request):
                 request.user, company
             ),
             "show_trash": show_trash,
+            "undo_deleted_pk": undo_deleted_pk,
+            "undo_deleted_name": undo_deleted_name,
         },
     )
 
@@ -359,7 +376,7 @@ def dashboard_detail(request, pk: int):
     if not _has_view_perm(request.user, request):
         lang = request.session.get("ui_lang", "ar")
         messages.error(request, get_ui(lang)["alert_no_view_perm"])
-        return redirect("index")
+        return redirect("profile")
 
     dashboard = _resolve_dashboard_request(
         request,
@@ -398,16 +415,22 @@ def dashboard_delete(request, pk: int):
         raise Http404
 
     company = _active_company(request)
-    if dashboard.status == DashboardStatus.PUBLISHED:
-        messages.error(request, ui.get("dl_delete_published_forbidden", "Published dashboards cannot be deleted."))
-        return redirect("dashboard_detail", pk=pk)
-
     if not can_user_delete_dashboard(request.user, dashboard, company):
         messages.error(request, ui["alert_no_delete_perm"])
         return redirect("dashboard_list")
 
     name = dashboard.name
     soft_delete_dashboard(dashboard, request.user)
+
+    if _wants_json(request):
+        return JsonResponse({"ok": True, "pk": pk, "name": name})
+
+    if _has_delete_perm(request.user):
+        from urllib.parse import quote
+
+        url = reverse("dashboard_list") + f"?deleted={pk}&deleted_name={quote(name)}"
+        return redirect(url)
+
     messages.success(request, ui["dl_delete_success"] + f" ({name})")
     return redirect("dashboard_list")
 

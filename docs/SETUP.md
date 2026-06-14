@@ -23,6 +23,32 @@ Optional dev tools (tests, lint):
 pip install -r requirements-dev.txt
 ```
 
+## اختبار النظام بالكامل
+
+بعد أي تعديل على الكود، شغّل مجموعة الاختبارات كاملة:
+
+```powershell
+python scripts/run_tests.py
+```
+
+أو مباشرة:
+
+```powershell
+pytest
+```
+
+اختبارات سريعة (بدون `slow`):
+
+```powershell
+pytest -m "not slow" -q
+```
+
+Smoke tests للتحسينات الأخيرة:
+
+```powershell
+pytest -m regression -q
+```
+
 ## 2. Bootstrap configuration (required)
 
 The repo ships templates only. Copy them before first run:

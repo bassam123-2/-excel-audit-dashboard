@@ -102,6 +102,16 @@
         }
         .btn-signin:hover { opacity: .9; transform: translateY(-1px); }
         .btn-signin:active { transform: translateY(0); }
+        .btn-signin.is-loading { pointer-events: none; opacity: .85; }
+        @keyframes btnSpin { to { transform: rotate(360deg); } }
+        .btn-signin .btn-spinner {
+            width: 1rem; height: 1rem;
+            border: 2px solid rgba(255,255,255,.35);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: btnSpin .7s linear infinite;
+            flex-shrink: 0;
+        }
         .alert { border-radius: 10px; border: none; font-size: .84rem; }
         .notice { text-align: center; margin-top: 1.25rem; font-size: .76rem; color: #94a3b8; }
 
@@ -148,7 +158,7 @@
         <div class="alert alert-{{ message.tags|default:'info' }} mb-2">{{ message }}</div>
         {% endfor %}
 
-        <form method="post" action="{% url 'login' %}">
+        <form method="post" action="{% url 'login' %}" class="js-login-form">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ next }}">
             <div class="mb-3">
@@ -173,7 +183,7 @@
                            autocomplete="current-password" required>
                 </div>
             </div>
-            <button type="submit" class="btn-signin">
+            <button type="submit" class="btn-signin" data-loading-text="{{ ui.login_btn_loading }}">
                 <i class="bi bi-box-arrow-in-left"></i> {{ ui.login_btn }}
             </button>
         </form>
@@ -223,7 +233,7 @@
         <div class="alert alert-{{ message.tags|default:'info' }} mb-2">{{ message }}</div>
         {% endfor %}
 
-        <form method="post" action="{% url 'login' %}">
+        <form method="post" action="{% url 'login' %}" class="js-login-form">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ next }}">
             <div class="mb-3">
@@ -248,7 +258,7 @@
                     </span>
                 </div>
             </div>
-            <button type="submit" class="btn-signin">
+            <button type="submit" class="btn-signin" data-loading-text="{{ ui.login_btn_loading }}">
                 <i class="bi bi-box-arrow-in-right"></i> {{ ui.login_btn }}
             </button>
         </form>
@@ -264,6 +274,20 @@ document.getElementById('pwToggle').addEventListener('click', function () {
     var ico = document.getElementById('eyeIco');
     inp.type = inp.type === 'password' ? 'text' : 'password';
     ico.className = inp.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+});
+document.querySelectorAll('.js-login-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        var btn = form.querySelector('.btn-signin');
+        if (!btn || btn.classList.contains('is-loading')) {
+            e.preventDefault();
+            return;
+        }
+        btn.classList.add('is-loading');
+        btn.setAttribute('aria-busy', 'true');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-spinner" role="status" aria-hidden="true"></span> ' +
+            (btn.getAttribute('data-loading-text') || '…');
+    });
 });
 </script>
 </body>

@@ -22,6 +22,7 @@ from audit_app.company_access import (
     user_companies,
     user_must_select_company,
 )
+from accounts_app.navigation import resolve_default_home
 from reports_app.dashboard_workflow import dashboard_url_belongs_to_company
 from web_strings import get_ui
 
@@ -32,45 +33,71 @@ def login_view(request):
             return redirect("setup_required")
         if user_must_select_company(request.user) and not get_active_company(request):
             return redirect("select_company")
-        return _redirect_after_login(request.user)
+        return redirect(resolve_default_home(request.user, request))
 
     lang = request.session.get("ui_lang", "ar")
     ui = get_ui(lang)
 
     if request.method == "POST":
-        form = AuthenticationForm(request, data=request.POST)
-        if form.is_valid():
-            user = form.get_user()
-            profile = getattr(user, "profile", None)
-            if profile and profile.is_deleted:
-                form.add_error(None, ui.get("login_err_deleted", "This account has been deactivated."))
-            elif profile and profile.two_factor_enabled:
-                from accounts_app.services.two_factor import initiate_two_factor
+        from accounts_app.services.login_rate_limit import (
+            acquire_login_lock,
+            clear_failed_logins,
+            is_login_blocked,
+            record_failed_login,
+            release_login_lock,
+        )
 
-                request.session["pending_2fa_user_id"] = user.pk
-                request.session["pending_2fa_next"] = (
-                    request.POST.get("next") or request.GET.get("next") or ""
-                )
-                try:
-                    initiate_two_factor(user, lang)
-                except ValueError as exc:
-                    request.session.pop("pending_2fa_user_id", None)
-                    request.session.pop("pending_2fa_next", None)
-                    if str(exc) == "smtp_not_configured":
-                        form.add_error(None, ui.get("login_err_smtp", "Email verification is unavailable."))
-                    elif str(exc) == "no_email_for_2fa":
-                        form.add_error(None, ui.get("login_err_no_email", "No email address on this account."))
+        username = (request.POST.get("username") or "").strip()
+        client_ip = request.META.get("REMOTE_ADDR", "")
+
+        if is_login_blocked(username, client_ip):
+            form = AuthenticationForm(request, data=request.POST)
+            form.add_error(None, ui.get("login_err_rate_limit", "Too many attempts. Try again later."))
+        elif not acquire_login_lock(username):
+            form = AuthenticationForm(request, data=request.POST)
+            form.add_error(None, ui.get("login_err_rate_limit", "A sign-in request is already in progress."))
+        else:
+            try:
+                form = AuthenticationForm(request, data=request.POST)
+                if form.is_valid():
+                    user = form.get_user()
+                    profile = getattr(user, "profile", None)
+                    if profile and profile.is_deleted:
+                        form.add_error(None, ui.get("login_err_deleted", "This account has been deactivated."))
+                        record_failed_login(username, client_ip)
+                    elif profile and profile.two_factor_enabled:
+                        from accounts_app.services.two_factor import initiate_two_factor
+
+                        request.session["pending_2fa_user_id"] = user.pk
+                        request.session["pending_2fa_next"] = (
+                            request.POST.get("next") or request.GET.get("next") or ""
+                        )
+                        try:
+                            initiate_two_factor(user, lang)
+                        except ValueError as exc:
+                            request.session.pop("pending_2fa_user_id", None)
+                            request.session.pop("pending_2fa_next", None)
+                            if str(exc) == "smtp_not_configured":
+                                form.add_error(None, ui.get("login_err_smtp", "Email verification is unavailable."))
+                            elif str(exc) == "no_email_for_2fa":
+                                form.add_error(None, ui.get("login_err_no_email", "No email address on this account."))
+                            else:
+                                form.add_error(None, ui.get("login_err_2fa_send", "Could not send verification code."))
+                        else:
+                            clear_failed_logins(username, client_ip)
+                            return redirect("verify_2fa")
                     else:
-                        form.add_error(None, ui.get("login_err_2fa_send", "Could not send verification code."))
+                        clear_failed_logins(username, client_ip)
+                        login(request, user)
+                        return _finish_login(
+                            request,
+                            user,
+                            request.POST.get("next") or request.GET.get("next") or "",
+                        )
                 else:
-                    return redirect("verify_2fa")
-            else:
-                login(request, user)
-                return _finish_login(
-                    request,
-                    user,
-                    request.POST.get("next") or request.GET.get("next") or "",
-                )
+                    record_failed_login(username, client_ip)
+            finally:
+                release_login_lock(username)
     else:
         form = AuthenticationForm(request)
 
@@ -190,7 +217,7 @@ def switch_language(request):
 @login_required
 def setup_required_view(request):
     if active_companies_exist():
-        return _redirect_after_login(request.user)
+        return redirect(resolve_default_home(request.user, request))
 
     lang = request.session.get("ui_lang", "ar")
     ui = get_ui(lang)
@@ -221,14 +248,14 @@ def select_company_view(request):
 
     if companies.count() == 1:
         set_active_company(request, companies.first().pk)
-        return redirect("index")
+        return redirect(resolve_default_home(request.user, request))
 
     if request.method == "POST":
         raw_id = request.POST.get("company_id", "").strip()
         if raw_id.isdigit() and set_active_company(request, int(raw_id)):
-            next_url = request.POST.get("next") or reverse("index")
+            next_url = request.POST.get("next") or resolve_default_home(request.user, request)
             if not next_url.startswith("/") or next_url.startswith("//"):
-                next_url = reverse("index")
+                next_url = resolve_default_home(request.user, request)
             return redirect(next_url)
         messages.error(request, ui.get("company_switch_invalid", "Invalid company selection."))
 
@@ -245,9 +272,9 @@ def switch_company_view(request):
     lang = request.session.get("ui_lang", "ar")
     ui = get_ui(lang)
     raw_id = request.POST.get("company_id", "").strip()
-    next_url = request.POST.get("next") or reverse("index")
+    next_url = request.POST.get("next") or resolve_default_home(request.user, request)
     if not next_url.startswith("/") or next_url.startswith("//"):
-        next_url = reverse("index")
+        next_url = resolve_default_home(request.user, request)
 
     if raw_id.isdigit() and set_active_company(request, int(raw_id)):
         active = get_active_company(request)
@@ -358,12 +385,10 @@ def _finish_login(request, user, next_url: str = ""):
 
     if safe_next:
         return redirect(safe_next)
-    return _redirect_after_login(user)
+    return redirect(resolve_default_home(user, request))
 
 
-def _redirect_after_login(user):
-    from reports_app.dashboard_workflow import has_upload_perm, has_view_perm
-
+def _redirect_after_login(user, request=None):
     if not active_companies_exist():
         return redirect(reverse("setup_required"))
 
@@ -371,11 +396,4 @@ def _redirect_after_login(user):
     if companies.count() > 1:
         return redirect(reverse("select_company"))
 
-    active = companies.first() if companies.count() == 1 else None
-    if has_upload_perm(user, active):
-        return redirect(reverse("index"))
-    if has_view_perm(user, active):
-        return redirect(reverse("dashboard_list"))
-    if companies.exists():
-        return redirect(reverse("select_company"))
-    return redirect(reverse("profile"))
+    return redirect(resolve_default_home(user, request))

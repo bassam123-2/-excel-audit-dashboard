@@ -280,8 +280,8 @@
         {% if user.is_authenticated %}
             {% if can_upload_files and not needs_company_selection and not no_companies_configured %}
             <div class="sb-section">{{ ui.section_uploads }}</div>
-            <a href="{% url 'index' %}"
-               class="sb-link {% if request.resolver_match.url_name == 'index' %}active{% endif %}">
+            <a href="{% url 'upload' %}"
+               class="sb-link {% if request.resolver_match.url_name == 'upload' %}active{% endif %}">
                 <i class="bi bi-cloud-upload-fill"></i> {{ ui.nav_upload }}
             </a>
             {% endif %}
@@ -296,7 +296,7 @@
 
             {% if user.is_staff %}
             <div class="sb-section">{{ ui.section_admin }}</div>
-            <a href="{% url 'admin:index' %}" target="_blank" class="sb-link">
+            <a href="{% url 'admin:index' %}" class="sb-link">
                 <i class="bi bi-shield-lock-fill"></i> {{ ui.nav_admin }}
             </a>
             {% endif %}

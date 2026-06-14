@@ -142,7 +142,7 @@ class CompanyAccessTests(TestCase):
         )
         self.assertEqual(viewer_ids, {dash_a.pk, dash_b.pk})
 
-    def test_delete_draft_requires_company_permission(self):
+    def test_delete_draft_superuser_only(self):
         from reports_app.dashboard_workflow import can_user_delete_dashboard
 
         deleter = User.objects.create_user(
@@ -155,6 +155,9 @@ class CompanyAccessTests(TestCase):
             company=self.btc,
             can_delete_drafts=True,
         )
+        superuser = User.objects.create_superuser(
+            "su_deleter", "su@example.com", "Test@1234"
+        )
 
         draft = Dashboard.objects.create(
             name="Draft Dash",
@@ -165,10 +168,12 @@ class CompanyAccessTests(TestCase):
         )
         published = self._dashboard(self.btc, deleter, "Published Dash")
 
-        self.assertTrue(can_user_delete_dashboard(deleter, draft, self.btc))
+        self.assertFalse(can_user_delete_dashboard(deleter, draft, self.btc))
         self.assertFalse(can_user_delete_dashboard(deleter, published, self.btc))
+        self.assertTrue(can_user_delete_dashboard(superuser, draft, self.btc))
+        self.assertTrue(can_user_delete_dashboard(superuser, published, self.btc))
 
-    def test_published_dashboard_not_deletable_via_view(self):
+    def test_published_dashboard_not_deletable_by_non_superuser(self):
         owner = User.objects.create_user(
             "pub_owner", password="Test@1234", email="pub@example.com"
         )
@@ -387,6 +392,21 @@ class CompanyAccessTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/select-company/", response.url)
 
+    def test_login_redirects_to_dashboard_list(self):
+        client = Client()
+        response = client.post(
+            "/login/",
+            {"username": "btc_uploader", "password": "Test@1234"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/")
+
+    def test_uploader_can_open_upload_page(self):
+        client = Client()
+        client.post("/login/", {"username": "btc_uploader", "password": "Test@1234"})
+        response = client.get("/upload/")
+        self.assertEqual(response.status_code, 200)
+
     def _multi_company_user(self):
         multi = User.objects.create_user(
             "multi_ctx", password="Test@1234", email="multi@example.com"
@@ -423,7 +443,7 @@ class CompanyAccessTests(TestCase):
             {"company_id": self.nat.pk, "next": detail_url},
         )
         self.assertEqual(response.status_code, 302)
-        self.assertIn("/dashboards/", response.url)
+        self.assertIn(response.url.rstrip("/"), ("/", ""))
         self.assertNotIn(f"/dashboards/{btc_dash.pk}/", response.url)
 
     def test_dashboard_detail_auto_switches_active_company(self):

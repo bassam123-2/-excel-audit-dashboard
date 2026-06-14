@@ -98,7 +98,7 @@
         </button>
         {% endif %}
         {% if can_resubmit %}
-        <a href="{% url 'index' %}?resubmit={{ dashboard.pk }}"
+        <a href="{% url 'upload' %}?resubmit={{ dashboard.pk }}"
            class="btn btn-sm btn-warning d-flex align-items-center gap-1">
             <i class="bi bi-arrow-repeat"></i>
             {% if dashboard.status == "draft" %}{{ ui.wf_edit_draft_btn }}{% else %}{{ ui.wf_resubmit_btn }}{% endif %}
@@ -109,7 +109,7 @@
             <i class="bi bi-box-arrow-up-right"></i> {{ ui.dd_open_new }}
         </a>
         {% if can_upload_files %}
-        <a href="{% url 'index' %}" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
+        <a href="{% url 'upload' %}" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
             <i class="bi bi-plus-lg"></i> {{ ui.dd_new_btn }}
         </a>
         {% endif %}
