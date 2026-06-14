@@ -1,3 +1,4 @@
+"""Dashboard, Company, UploadSession, and audit observation persistence models."""
 from __future__ import annotations
 
 from django.conf import settings

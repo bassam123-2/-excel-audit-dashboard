@@ -1,3 +1,5 @@
+"""Django app config for report upload and dashboard views."""
+
 from django.apps import AppConfig
 
 

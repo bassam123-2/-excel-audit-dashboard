@@ -1,3 +1,4 @@
+"""Inject UI language strings into every template context."""
 from __future__ import annotations
 
 import os

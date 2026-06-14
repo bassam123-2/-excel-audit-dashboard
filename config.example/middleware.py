@@ -1,3 +1,4 @@
+"""Request tracking, UI language sync, and error logging middleware."""
 from __future__ import annotations
 
 import uuid

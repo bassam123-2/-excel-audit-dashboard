@@ -1,3 +1,4 @@
+"""Add X-Dashboard-Version header to HTML responses."""
 from __future__ import annotations
 
 from ai_excel_dashboard import REPORT_VERSION

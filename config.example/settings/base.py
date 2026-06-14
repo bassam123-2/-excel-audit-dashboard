@@ -1,3 +1,4 @@
+"""Shared Django settings: apps, middleware, DB, auth, logging."""
 from __future__ import annotations
 
 import os

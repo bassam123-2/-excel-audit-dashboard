@@ -1,3 +1,5 @@
+"""URL routes for login, 2FA, profile, and company selection."""
+
 from django.urls import path
 
 from .views import (

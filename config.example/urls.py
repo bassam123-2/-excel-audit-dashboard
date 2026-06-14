@@ -1,3 +1,5 @@
+"""Root URL configuration wiring all Django apps."""
+
 from django.conf import settings
 from django.conf.urls.static import static
 from django.conf.urls.i18n import i18n_patterns

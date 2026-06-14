@@ -1,3 +1,5 @@
+"""Test overlay: in-memory SQLite for pytest."""
+
 from .base import *  # noqa: F403,F401
 
 ERROR_LOGGING_ENABLED = False

@@ -1,3 +1,4 @@
+"""Upload form, dashboard CRUD, serve HTML, and version API."""
 from __future__ import annotations
 
 import sys
@@ -46,7 +47,6 @@ from .dashboard_workflow import (
 )
 from .services.report_generation import (
     build_attachment_form_slots,
-    html_no_cache_response,
     version_payload,
     generate_from_db_data,
     inject_web_mail_api,

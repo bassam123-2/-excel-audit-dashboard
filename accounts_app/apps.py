@@ -1,3 +1,5 @@
+"""Django app config for accounts (auth extensions)."""
+
 from django.apps import AppConfig
 
 

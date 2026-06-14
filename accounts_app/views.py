@@ -1,3 +1,4 @@
+"""Authentication views: login, 2FA, profile, password expiry, company selection."""
 from __future__ import annotations
 
 from django.contrib import messages

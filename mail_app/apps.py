@@ -1,3 +1,5 @@
+"""Django app config for mail and PPTX parse APIs."""
+
 from django.apps import AppConfig
 
 

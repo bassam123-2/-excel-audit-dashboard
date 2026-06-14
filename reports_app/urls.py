@@ -1,3 +1,5 @@
+"""URL routes for upload, dashboards, and /api/version."""
+
 from django.urls import path
 
 from .views import (

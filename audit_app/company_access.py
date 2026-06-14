@@ -1,3 +1,4 @@
+"""Multi-tenant company access: session company, Excel validation, membership permissions."""
 from __future__ import annotations
 
 from django.db.models import QuerySet
@@ -93,6 +94,7 @@ def set_active_company(request, company_id: int) -> bool:
 
 
 def get_active_company(request) -> Company | None:
+    """Return the company stored in session, auto-selecting when the user has only one."""
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         return None
 
@@ -132,6 +134,7 @@ def validate_excel_company_for_tenant(
     *,
     locale: str = "en",
 ) -> None:
+    """Raise ValueError if any Excel Company value does not match the active tenant."""
     from dashboard_locale import tr
 
     if not excel_company_names:

@@ -1,3 +1,4 @@
+"""Auto-create UserProfile when a User is created."""
 from __future__ import annotations
 
 from django.contrib.auth.models import User

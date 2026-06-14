@@ -1,3 +1,4 @@
+"""UserProfile and password-expiry settings linked to Django User."""
 from __future__ import annotations
 
 from datetime import timedelta

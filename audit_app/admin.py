@@ -1,3 +1,5 @@
+"""Django admin for companies, dashboards, memberships, and users."""
+
 from django.contrib import admin, messages
 from django.contrib.admin.options import IS_POPUP_VAR, TO_FIELD_VAR
 from django.contrib.admin.utils import unquote

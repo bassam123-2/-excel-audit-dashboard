@@ -1,3 +1,4 @@
+"""Dashboard permissions and draft/approve/reject/soft-delete workflow."""
 from __future__ import annotations
 
 import re

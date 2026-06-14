@@ -1,3 +1,4 @@
+"""Optional email OTP: generate, verify, and send via SMTP."""
 from __future__ import annotations
 
 import hashlib

@@ -1,3 +1,4 @@
+"""Password expiry redirect and active-company session enforcement."""
 from __future__ import annotations
 
 from django.shortcuts import redirect
