@@ -205,16 +205,23 @@ class _CompanyAdminFormBase(forms.ModelForm):
                 if setting is not None:
                     self.fields[field_name].initial = setting.is_enabled
 
+    def save_attachment_settings(self, company: Company) -> None:
+        """Persist attachment toggles (Admin saves the company with commit=False first)."""
+        if not company.pk or not getattr(self, "cleaned_data", None):
+            return
+        for code in ATTACHMENT_KIND_CODES:
+            field_name = company_attachment_field_name(code)
+            enabled = self.cleaned_data.get(field_name, False)
+            CompanyAttachmentSetting.objects.update_or_create(
+                company=company,
+                attachment_kind=code,
+                defaults={"is_enabled": bool(enabled)},
+            )
+
     def save(self, commit=True):
         company = super().save(commit=commit)
-        if commit:
-            for code in ATTACHMENT_KIND_CODES:
-                enabled = self.cleaned_data.get(company_attachment_field_name(code), True)
-                CompanyAttachmentSetting.objects.update_or_create(
-                    company=company,
-                    attachment_kind=code,
-                    defaults={"is_enabled": bool(enabled)},
-                )
+        if commit and company.pk:
+            self.save_attachment_settings(company)
         return company
 
 

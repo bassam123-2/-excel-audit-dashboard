@@ -308,6 +308,40 @@ class CompanyAccessTests(TestCase):
         for code in ATTACHMENT_KIND_CODES:
             self.assertIn(f"att_{code}", form.fields)
 
+    def test_company_admin_form_persists_disabled_attachments(self):
+        from audit_app.admin_forms import (
+            ATTACHMENT_KIND_CODES,
+            CompanyAdminForm,
+            company_attachment_field_name,
+        )
+
+        company = Company.objects.create(code="TST", name="Test Co")
+        data = {
+            "code": "TST",
+            "name": "Test Co",
+            "is_active": "on",
+            "excel_company_names": "[]",
+        }
+        for code in ATTACHMENT_KIND_CODES:
+            field_name = company_attachment_field_name(code)
+            if code == "deck":
+                continue
+            data[field_name] = "on"
+
+        form = CompanyAdminForm(data=data, instance=company)
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save(commit=False)
+        form.save_attachment_settings(company)
+
+        deck = CompanyAttachmentSetting.objects.get(
+            company=company, attachment_kind="deck"
+        )
+        high_risk = CompanyAttachmentSetting.objects.get(
+            company=company, attachment_kind="highRisk"
+        )
+        self.assertFalse(deck.is_enabled)
+        self.assertTrue(high_risk.is_enabled)
+
     def test_multi_company_user_redirected_to_select_company(self):
         multi = User.objects.create_user(
             "multi_user", password="Test@1234", email="multi@example.com"
