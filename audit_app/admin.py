@@ -27,6 +27,7 @@ from .admin_forms import (
     CompanyAdminForm,
     MandatoryPasswordAdminChangeForm,
     MandatoryPasswordAdminCreationForm,
+    apply_user_profile_form,
     company_attachment_field_name,
 )
 from .models import (
@@ -192,7 +193,17 @@ class ProtectedUserAdmin(BaseUserAdmin):
 
     fieldsets = (
         (None, {"fields": ("username",)}),
-        (_("Personal info"), {"fields": ("first_name", "last_name", "email", "job_title", "two_factor_enabled", "password_expiry_enabled")}),
+        (_("Personal info"), {
+            "fields": (
+                "first_name",
+                "last_name",
+                "email",
+                "job_title",
+                "two_factor_enabled",
+                "password_expiry_enabled",
+                "receive_workflow_emails",
+            ),
+        }),
         (
             _("Permissions"),
             {
@@ -230,10 +241,23 @@ class ProtectedUserAdmin(BaseUserAdmin):
         ),
     )
 
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        if isinstance(form, (MandatoryPasswordAdminCreationForm, AdminUserChangeForm)):
+            apply_user_profile_form(form.instance, form.cleaned_data)
+
     def get_fieldsets(self, request, obj=None):
         if obj is None:
             return self.add_fieldsets
         fieldsets = super().get_fieldsets(request, obj)
+        if obj is not None and not obj.is_superuser:
+            cleaned = []
+            for name, opts in fieldsets:
+                fields = tuple(
+                    f for f in opts.get("fields", ()) if f != "receive_workflow_emails"
+                )
+                cleaned.append((name, {**opts, "fields": fields}))
+            fieldsets = cleaned
         if request.user.is_superuser:
             return fieldsets
         cleaned = []
@@ -367,6 +391,8 @@ class ProtectedUserAdmin(BaseUserAdmin):
             rf += ["is_superuser", "user_permissions"]
         if not self._can_manage_user_security(request):
             rf += ["two_factor_enabled", "password_expiry_enabled"]
+            if obj is None or obj.is_superuser:
+                rf += ["receive_workflow_emails"]
         return rf
 
     def _can_manage_user_security(self, request) -> bool:

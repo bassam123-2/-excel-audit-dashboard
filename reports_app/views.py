@@ -1,6 +1,7 @@
 """Upload form, dashboard CRUD, serve HTML, and version API."""
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 import shutil
@@ -54,6 +55,8 @@ from .services.report_generation import (
     report_locale_for_dashboard,
     store_upload_to_db,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ── Permission helpers ────────────────────────────────────────────────
@@ -312,6 +315,21 @@ def analyze(request):
             messages.success(request, ui.get("wf_resubmit_success", ui["upload_success"]))
     else:
         messages.success(request, ui.get("upload_success_draft", ui["upload_success"]))
+
+    from accounts_app.services.workflow_email import notify_reviewers_pending
+
+    submit_kind = "new"
+    if resubmit_dashboard:
+        submit_kind = "edit" if was_draft_edit else "resubmit"
+    try:
+        notify_reviewers_pending(
+            dashboard,
+            base_url=request.build_absolute_uri("/"),
+            submit_kind=submit_kind,
+        )
+    except Exception:
+        logger.exception("Failed to send pending-review notification for dashboard %s", dashboard.pk)
+
     return redirect("dashboard_list")
 
 
@@ -566,6 +584,18 @@ def dashboard_approve(request, pk: int):
 
     approve_dashboard(dashboard, request.user)
     messages.success(request, ui.get("wf_approve_success", "Dashboard published."))
+
+    from accounts_app.services.workflow_email import notify_viewers_published
+
+    try:
+        notify_viewers_published(
+            dashboard,
+            base_url=request.build_absolute_uri("/"),
+            reviewer=request.user,
+        )
+    except Exception:
+        logger.exception("Failed to send publish notification for dashboard %s", dashboard.pk)
+
     return redirect("dashboard_list")
 
 
@@ -602,6 +632,19 @@ def dashboard_reject(request, pk: int):
     _clear_dashboard_html_cache(dashboard)
     dashboard.save(update_fields=["html_file"])
     messages.success(request, ui.get("wf_reject_success", "Dashboard rejected."))
+
+    from accounts_app.services.workflow_email import notify_creator_rejected
+
+    try:
+        notify_creator_rejected(
+            dashboard,
+            base_url=request.build_absolute_uri("/"),
+            reason=reason,
+            reviewer=request.user,
+        )
+    except Exception:
+        logger.exception("Failed to send rejection notification for dashboard %s", dashboard.pk)
+
     return redirect("dashboard_list")
 
 

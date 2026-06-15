@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from django.shortcuts import redirect
 from django.urls import reverse
+from urllib.parse import quote
 
 from accounts_app.models import UserProfile
 from audit_app.company_access import active_companies_exist, get_active_company, user_must_select_company
@@ -45,8 +46,10 @@ class ActiveCompanyMiddleware:
                     if path != setup_path:
                         return redirect(setup_path)
                 elif user_must_select_company(user) and request.active_company is None:
-                    if path != reverse("select_company"):
-                        return redirect("select_company")
+                    select_path = reverse("select_company")
+                    if path != select_path and not path.startswith(f"{select_path}?"):
+                        next_path = quote(request.get_full_path())
+                        return redirect(f"{select_path}?next={next_path}")
 
         return self.get_response(request)
 

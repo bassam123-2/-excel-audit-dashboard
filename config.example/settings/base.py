@@ -126,6 +126,13 @@ LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
 
+# Workflow notification emails are sent in a background thread (OTP stays synchronous).
+EMAIL_DISPATCH_SYNC = os.environ.get("EMAIL_DISPATCH_SYNC", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",

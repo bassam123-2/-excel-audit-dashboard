@@ -58,6 +58,27 @@ def _save_user_password_expiry(user, enabled: bool) -> None:
     profile.save(update_fields=["password_expiry_enabled"])
 
 
+def _save_user_workflow_emails(user, enabled: bool) -> None:
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile.receive_workflow_emails = bool(enabled)
+    profile.save(update_fields=["receive_workflow_emails"])
+
+
+def apply_user_profile_form(user, cleaned_data: dict) -> None:
+    """Persist profile fields from admin user forms (call after the User row exists)."""
+    if not user.pk:
+        return
+    _save_user_job_title(user, cleaned_data.get("job_title", ""))
+    _save_user_two_factor(user, cleaned_data.get("two_factor_enabled", False))
+    _save_user_password_expiry(
+        user, cleaned_data.get("password_expiry_enabled", True)
+    )
+    if user.is_superuser:
+        _save_user_workflow_emails(
+            user, cleaned_data.get("receive_workflow_emails", False)
+        )
+
+
 def _initial_job_title(user) -> str:
     if not user.pk:
         return ""
@@ -65,6 +86,12 @@ def _initial_job_title(user) -> str:
         return user.profile.job_title
     except UserProfile.DoesNotExist:
         return ""
+
+
+def _form_data_requests_superuser(form: forms.BaseForm) -> bool:
+    if not form.data:
+        return False
+    return form.data.get("is_superuser") in ("on", "true", "1", True)
 
 
 class MandatoryPasswordAdminCreationForm(UserCreationForm):
@@ -119,11 +146,8 @@ class MandatoryPasswordAdminCreationForm(UserCreationForm):
 
     def save(self, commit=True):
         user = super().save(commit=commit)
-        _save_user_job_title(user, self.cleaned_data.get("job_title", ""))
-        _save_user_two_factor(user, self.cleaned_data.get("two_factor_enabled", False))
-        _save_user_password_expiry(
-            user, self.cleaned_data.get("password_expiry_enabled", True)
-        )
+        if user.pk:
+            apply_user_profile_form(user, self.cleaned_data)
         return user
 
 
@@ -146,6 +170,14 @@ class AdminUserChangeForm(UserChangeForm):
         required=False,
         help_text=_("When enabled, the user must change their password every 180 days."),
     )
+    receive_workflow_emails = forms.BooleanField(
+        label=_("Receive workflow notification emails"),
+        required=False,
+        help_text=_(
+            "Superuser accounts only. Enable to receive dashboard workflow emails "
+            "(pending review, publish, etc.) on this support account."
+        ),
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -160,6 +192,15 @@ class AdminUserChangeForm(UserChangeForm):
         self.fields["password_expiry_enabled"].initial = (
             profile.password_expiry_enabled if profile else True
         )
+        workflow_field = self.fields.pop("receive_workflow_emails", None)
+        show_workflow_emails = self.instance.is_superuser or _form_data_requests_superuser(
+            self
+        )
+        if show_workflow_emails and workflow_field is not None:
+            self.fields["receive_workflow_emails"] = workflow_field
+            self.fields["receive_workflow_emails"].initial = (
+                profile.receive_workflow_emails if profile else False
+            )
         if "email" in self.fields:
             self.fields["email"].required = True
             self.fields["email"].widget = forms.EmailInput(
@@ -171,13 +212,8 @@ class AdminUserChangeForm(UserChangeForm):
 
     def save(self, commit=True):
         user = super().save(commit=commit)
-        _save_user_job_title(user, self.cleaned_data.get("job_title", ""))
-        _save_user_two_factor(
-            user, self.cleaned_data.get("two_factor_enabled", False)
-        )
-        _save_user_password_expiry(
-            user, self.cleaned_data.get("password_expiry_enabled", True)
-        )
+        if user.pk:
+            apply_user_profile_form(user, self.cleaned_data)
         return user
 
 

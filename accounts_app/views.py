@@ -27,8 +27,29 @@ from reports_app.dashboard_workflow import dashboard_url_belongs_to_company
 from web_strings import get_ui
 
 
+def _safe_next_url(raw: str) -> str:
+    """Return a same-site relative path suitable for post-login redirect."""
+    value = (raw or "").strip()
+    if value.startswith("/") and not value.startswith("//"):
+        return value
+    return ""
+
+
+def _login_redirect_with_next(next_url: str):
+    from django.urls import reverse
+
+    login_url = reverse("login")
+    safe = _safe_next_url(next_url)
+    if safe:
+        return redirect(f"{login_url}?next={quote(safe)}")
+    return redirect(login_url)
+
+
 def login_view(request):
     if request.user.is_authenticated:
+        safe_next = _safe_next_url(request.GET.get("next") or request.POST.get("next") or "")
+        if safe_next:
+            return _finish_login(request, request.user, safe_next)
         if not active_companies_exist():
             return redirect("setup_required")
         if user_must_select_company(request.user) and not get_active_company(request):
@@ -37,6 +58,7 @@ def login_view(request):
 
     lang = request.session.get("ui_lang", "ar")
     ui = get_ui(lang)
+    next_url = _safe_next_url(request.GET.get("next") or "")
 
     if request.method == "POST":
         from accounts_app.services.login_rate_limit import (
@@ -47,6 +69,7 @@ def login_view(request):
             release_login_lock,
         )
 
+        next_url = _safe_next_url(request.POST.get("next") or request.GET.get("next") or "")
         username = (request.POST.get("username") or "").strip()
         client_ip = request.META.get("REMOTE_ADDR", "")
 
@@ -69,11 +92,13 @@ def login_view(request):
                         from accounts_app.services.two_factor import initiate_two_factor
 
                         request.session["pending_2fa_user_id"] = user.pk
-                        request.session["pending_2fa_next"] = (
-                            request.POST.get("next") or request.GET.get("next") or ""
-                        )
+                        request.session["pending_2fa_next"] = next_url
                         try:
-                            initiate_two_factor(user, lang)
+                            initiate_two_factor(
+                                user,
+                                lang,
+                                base_url=request.build_absolute_uri("/"),
+                            )
                         except ValueError as exc:
                             request.session.pop("pending_2fa_user_id", None)
                             request.session.pop("pending_2fa_next", None)
@@ -89,11 +114,7 @@ def login_view(request):
                     else:
                         clear_failed_logins(username, client_ip)
                         login(request, user)
-                        return _finish_login(
-                            request,
-                            user,
-                            request.POST.get("next") or request.GET.get("next") or "",
-                        )
+                        return _finish_login(request, user, next_url)
                 else:
                     record_failed_login(username, client_ip)
             finally:
@@ -104,7 +125,7 @@ def login_view(request):
     return render(
         request,
         "accounts/login.html",
-        {"form": form, "next": request.GET.get("next", "")},
+        {"form": form, "next": next_url},
     )
 
 
@@ -117,34 +138,38 @@ def verify_2fa_view(request):
     ui = get_ui(lang)
     user_id = request.session.get("pending_2fa_user_id")
     if not user_id:
-        return redirect("login")
+        return _login_redirect_with_next(request.session.get("pending_2fa_next", ""))
 
     User = get_user_model()
     try:
         user = User.objects.get(pk=user_id, is_active=True)
     except User.DoesNotExist:
+        next_url = request.session.pop("pending_2fa_next", "") or ""
         request.session.pop("pending_2fa_user_id", None)
-        request.session.pop("pending_2fa_next", None)
-        return redirect("login")
+        return _login_redirect_with_next(next_url)
 
     error = None
     if request.method == "POST":
-        code = request.POST.get("otp_code", "")
-        if verify_otp(user.pk, code):
-            request.session.pop("pending_2fa_user_id", None)
-            next_url = request.session.pop("pending_2fa_next", "") or ""
-            login(request, user)
-            return _finish_login(request, user, next_url)
-        error = ui.get("verify_2fa_invalid", "Invalid or expired code.")
+        if request.POST.get("action") == "resend":
+            from accounts_app.services.two_factor import initiate_two_factor
 
-    if request.method == "POST" and request.POST.get("action") == "resend":
-        from accounts_app.services.two_factor import initiate_two_factor
-
-        try:
-            initiate_two_factor(user, lang)
-            messages.success(request, ui.get("verify_2fa_resent", "A new code was sent."))
-        except ValueError:
-            error = ui.get("login_err_2fa_send", "Could not send verification code.")
+            try:
+                initiate_two_factor(
+                    user,
+                    lang,
+                    base_url=request.build_absolute_uri("/"),
+                )
+                messages.success(request, ui.get("verify_2fa_resent", "A new code was sent."))
+            except ValueError:
+                error = ui.get("login_err_2fa_send", "Could not send verification code.")
+        else:
+            code = request.POST.get("otp_code", "")
+            if verify_otp(user.pk, code):
+                request.session.pop("pending_2fa_user_id", None)
+                next_url = request.session.pop("pending_2fa_next", "") or ""
+                login(request, user)
+                return _finish_login(request, user, next_url)
+            error = ui.get("verify_2fa_invalid", "Invalid or expired code.")
 
     return render(
         request,
@@ -248,21 +273,24 @@ def select_company_view(request):
 
     if companies.count() == 1:
         set_active_company(request, companies.first().pk)
+        safe_next = _safe_next_url(request.GET.get("next") or request.POST.get("next") or "")
+        if safe_next:
+            return redirect(safe_next)
         return redirect(resolve_default_home(request.user, request))
+
+    next_url = _safe_next_url(request.GET.get("next") or request.POST.get("next") or "")
 
     if request.method == "POST":
         raw_id = request.POST.get("company_id", "").strip()
         if raw_id.isdigit() and set_active_company(request, int(raw_id)):
-            next_url = request.POST.get("next") or resolve_default_home(request.user, request)
-            if not next_url.startswith("/") or next_url.startswith("//"):
-                next_url = resolve_default_home(request.user, request)
-            return redirect(next_url)
+            post_next = _safe_next_url(request.POST.get("next") or "") or resolve_default_home(request.user, request)
+            return redirect(post_next)
         messages.error(request, ui.get("company_switch_invalid", "Invalid company selection."))
 
     return render(
         request,
         "accounts/select_company.html",
-        {"companies": companies},
+        {"companies": companies, "next": next_url},
     )
 
 
@@ -372,7 +400,7 @@ def _prepare_company_session_after_login(request, user) -> None:
 def _finish_login(request, user, next_url: str = ""):
     """Complete login redirect, enforcing company selection when required."""
     _prepare_company_session_after_login(request, user)
-    safe_next = next_url if next_url.startswith("/") and not next_url.startswith("//") else ""
+    safe_next = _safe_next_url(next_url)
 
     if not active_companies_exist():
         return redirect("setup_required")

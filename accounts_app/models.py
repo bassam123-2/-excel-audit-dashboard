@@ -56,6 +56,14 @@ class UserProfile(models.Model):
             "Disabled by default — enable per user or for all users from the admin."
         ),
     )
+    receive_workflow_emails = models.BooleanField(
+        default=False,
+        verbose_name=_("Receive workflow notification emails"),
+        help_text=_(
+            "Superuser accounts only. When enabled, this support account receives "
+            "dashboard pending-review, publish, and related workflow emails."
+        ),
+    )
 
     def is_password_expired(self) -> bool:
         if not self.password_expiry_enabled:

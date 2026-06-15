@@ -69,6 +69,7 @@
     .wf-actions { display: flex; gap: .35rem; flex-wrap: wrap; margin-inline-start: auto; }
     .wf-actions .btn { font-size: .68rem; padding: .2rem .55rem; }
     #rejectModal .modal-body textarea { min-height: 110px; resize: vertical; }
+    #approveModal .modal-body p:last-child { color: #334155; font-size: .925rem; line-height: 1.55; }
     .db-card-delete {
         display: inline-flex;
         margin: 0;
@@ -274,13 +275,11 @@
             {% elif not show_trash %}
             {% if can_review_dashboards and db.status == "draft" %}
             <div class="wf-actions">
-                <form method="post" action="{% url 'dashboard_approve' db.pk %}" class="d-inline"
-                      onsubmit="return confirm('{{ ui.wf_approve_confirm|escapejs }}');">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-success btn-sm">
-                        <i class="bi bi-check-lg"></i> {{ ui.wf_approve_btn }}
-                    </button>
-                </form>
+                <button type="button" class="btn btn-success btn-sm js-approve-btn"
+                        data-approve-url="{% url 'dashboard_approve' db.pk %}"
+                        data-name="{{ db.name|escape }}">
+                    <i class="bi bi-check-lg"></i> {{ ui.wf_approve_btn }}
+                </button>
                 <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
                         data-reject-url="{% url 'dashboard_reject' db.pk %}"
                         data-name="{{ db.name|escape }}">
@@ -321,6 +320,27 @@
 {% endif %}
 
 {% if can_review_dashboards %}
+<div class="modal fade" id="approveModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="approveForm" method="post" action="">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-check-circle me-1 text-success"></i>{{ ui.wf_approve_title }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ ui.wf_cancel }}"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fw-semibold mb-2" id="approveDashName"></p>
+                    <p class="mb-0">{{ ui.wf_approve_confirm }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
+                    <button type="submit" class="btn btn-success">{{ ui.wf_approve_submit }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 <div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -457,6 +477,28 @@
     {% endif %}
 })();
 {% if can_review_dashboards %}
+(function () {
+    var modalEl = document.getElementById('approveModal');
+    if (!modalEl) return;
+    var modal = new bootstrap.Modal(modalEl);
+    var form = document.getElementById('approveForm');
+    var nameEl = document.getElementById('approveDashName');
+    form.addEventListener('submit', function () {
+        var submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+    });
+    document.querySelectorAll('.js-approve-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var approveUrl = btn.getAttribute('data-approve-url') || '';
+            var name = btn.getAttribute('data-name') || '';
+            form.action = approveUrl;
+            if (nameEl) nameEl.textContent = name;
+            var submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = false;
+            modal.show();
+        });
+    });
+})();
 (function () {
     var modalEl = document.getElementById('rejectModal');
     if (!modalEl) return;

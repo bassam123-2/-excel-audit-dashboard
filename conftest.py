@@ -9,6 +9,12 @@ from audit_app.models import Company, Dashboard, DashboardStatus
 from tests.factories import make_membership, make_user
 
 
+@pytest.fixture(autouse=True)
+def sync_workflow_email_dispatch(settings):
+    """Run workflow emails synchronously in tests (avoid SQLite locks in threads)."""
+    settings.EMAIL_DISPATCH_SYNC = True
+
+
 @pytest.fixture
 def api_client():
     return Client()

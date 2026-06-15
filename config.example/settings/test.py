@@ -5,6 +5,8 @@ from .base import *  # noqa: F403,F401
 ERROR_LOGGING_ENABLED = False
 LOGGING = build_logging_config(BASE_DIR, enabled=False)  # noqa: F405
 
+EMAIL_DISPATCH_SYNC = True
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
