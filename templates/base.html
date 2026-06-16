@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+{% load static %}
 <html lang="{{ lang }}" dir="{{ dir }}">
 <head>
     <meta charset="UTF-8">
@@ -262,9 +263,13 @@
         .breadcrumb-nav .sep { opacity: .4; font-size: .7rem; }
         .breadcrumb-nav .current { color: var(--text); font-weight: 600; }
     </style>
+    <link rel="stylesheet" href="{% static 'css/app-layout.css' %}">
+    <link rel="manifest" href="{% static 'manifest.json' %}">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
+
+<div class="sb-backdrop js-sb-backdrop" aria-hidden="true"></div>
 
 <!-- ── Sidebar ──────────────────────────────────────── -->
 <aside class="sidebar">
@@ -328,6 +333,9 @@
 <!-- ── Main ─────────────────────────────────────────── -->
 <div class="main-wrap">
     <header class="topbar">
+        <button type="button" class="btn-sidebar-toggle js-sidebar-toggle" aria-label="Menu" aria-expanded="false">
+            <i class="bi bi-list"></i>
+        </button>
         <div class="topbar-title">{% block page_title %}{% endblock %}</div>
         <div class="topbar-actions">
             {% if show_company_switcher and user_companies %}
@@ -348,6 +356,9 @@
             <a href="{% url 'switch_language' %}?next={{ request.path }}" class="btn-lang">
                 <i class="bi bi-translate"></i> {{ ui.lang_toggle }}
             </a>
+            <button type="button" class="btn-lang js-theme-toggle" title="Theme">
+                <i class="bi bi-moon-stars"></i>
+            </button>
         </div>
     </header>
 
@@ -388,6 +399,30 @@
             }
         }, delay);
     });
+})();
+</script>
+<script src="{% static 'js/app-layout.js' %}"></script>
+<script>
+(function () {
+    var key = "ui-theme";
+    var root = document.documentElement;
+    var saved = localStorage.getItem(key);
+    if (saved === "dark") root.setAttribute("data-theme", "dark");
+    document.querySelectorAll(".js-theme-toggle").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            var dark = root.getAttribute("data-theme") === "dark";
+            if (dark) {
+                root.removeAttribute("data-theme");
+                localStorage.setItem(key, "light");
+            } else {
+                root.setAttribute("data-theme", "dark");
+                localStorage.setItem(key, "dark");
+            }
+        });
+    });
+    if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("{% static 'sw.js' %}").catch(function () {});
+    }
 })();
 </script>
 {% block extra_js %}{% endblock %}

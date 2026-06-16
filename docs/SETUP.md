@@ -49,6 +49,14 @@ Smoke tests للتحسينات الأخيرة:
 pytest -m regression -q
 ```
 
+كتالوج الاختبارات الانحدارية: راجع [REGRESSION_CATALOG.md](REGRESSION_CATALOG.md).
+
+بعد سحب تحديثات جديدة (migrations):
+
+```powershell
+python manage.py migrate
+```
+
 ## 2. Bootstrap configuration (required)
 
 The repo ships templates only. Copy them before first run:

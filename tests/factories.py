@@ -7,10 +7,17 @@ from audit_app.models import Company, CompanyMembership, Dashboard, DashboardSta
 
 
 def make_user(username: str, *, email: str = "", password: str = "Test@1234") -> User:
-    user = User.objects.create_user(username, password=password, email=email or f"{username}@example.com")
+    user = User.objects.create_user(
+        username,
+        password=password,
+        email=email or f"{username}@example.com",
+        first_name="Test",
+        last_name="User",
+    )
     profile = user.profile
     profile.two_factor_enabled = False
-    profile.save(update_fields=["two_factor_enabled"])
+    profile.job_title = profile.job_title or "Tester"
+    profile.save(update_fields=["two_factor_enabled", "job_title"])
     return user
 
 

@@ -8,7 +8,6 @@ from typing import Iterable
 from django.contrib.auth.models import User
 
 from accounts_app.services.email_branding import (
-    COMPANY_NAME_AR,
     bilingual_footer_plain,
     build_branded_email_html,
     render_bilingual_block,
@@ -231,7 +230,7 @@ def _send_reviewers_pending(dashboard_id: int, base_url: str, submit_kind: str) 
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
-    subject = f"طلب مراجعة لوحة — Dashboard Pending Review — {COMPANY_NAME_AR}"
+    subject = "طلب مراجعة لوحة Dashboard Pending Review"
     html = build_branded_email_html(
         header_ar="طلب مراجعة لوحة تحكم",
         header_en="Dashboard Pending Review",
@@ -323,7 +322,7 @@ def _send_creator_rejected(
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
-    subject = f"رفض لوحة تحكم — Dashboard Rejected — {COMPANY_NAME_AR}"
+    subject = "رفض لوحة تحكم Dashboard Rejected"
     html = build_branded_email_html(
         header_ar="تم رفض لوحة التحكم",
         header_en="Dashboard Rejected",
@@ -420,7 +419,7 @@ def _send_viewers_published(dashboard_id: int, base_url: str, reviewer_id: int) 
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
-    subject = f"اعتماد لوحة تحكم — Dashboard Published — {COMPANY_NAME_AR}"
+    subject = "اعتماد لوحة تحكم Dashboard Published"
     html = build_branded_email_html(
         header_ar="تم اعتماد لوحة تحكم",
         header_en="Dashboard Published",

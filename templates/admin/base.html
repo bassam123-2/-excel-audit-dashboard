@@ -23,6 +23,10 @@
   data-admin-utc-offset="{% now "Z" %}">
 <a href="#content-start" class="skip-to-content-link">{% translate 'Skip to main content' %}</a>
 
+{% if not is_popup %}
+<div class="sb-backdrop js-sb-backdrop" aria-hidden="true"></div>
+{% endif %}
+
 <div id="container">
 
     {% if not is_popup %}
@@ -50,6 +54,9 @@
     <div class="main-wrap" id="admin-main-wrap">
         {% if not is_popup %}
         <header class="topbar" id="admin-topbar">
+            <button type="button" class="btn-sidebar-toggle js-sidebar-toggle" aria-label="{% translate 'Menu' %}" aria-expanded="false">
+                <i class="bi bi-list"></i>
+            </button>
             <div class="topbar-title">
                 {% block nav-breadcrumbs %}
                 <nav aria-label="{% translate 'Breadcrumbs' %}">

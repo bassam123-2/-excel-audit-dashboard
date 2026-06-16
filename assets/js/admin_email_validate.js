@@ -1,5 +1,5 @@
 /**
- * Admin user form — validate #id_email format and block save when invalid.
+ * Admin user form — validate email and required personal fields.
  */
 (function () {
     "use strict";
@@ -8,14 +8,18 @@
 
     var MSGS = {
         ar: {
-            required: "البريد الإلكتروني مطلوب.",
+            required: "هذا الحقل مطلوب.",
+            email_required: "البريد الإلكتروني مطلوب.",
             invalid: "صيغة البريد الإلكتروني غير صحيحة.",
         },
         en: {
-            required: "Email address is required.",
+            required: "This field is required.",
+            email_required: "Email address is required.",
             invalid: "Enter a valid email address.",
         },
     };
+
+    var REQUIRED_IDS = ["id_first_name", "id_last_name", "id_job_title", "id_username"];
 
     function lang() {
         var l = (document.documentElement.lang || "en").split("-")[0];
@@ -26,16 +30,16 @@
         return MSGS[lang()][key] || MSGS.en[key];
     }
 
-    function isAddForm() {
-        return /\/add\/?(\?|$)/.test(window.location.pathname);
+    function isUserForm() {
+        return /\/auth\/user\/(add|[^/]+\/change)\/?/.test(window.location.pathname);
     }
 
-    function attach() {
+    function attachEmail() {
         var input = document.getElementById("id_email");
         if (!input) return;
 
         var form = input.closest("form");
-        var required = isAddForm();
+        var required = isUserForm();
         var errEl = document.getElementById("id_email_live_error");
 
         if (!errEl) {
@@ -53,7 +57,7 @@
 
             if (!value) {
                 valid = !required;
-                if (!valid) message = msg("required");
+                if (!valid) message = msg("email_required");
             } else if (!EMAIL_RE.test(value)) {
                 valid = false;
                 message = msg("invalid");
@@ -90,9 +94,31 @@
         validate(false);
     }
 
+    function attachRequiredFields() {
+        if (!isUserForm()) return;
+        REQUIRED_IDS.forEach(function (id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.setAttribute("required", "required");
+            el.addEventListener("invalid", function () {
+                if (!el.value.trim()) {
+                    el.setCustomValidity(msg("required"));
+                }
+            });
+            el.addEventListener("input", function () {
+                el.setCustomValidity("");
+            });
+        });
+    }
+
+    function init() {
+        attachEmail();
+        attachRequiredFields();
+    }
+
     if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", attach);
+        document.addEventListener("DOMContentLoaded", init);
     } else {
-        attach();
+        init();
     }
 })();

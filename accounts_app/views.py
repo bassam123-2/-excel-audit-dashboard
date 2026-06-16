@@ -132,7 +132,18 @@ def login_view(request):
 def verify_2fa_view(request):
     from django.contrib.auth import get_user_model
 
-    from accounts_app.services.two_factor import clear_otp, verify_otp
+    from accounts_app.services.otp_resend_limit import (
+        is_otp_resend_ip_blocked,
+        is_verify_2fa_ip_blocked,
+        record_otp_resend_ip,
+        record_verify_2fa_failure,
+        clear_verify_2fa_failures,
+    )
+    from accounts_app.services.two_factor import (
+        clear_otp,
+        get_resend_cooldown_remaining,
+        verify_otp,
+    )
 
     lang = request.session.get("ui_lang", "ar")
     ui = get_ui(lang)
@@ -148,28 +159,53 @@ def verify_2fa_view(request):
         request.session.pop("pending_2fa_user_id", None)
         return _login_redirect_with_next(next_url)
 
+    client_ip = request.META.get("REMOTE_ADDR", "")
+    resend_cooldown = get_resend_cooldown_remaining(user.pk)
     error = None
     if request.method == "POST":
         if request.POST.get("action") == "resend":
             from accounts_app.services.two_factor import initiate_two_factor
 
-            try:
-                initiate_two_factor(
-                    user,
-                    lang,
-                    base_url=request.build_absolute_uri("/"),
-                )
-                messages.success(request, ui.get("verify_2fa_resent", "A new code was sent."))
-            except ValueError:
-                error = ui.get("login_err_2fa_send", "Could not send verification code.")
+            if is_otp_resend_ip_blocked(client_ip):
+                error = ui.get("verify_2fa_resend_rate_limit", "Too many resend attempts.")
+            elif resend_cooldown > 0:
+                error = ui.get(
+                    "verify_2fa_resend_cooldown",
+                    "Please wait before requesting a new code.",
+                ).format(seconds=resend_cooldown)
+            else:
+                try:
+                    initiate_two_factor(
+                        user,
+                        lang,
+                        base_url=request.build_absolute_uri("/"),
+                        is_resend=True,
+                    )
+                    record_otp_resend_ip(client_ip)
+                    resend_cooldown = get_resend_cooldown_remaining(user.pk)
+                    messages.success(request, ui.get("verify_2fa_resent", "A new code was sent."))
+                except ValueError as exc:
+                    if str(exc) == "resend_cooldown":
+                        resend_cooldown = get_resend_cooldown_remaining(user.pk)
+                        error = ui.get(
+                            "verify_2fa_resend_cooldown",
+                            "Please wait before requesting a new code.",
+                        ).format(seconds=resend_cooldown)
+                    else:
+                        error = ui.get("login_err_2fa_send", "Could not send verification code.")
         else:
-            code = request.POST.get("otp_code", "")
-            if verify_otp(user.pk, code):
-                request.session.pop("pending_2fa_user_id", None)
-                next_url = request.session.pop("pending_2fa_next", "") or ""
-                login(request, user)
-                return _finish_login(request, user, next_url)
-            error = ui.get("verify_2fa_invalid", "Invalid or expired code.")
+            if is_verify_2fa_ip_blocked(client_ip):
+                error = ui.get("verify_2fa_rate_limit", "Too many attempts. Try again later.")
+            else:
+                code = request.POST.get("otp_code", "")
+                if verify_otp(user.pk, code):
+                    clear_verify_2fa_failures(client_ip)
+                    request.session.pop("pending_2fa_user_id", None)
+                    next_url = request.session.pop("pending_2fa_next", "") or ""
+                    login(request, user)
+                    return _finish_login(request, user, next_url)
+                record_verify_2fa_failure(client_ip)
+                error = ui.get("verify_2fa_invalid", "Invalid or expired code.")
 
     return render(
         request,
@@ -178,6 +214,7 @@ def verify_2fa_view(request):
             "error": error,
             "email_hint": _mask_email(user.email),
             "subtitle": ui.get("verify_2fa_subtitle", "").format(email=_mask_email(user.email)),
+            "resend_cooldown": resend_cooldown,
         },
     )
 
@@ -334,7 +371,7 @@ def profile_view(request):
 
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
-    force_password = (
+    force_password = profile.must_change_password_on_login or (
         request.GET.get("force_password") == "1"
         and profile.password_expiry_enabled
         and profile.is_password_expired()
@@ -368,7 +405,10 @@ def profile_view(request):
                     request.user.set_password(new_pw1)
                     request.user.save()
                     profile.password_changed_at = timezone.now()
-                    profile.save(update_fields=["password_changed_at"])
+                    profile.must_change_password_on_login = False
+                    profile.save(
+                        update_fields=["password_changed_at", "must_change_password_on_login"]
+                    )
                     update_session_auth_hash(request, request.user)
                     messages.success(request, ui["profile_pw_changed_ok"])
                     return redirect("profile")
@@ -399,6 +439,12 @@ def _prepare_company_session_after_login(request, user) -> None:
 
 def _finish_login(request, user, next_url: str = ""):
     """Complete login redirect, enforcing company selection when required."""
+    from accounts_app.models import UserProfile
+
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    if profile.must_change_password_on_login:
+        return redirect(reverse("profile") + "?force_password=1&must_change=1")
+
     _prepare_company_session_after_login(request, user)
     safe_next = _safe_next_url(next_url)
 

@@ -1,0 +1,110 @@
+/* Shared responsive layout — main app + admin */
+:root {
+    --sw: 260px;
+}
+
+.sb-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 250;
+}
+
+body.sidebar-open .sb-backdrop {
+    display: block;
+}
+
+.btn-sidebar-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--border, #e2e8f0);
+    background: var(--surface, #fff);
+    border-radius: 10px;
+    color: var(--text, #1e293b);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.btn-sidebar-toggle:hover {
+    background: var(--bg, #f0f4f9);
+}
+
+.pw-generate-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.35rem;
+}
+
+.pw-generate-actions .button {
+    min-height: 36px;
+}
+
+html[data-theme="dark"] {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --border: #334155;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --navy: #020617;
+    --navy2: #0f172a;
+}
+
+html[data-theme="dark"] body {
+    background: var(--bg);
+    color: var(--text);
+}
+
+@media (max-width: 767.98px) {
+    .btn-sidebar-toggle {
+        display: inline-flex;
+    }
+
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+    }
+
+    html[dir="rtl"] .sidebar {
+        transform: translateX(100%);
+    }
+
+    body.sidebar-open .sidebar {
+        transform: translateX(0);
+    }
+
+    .main-wrap {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        width: 100% !important;
+    }
+
+    .topbar {
+        flex-wrap: wrap;
+        padding: 0.65rem 1rem;
+    }
+
+    .topbar-title {
+        flex: 1 1 100%;
+        order: 1;
+    }
+
+    .topbar-actions {
+        flex: 1 1 100%;
+        order: 2;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+
+    .topbar-date {
+        display: none;
+    }
+
+    #companySwitch {
+        min-width: 100% !important;
+    }
+}

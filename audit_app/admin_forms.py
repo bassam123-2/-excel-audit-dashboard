@@ -1,12 +1,15 @@
 """Admin user forms — password authentication is always required."""
 
 from django import forms
+from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import SetPasswordMixin, UserChangeForm, UserCreationForm
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.utils.translation import gettext_lazy as _
 
 from accounts_app.models import UserProfile
+
+User = get_user_model()
 
 from audit_app.models import ATTACHMENT_KIND_CHOICES, ATTACHMENT_KIND_CODES, Company, CompanyAttachmentSetting
 
@@ -29,15 +32,42 @@ def _clear_password_help_text(form: forms.BaseForm) -> None:
             form.fields[name].help_text = ""
 
 
-def _validate_email_format(email: str) -> str:
-    email = (email or "").strip()
+def _validate_required_stripped(value: str, field_label: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        raise forms.ValidationError(
+            _("%(field)s is required.") % {"field": field_label}
+        )
+    return value
+
+
+def _normalize_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+def _validate_email_format(email: str, *, exclude_user_id: int | None = None) -> str:
+    email = _normalize_email(email)
     if not email:
         raise forms.ValidationError(_("Email address is required."))
     try:
         validate_email(email)
     except DjangoValidationError as exc:
         raise forms.ValidationError(_("Enter a valid email address.")) from exc
+    qs = User.objects.filter(email__iexact=email)
+    if exclude_user_id is not None:
+        qs = qs.exclude(pk=exclude_user_id)
+    if qs.exists():
+        raise forms.ValidationError(_("A user with this email already exists."))
     return email
+
+
+def _validate_username(username: str) -> str:
+    username = (username or "").strip()
+    if not username:
+        raise forms.ValidationError(_("Username is required."))
+    if " " in username:
+        raise forms.ValidationError(_("Username must not contain spaces."))
+    return username
 
 
 def _save_user_job_title(user, job_title: str) -> None:
@@ -106,19 +136,28 @@ class MandatoryPasswordAdminCreationForm(UserCreationForm):
     )
     first_name = forms.CharField(
         label=_("First name"),
-        required=False,
+        required=True,
         max_length=150,
     )
     last_name = forms.CharField(
         label=_("Last name"),
-        required=False,
+        required=True,
         max_length=150,
     )
     job_title = forms.CharField(
         label=_("Job title"),
-        required=False,
+        required=True,
         max_length=128,
         help_text=_("The user's job title or position."),
+    )
+    send_credentials_email = forms.BooleanField(
+        label=_("Send new password by email"),
+        required=False,
+        initial=False,
+        help_text=_(
+            "When checked, the new password is emailed to the user. "
+            "They must change it on next sign-in."
+        ),
     )
     two_factor_enabled = forms.BooleanField(
         label=_("Email two-factor authentication"),
@@ -141,11 +180,32 @@ class MandatoryPasswordAdminCreationForm(UserCreationForm):
         _clear_password_help_text(self)
         self.fields["email"].required = True
 
+    def clean_username(self):
+        return _validate_username(self.cleaned_data.get("username", ""))
+
+    def clean_first_name(self):
+        return _validate_required_stripped(
+            self.cleaned_data.get("first_name", ""), str(_("First name"))
+        )
+
+    def clean_last_name(self):
+        return _validate_required_stripped(
+            self.cleaned_data.get("last_name", ""), str(_("Last name"))
+        )
+
+    def clean_job_title(self):
+        return _validate_required_stripped(
+            self.cleaned_data.get("job_title", ""), str(_("Job title"))
+        )
+
     def clean_email(self):
         return _validate_email_format(self.cleaned_data.get("email", ""))
 
     def save(self, commit=True):
         user = super().save(commit=commit)
+        if commit and user.pk:
+            user.email = _normalize_email(user.email)
+            user.save(update_fields=["email"])
         if user.pk:
             apply_user_profile_form(user, self.cleaned_data)
         return user
@@ -156,7 +216,7 @@ class AdminUserChangeForm(UserChangeForm):
 
     job_title = forms.CharField(
         label=_("Job title"),
-        required=False,
+        required=True,
         max_length=128,
         help_text=_("The user's job title or position."),
     )
@@ -206,12 +266,41 @@ class AdminUserChangeForm(UserChangeForm):
             self.fields["email"].widget = forms.EmailInput(
                 attrs={"autocomplete": "email", "inputmode": "email"},
             )
+        if "first_name" in self.fields:
+            self.fields["first_name"].required = True
+        if "last_name" in self.fields:
+            self.fields["last_name"].required = True
+
+    def clean_username(self):
+        return _validate_username(self.cleaned_data.get("username", ""))
+
+    def clean_first_name(self):
+        return _validate_required_stripped(
+            self.cleaned_data.get("first_name", ""), str(_("First name"))
+        )
+
+    def clean_last_name(self):
+        return _validate_required_stripped(
+            self.cleaned_data.get("last_name", ""), str(_("Last name"))
+        )
+
+    def clean_job_title(self):
+        return _validate_required_stripped(
+            self.cleaned_data.get("job_title", ""), str(_("Job title"))
+        )
 
     def clean_email(self):
-        return _validate_email_format(self.cleaned_data.get("email", ""))
+        exclude_id = self.instance.pk if self.instance and self.instance.pk else None
+        return _validate_email_format(
+            self.cleaned_data.get("email", ""),
+            exclude_user_id=exclude_id,
+        )
 
     def save(self, commit=True):
         user = super().save(commit=commit)
+        if commit and user.pk:
+            user.email = _normalize_email(user.email)
+            user.save(update_fields=["email"])
         if user.pk:
             apply_user_profile_form(user, self.cleaned_data)
         return user
@@ -222,6 +311,15 @@ class MandatoryPasswordAdminChangeForm(SetPasswordMixin, forms.Form):
 
     required_css_class = "required"
     password1, password2 = SetPasswordMixin.create_password_fields()
+    send_credentials_email = forms.BooleanField(
+        label=_("Send new password by email"),
+        required=False,
+        initial=False,
+        help_text=_(
+            "When checked, the new password is emailed to the user. "
+            "They must change it on next sign-in."
+        ),
+    )
 
     def __init__(self, user, *args, **kwargs):
         self.user = user

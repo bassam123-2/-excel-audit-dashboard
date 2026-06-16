@@ -60,7 +60,7 @@ class ActiveCompanyMiddleware:
 
 
 class PasswordExpiryMiddleware:
-    """Force password change when older than PASSWORD_MAX_AGE_DAYS."""
+    """Force password change when older than PASSWORD_MAX_AGE_DAYS or admin flag set."""
 
     EXEMPT_PREFIXES = ActiveCompanyMiddleware.EXEMPT_PREFIXES
     EXEMPT_PATHS = ActiveCompanyMiddleware.EXEMPT_PATHS + ("/profile/",)
@@ -72,6 +72,9 @@ class PasswordExpiryMiddleware:
         user = getattr(request, "user", None)
         if user and user.is_authenticated:
             path = request.path
+            if not self._is_exempt(path) and self._must_change_password(user):
+                profile_url = reverse("profile") + "?force_password=1&must_change=1"
+                return redirect(profile_url)
             if not self._is_exempt(path) and self._password_expired(user):
                 profile_url = reverse("profile") + "?force_password=1"
                 return redirect(profile_url)
@@ -84,6 +87,10 @@ class PasswordExpiryMiddleware:
         if path.startswith("/profile"):
             return True
         return any(path.startswith(prefix) for prefix in self.EXEMPT_PREFIXES)
+
+    def _must_change_password(self, user) -> bool:
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        return bool(profile.must_change_password_on_login)
 
     def _password_expired(self, user) -> bool:
         profile, _ = UserProfile.objects.get_or_create(user=user)

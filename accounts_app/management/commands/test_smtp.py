@@ -96,7 +96,7 @@ class Command(BaseCommand):
             "plain",
             "utf-8",
         )
-        msg["Subject"] = "SMTP test — Audit Dashboard"
+        msg["Subject"] = "SMTP test Audit Dashboard"
         msg["From"] = from_addr
         msg["To"] = to_addr
 

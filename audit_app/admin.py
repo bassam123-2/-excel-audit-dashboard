@@ -9,7 +9,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, Permission, User
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
-from django.http import Http404, HttpResponseRedirect, QueryDict
+from django.http import Http404, HttpResponseRedirect, JsonResponse, QueryDict
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
@@ -158,6 +158,7 @@ class ProtectedUserAdmin(BaseUserAdmin):
     PROTECTED_USERNAME = "myadmin"
     form = AdminUserChangeForm
     add_form = MandatoryPasswordAdminCreationForm
+    add_form_template = "admin/auth/user/change_form.html"
     change_form_template = "admin/auth/user/change_form.html"
     inlines = [CompanyMembershipInline]
     delete_confirmation_template = "admin/auth/user/delete_confirmation.html"
@@ -173,6 +174,7 @@ class ProtectedUserAdmin(BaseUserAdmin):
         "disable_password_expiry_selected",
         "enable_password_expiry_all",
         "disable_password_expiry_all",
+        "export_users_csv",
     ]
     list_filter = BaseUserAdmin.list_filter + (
         DeletedUserFilter,
@@ -182,7 +184,11 @@ class ProtectedUserAdmin(BaseUserAdmin):
 
     class Media:
         css = {"all": ("css/password_rules.css",)}
-        js = ("js/password_rules.js", "js/admin_email_validate.js")
+        js = (
+            "js/password_rules.js",
+            "js/admin_email_validate.js",
+            "js/admin_password_generate.js",
+        )
 
     list_display = BaseUserAdmin.list_display + (
         "job_title_display",
@@ -276,12 +282,87 @@ class ProtectedUserAdmin(BaseUserAdmin):
     def get_urls(self):
         return [
             path(
+                "generate-password/",
+                self.admin_site.admin_view(self.generate_password_view),
+                name="%s_%s_generate_password"
+                % (self.model._meta.app_label, self.model._meta.model_name),
+            ),
+            path(
                 "<id>/set-password/",
                 self.admin_site.admin_view(self.user_set_password),
                 name="%s_%s_set_password"
                 % (self.model._meta.app_label, self.model._meta.model_name),
             ),
         ] + admin.ModelAdmin.get_urls(self)
+
+    def generate_password_view(self, request):
+        if not request.user.is_staff:
+            raise PermissionDenied
+        from accounts_app.services.password_generator import generate_compliant_password
+
+        return JsonResponse({"password": generate_compliant_password()})
+
+    def _send_credentials_email(self, request, user, raw_password: str) -> bool:
+        from ai_excel_dashboard import load_smtp_config
+
+        from accounts_app.services.credentials_email import send_credentials_email_smtp
+        from accounts_app.services.email_branding import resolve_logo_url
+
+        email = (user.email or "").strip()
+        if not email:
+            self.message_user(
+                request,
+                _("No email address — credentials were not sent."),
+                messages.WARNING,
+            )
+            return False
+        cfg = load_smtp_config()
+        if not cfg:
+            self.message_user(
+                request,
+                _("SMTP is not configured — credentials were not sent."),
+                messages.WARNING,
+            )
+            return False
+        try:
+            send_credentials_email_smtp(
+                cfg,
+                to_addr=email,
+                username=user.username,
+                password=raw_password,
+                login_url=request.build_absolute_uri(reverse("login")),
+                logo_url=resolve_logo_url(
+                    base_url=request.build_absolute_uri("/"),
+                    cfg=cfg,
+                ),
+            )
+            return True
+        except Exception:
+            self.message_user(
+                request,
+                _("Failed to send credentials email."),
+                messages.WARNING,
+            )
+            return False
+
+    def save_model(self, request, obj, form, change):
+        send_credentials = False
+        raw_password = ""
+        if not change and isinstance(form, MandatoryPasswordAdminCreationForm):
+            send_credentials = bool(form.cleaned_data.get("send_credentials_email"))
+            raw_password = form.cleaned_data.get("password1") or ""
+        super().save_model(request, obj, form, change)
+        if not change:
+            profile, _created = UserProfile.objects.get_or_create(user=obj)
+            profile.must_change_password_on_login = True
+            profile.save(update_fields=["must_change_password_on_login"])
+            if send_credentials and raw_password:
+                if self._send_credentials_email(request, obj, raw_password):
+                    self.message_user(
+                        request,
+                        _("Login credentials were sent by email."),
+                        messages.SUCCESS,
+                    )
 
     @method_decorator(sensitive_post_parameters("password1", "password2"))
     @method_decorator(csrf_protect)
@@ -306,10 +387,26 @@ class ProtectedUserAdmin(BaseUserAdmin):
         form = MandatoryPasswordAdminChangeForm(obj, request.POST)
         if form.is_valid():
             user = form.save()
-            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile, _created = UserProfile.objects.get_or_create(user=user)
             profile.password_changed_at = timezone.now()
-            profile.save(update_fields=["password_changed_at"])
-            self.log_change(request, user, [{"changed": {"fields": ["password"]}}])
+            profile.must_change_password_on_login = True
+            profile.save(
+                update_fields=["password_changed_at", "must_change_password_on_login"]
+            )
+            raw_password = form.cleaned_data.get("password1") or ""
+            credentials_sent = False
+            if form.cleaned_data.get("send_credentials_email") and raw_password:
+                credentials_sent = self._send_credentials_email(request, user, raw_password)
+                if credentials_sent:
+                    self.message_user(
+                        request,
+                        _("New password was sent by email."),
+                        messages.SUCCESS,
+                    )
+            change_msg = [{"changed": {"fields": ["password"]}}]
+            if credentials_sent:
+                change_msg[0]["credentials_email_sent"] = True
+            self.log_change(request, user, change_msg)
             if request.user.pk == user.pk:
                 update_session_auth_hash(request, user)
             self.message_user(
@@ -356,7 +453,7 @@ class ProtectedUserAdmin(BaseUserAdmin):
         return bool(profile and profile.is_deleted)
 
     def _soft_delete_user(self, user) -> None:
-        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile, _created = UserProfile.objects.get_or_create(user=user)
         profile.is_deleted = True
         profile.deleted_at = timezone.now()
         profile.save(update_fields=["is_deleted", "deleted_at"])
@@ -365,7 +462,7 @@ class ProtectedUserAdmin(BaseUserAdmin):
             user.save(update_fields=["is_active"])
 
     def _restore_user(self, user) -> None:
-        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile, _created = UserProfile.objects.get_or_create(user=user)
         profile.is_deleted = False
         profile.deleted_at = None
         profile.save(update_fields=["is_deleted", "deleted_at"])
@@ -530,6 +627,43 @@ class ProtectedUserAdmin(BaseUserAdmin):
             _("6-month password expiry disabled for %(count)d user(s).") % {"count": count},
             messages.SUCCESS,
         )
+
+    @admin.action(description=_("Export selected users (CSV)"))
+    def export_users_csv(self, request, queryset):
+        import csv
+
+        from django.http import HttpResponse
+
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="users.csv"'
+        writer = csv.writer(response)
+        writer.writerow(
+            [
+                "username",
+                "email",
+                "first_name",
+                "last_name",
+                "job_title",
+                "is_active",
+                "is_staff",
+                "date_joined",
+            ]
+        )
+        for user in queryset.select_related("profile"):
+            profile = getattr(user, "profile", None)
+            writer.writerow(
+                [
+                    user.username,
+                    user.email,
+                    user.first_name,
+                    user.last_name,
+                    profile.job_title if profile else "",
+                    user.is_active,
+                    user.is_staff,
+                    user.date_joined.isoformat() if user.date_joined else "",
+                ]
+            )
+        return response
 
     @admin.display(description=_("Job title"), ordering="profile__job_title")
     def job_title_display(self, obj):

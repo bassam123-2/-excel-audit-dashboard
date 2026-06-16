@@ -22,7 +22,7 @@ class UserProfile(models.Model):
     )
     job_title = models.CharField(
         max_length=128,
-        blank=True,
+        blank=False,
         verbose_name=_("Job title"),
         help_text=_("The user's job title or position."),
     )
@@ -62,6 +62,14 @@ class UserProfile(models.Model):
         help_text=_(
             "Superuser accounts only. When enabled, this support account receives "
             "dashboard pending-review, publish, and related workflow emails."
+        ),
+    )
+    must_change_password_on_login = models.BooleanField(
+        default=False,
+        verbose_name=_("Must change password on next sign-in"),
+        help_text=_(
+            "When enabled, the user is redirected to change their password "
+            "before accessing the application."
         ),
     )
 

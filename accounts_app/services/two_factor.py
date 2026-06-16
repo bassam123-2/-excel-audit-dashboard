@@ -6,14 +6,39 @@ import secrets
 from typing import Any
 
 from django.core.cache import cache
+from django.utils import timezone
 
 OTP_TTL_SECONDS = 600
 OTP_MAX_ATTEMPTS = 5
 OTP_LENGTH = 6
+OTP_RESEND_COOLDOWN_SECONDS = 120
 
 
 def _cache_key(user_id: int) -> str:
     return f"2fa_otp:{user_id}"
+
+
+def _resend_cooldown_key(user_id: int) -> str:
+    return f"2fa_otp_resend:{user_id}"
+
+
+def get_resend_cooldown_remaining(user_id: int) -> int:
+    sent_at = cache.get(_resend_cooldown_key(user_id))
+    if sent_at is None:
+        return 0
+    try:
+        elapsed = timezone.now().timestamp() - float(sent_at)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, int(OTP_RESEND_COOLDOWN_SECONDS - elapsed))
+
+
+def record_otp_sent(user_id: int) -> None:
+    cache.set(
+        _resend_cooldown_key(user_id),
+        timezone.now().timestamp(),
+        OTP_RESEND_COOLDOWN_SECONDS,
+    )
 
 
 def _hash_otp(user_id: int, code: str) -> str:
@@ -74,10 +99,15 @@ def send_otp_email_smtp(
     )
 
 
-def initiate_two_factor(user, locale: str, *, base_url: str | None = None) -> None:
+def initiate_two_factor(user, locale: str, *, base_url: str | None = None, is_resend: bool = False) -> None:
     from ai_excel_dashboard import load_smtp_config
 
     from accounts_app.services.email_branding import resolve_logo_url
+
+    if is_resend:
+        remaining = get_resend_cooldown_remaining(user.pk)
+        if remaining > 0:
+            raise ValueError("resend_cooldown")
 
     email = (user.email or "").strip()
     if not email:
@@ -88,3 +118,4 @@ def initiate_two_factor(user, locale: str, *, base_url: str | None = None) -> No
     code = generate_and_store_otp(user.pk)
     logo_url = resolve_logo_url(base_url=base_url, cfg=cfg)
     send_otp_email_smtp(cfg, to_addr=email, code=code, locale=locale, logo_url=logo_url)
+    record_otp_sent(user.pk)

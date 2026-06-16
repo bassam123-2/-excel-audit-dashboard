@@ -322,11 +322,14 @@
         if (profileForm) {
             scopes.push(profileForm);
         }
-        document.querySelectorAll(".password-reset-section").forEach(function (el) {
+        document.querySelectorAll('.password-reset-section[data-pw-scope="admin-reset"]').forEach(function (el) {
             scopes.push(el);
         });
         var userForm = document.getElementById("user_form");
-        if (userForm && !document.querySelector(".password-reset-section")) {
+        var hasAdminReset = document.querySelector(
+            '.password-reset-section[data-pw-scope="admin-reset"]'
+        );
+        if (userForm && !hasAdminReset) {
             scopes.push(userForm);
         }
         return scopes;

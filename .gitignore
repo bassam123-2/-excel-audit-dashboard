@@ -5,6 +5,7 @@ __pycache__/
 .venv_new/
 .env
 config/
+.cursor/
 
 # Generated / local runtime
 audit_logs/*.json

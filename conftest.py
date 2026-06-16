@@ -64,10 +64,15 @@ def no_perm_user(btc_company):
 @pytest.fixture
 def superuser(btc_company):
     user = User.objects.create_superuser(
-        "pytest_super", "super@example.com", "Test@1234"
+        "pytest_super",
+        "super@example.com",
+        "Test@1234",
+        first_name="Super",
+        last_name="User",
     )
     user.profile.two_factor_enabled = False
-    user.profile.save(update_fields=["two_factor_enabled"])
+    user.profile.job_title = "Administrator"
+    user.profile.save(update_fields=["two_factor_enabled", "job_title"])
     return user
 
 
