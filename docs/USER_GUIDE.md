@@ -1,6 +1,6 @@
 # User guide
 
-End-user workflow for the Excel Audit Dashboard (Arabic UI supported via language switcher).
+End-user workflow for the Audit Dashboard (Arabic UI supported via language switcher).
 
 ## Before you start
 

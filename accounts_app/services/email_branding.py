@@ -19,8 +19,8 @@ TEXT_MUTED = "#666666"
 TEXT_FOOTER = "#888888"
 DIVIDER_COLOR = "#e2e8f0"
 
-COMPANY_NAME_EN = "Abdullatif Alissa Group Holding Co."
-COMPANY_NAME_AR = "شركة مجموعة عبداللطيف العيسى القابضة"
+BRAND_NAME_EN = "Audit Dashboard"
+BRAND_NAME_AR = "لوحة التدقيق"
 LOGO_FILENAME = "Abdullatif Alissa Group Holding Co.png"
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -58,16 +58,16 @@ def resolve_logo_url(*, base_url: str | None = None, cfg: dict[str, Any] | None 
 def bilingual_footer_html() -> str:
     year = datetime.now().year
     return (
-        f"© {year} {COMPANY_NAME_AR}. جميع الحقوق محفوظة.<br>"
-        f"© {year} {COMPANY_NAME_EN}. All rights reserved."
+        f"© {year} {BRAND_NAME_EN}. جميع الحقوق محفوظة.<br>"
+        f"© {year} {BRAND_NAME_EN}. All rights reserved."
     )
 
 
 def bilingual_footer_plain() -> str:
     year = datetime.now().year
     return (
-        f"© {year} {COMPANY_NAME_AR}. جميع الحقوق محفوظة.\n"
-        f"© {year} {COMPANY_NAME_EN}. All rights reserved."
+        f"© {year} {BRAND_NAME_EN}. جميع الحقوق محفوظة.\n"
+        f"© {year} {BRAND_NAME_EN}. All rights reserved."
     )
 
 
@@ -189,7 +189,7 @@ def build_branded_email_html(
         safe_src = escape(resolved_logo, quote=True)
         logo_row = (
             f'<tr><td align="center" style="padding:28px 24px 12px;">'
-            f'<img src="{safe_src}" alt="{escape(COMPANY_NAME_EN)}" width="240" '
+            f'<img src="{safe_src}" alt="{escape(BRAND_NAME_EN)}" width="240" '
             f'style="display:block;max-width:240px;width:100%;height:auto;margin:0 auto;border:0;">'
             f"</td></tr>"
         )

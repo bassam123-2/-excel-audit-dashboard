@@ -41,10 +41,11 @@ MIDDLEWARE = [
     # LocaleMiddleware must come AFTER SessionMiddleware and BEFORE CommonMiddleware
     # so that Django can read _language from session and activate it per request.
     "django.middleware.locale.LocaleMiddleware",
-    "config.middleware.UiLanguageSyncMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "config.middleware.UserLanguageMiddleware",
+    "config.middleware.UserThemeMiddleware",
     "accounts_app.middleware.PasswordExpiryMiddleware",
     "accounts_app.middleware.ActiveCompanyMiddleware",
     "config.middleware.RequestContextRefreshMiddleware",
@@ -101,9 +102,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # ── Internationalization ──────────────────────────────────────────────
-# Arabic is the default language.  Users can toggle to English via the
-# language-switcher button (which calls Django's set_language view).
-LANGUAGE_CODE = "ar"
+# English is the default language. Users can switch to Arabic via the
+# language toggle; anonymous choices live in session, signed-in users in profile.
+LANGUAGE_CODE = "en"
 LANGUAGES = [
     ("ar", "العربية"),
     ("en", "English"),

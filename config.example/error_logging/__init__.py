@@ -1,5 +1,5 @@
 """
-Centralized error tracking and logging for the Excel Audit Dashboard.
+Centralized error tracking and logging for the Audit Dashboard.
 
 Architecture
 ------------

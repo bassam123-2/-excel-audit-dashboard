@@ -134,7 +134,7 @@ html[dir="rtl"] .input-group-text { border-right: none; border-radius: 10px 0 0 
     <div class="login-card">
         <div class="login-card-icon"><i class="bi bi-shield-lock-fill"></i></div>
         <h2>{% if CURRENT_LANG == "ar" %}لوحة الإدارة{% else %}Admin Panel{% endif %}</h2>
-        <p>{% if CURRENT_LANG == "ar" %}لوحة تدقيق Excel — تسجيل دخول المسؤول{% else %}Excel Audit Dashboard — Admin Sign in{% endif %}</p>
+        <p>{% if CURRENT_LANG == "ar" %}لوحة التدقيق — تسجيل دخول المسؤول{% else %}Audit Dashboard — Admin Sign in{% endif %}</p>
 
         {% if form.errors %}
         <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
@@ -182,9 +182,8 @@ html[dir="rtl"] .input-group-text { border-right: none; border-radius: 10px 0 0 
     <div>
         <div class="deco-brand-logo"><i class="bi bi-bar-chart-line-fill"></i></div>
         <div class="deco-brand-name">{% if CURRENT_LANG == "ar" %}لوحة التدقيق{% else %}Audit Dashboard{% endif %}</div>
-        <div class="deco-brand-sub">Excel Audit Dashboard</div>
     </div>
-    <div class="deco-footer">Excel Audit Dashboard &copy; {% now "Y" %}</div>
+    <div class="deco-footer">Audit Dashboard &copy; {% now "Y" %}</div>
 </div>
 {% else %}
 <div class="deco-panel">
@@ -193,15 +192,14 @@ html[dir="rtl"] .input-group-text { border-right: none; border-radius: 10px 0 0 
     <div>
         <div class="deco-brand-logo"><i class="bi bi-bar-chart-line-fill"></i></div>
         <div class="deco-brand-name">{% if CURRENT_LANG == "ar" %}لوحة التدقيق{% else %}Audit Dashboard{% endif %}</div>
-        <div class="deco-brand-sub">Excel Audit Dashboard</div>
     </div>
-    <div class="deco-footer">Excel Audit Dashboard &copy; {% now "Y" %}</div>
+    <div class="deco-footer">Audit Dashboard &copy; {% now "Y" %}</div>
 </div>
 <div class="form-panel">
     <div class="login-card">
         <div class="login-card-icon"><i class="bi bi-shield-lock-fill"></i></div>
         <h2>{% if CURRENT_LANG == "ar" %}لوحة الإدارة{% else %}Admin Panel{% endif %}</h2>
-        <p>{% if CURRENT_LANG == "ar" %}لوحة تدقيق Excel — تسجيل دخول المسؤول{% else %}Excel Audit Dashboard — Admin Sign in{% endif %}</p>
+        <p>{% if CURRENT_LANG == "ar" %}لوحة التدقيق — تسجيل دخول المسؤول{% else %}Audit Dashboard — Admin Sign in{% endif %}</p>
 
         {% if form.errors %}
         <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">

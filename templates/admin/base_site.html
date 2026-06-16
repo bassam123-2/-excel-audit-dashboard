@@ -29,7 +29,9 @@
 
 <link rel="stylesheet" href="{% static 'admin/custom.css' %}">
 <link rel="stylesheet" href="{% static 'css/app-layout.css' %}">
+<link rel="stylesheet" href="{% static 'css/dark-theme.css' %}">
 <link rel="manifest" href="{% static 'manifest.json' %}">
+<script>(function(){var t="{{ ui_theme|default:'light'|escapejs }}";document.documentElement.setAttribute("data-ui-theme",t);if(t==="dark")document.documentElement.setAttribute("data-theme","dark");})();</script>
 
 {% endblock %}
 
@@ -116,6 +118,10 @@
 
 </a>
 
+<button type="button" class="btn-lang js-theme-toggle" title="{% trans 'Theme' %}">
+    <i class="bi bi-moon-stars"></i>
+</button>
+
 
 
 <a href="/" class="btn-lang" title="{% trans 'Main Site' %}">
@@ -166,6 +172,8 @@
 
 </script>
 <script src="{% static 'js/app-layout.js' %}"></script>
+<script>window.UI_THEME_SWITCH_URL = "{% url 'switch_theme' %}";</script>
+<script src="{% static 'js/theme-toggle.js' %}"></script>
 
 {% endblock %}
 

@@ -14,6 +14,8 @@ REQUIRED_USERPROFILE_COLUMNS = frozenset(
         "two_factor_enabled",
         "receive_workflow_emails",
         "must_change_password_on_login",
+        "preferred_language",
+        "preferred_theme",
     }
 )
 

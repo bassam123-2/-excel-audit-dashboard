@@ -1,4 +1,4 @@
-# Excel Audit Dashboard (Django + MySQL)
+# Audit Dashboard (Django + MySQL)
 
 This project now runs on **Django** with **MySQL** and is structured for multi-developer collaboration.
 
@@ -47,58 +47,64 @@ Response includes the report version and module file. Every HTML response also s
 
 Full tree and “where to change what”: **[docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)** · Data flow: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
 
-| File / folder | Role |
-|---------------|------|
-| `START_HERE.md` | Onboarding checklist for new developers |
-| `docs/SETUP.md` | Full install: config, .env, MySQL, admin bootstrap |
-| `docs/USER_GUIDE.md` | End-user workflow (upload, review, Arabic UI) |
-| `docs/CODE_MAP.md` | Symbol index for `ai_excel_dashboard.py` |
-| `manage.py` | Django command entrypoint |
-| `config/` | Django settings/urls/wsgi/asgi (from `config.example/`) |
-| `accounts_app/` | Login, 2FA, password expiry, company selection |
-| `audit_app/` | Models, admin, company access, persistence |
-| `reports_app/` | Upload, dashboards, version API |
-| `mail_app/` | `/api/send-obs-email`, `/api/parse-audit-plan-pptx` |
-| `exports_app/` | `/api/exports/health` monitoring endpoint |
-| `scripts/` | `run_web.ps1`, `migrate.ps1`, `db_health.ps1` |
-| `ai_excel_dashboard.py` | Report engine (monolith) |
-| `data_io.py` | Read Excel/CSV into pandas |
-| `dashboard_locale.py` | EN/AR report UI strings |
-| `web_strings.py` | EN/AR Django shell strings |
-| `assets/logos/` | Company/subcompany logos for the header |
-| `examples/` | Optional anonymized sample `.xlsx` for testing |
-| `docs/EXCEL_SCHEMA.md` | Expected Excel columns and row rules |
+
+| File / folder           | Role                                                    |
+| ----------------------- | ------------------------------------------------------- |
+| `START_HERE.md`         | Onboarding checklist for new developers                 |
+| `docs/SETUP.md`         | Full install: config, .env, MySQL, admin bootstrap      |
+| `docs/USER_GUIDE.md`    | End-user workflow (upload, review, Arabic UI)           |
+| `docs/CODE_MAP.md`      | Symbol index for `ai_excel_dashboard.py`                |
+| `manage.py`             | Django command entrypoint                               |
+| `config/`               | Django settings/urls/wsgi/asgi (from `config.example/`) |
+| `accounts_app/`         | Login, 2FA, password expiry, company selection          |
+| `audit_app/`            | Models, admin, company access, persistence              |
+| `reports_app/`          | Upload, dashboards, version API                         |
+| `mail_app/`             | `/api/send-obs-email`, `/api/parse-audit-plan-pptx`     |
+| `exports_app/`          | `/api/exports/health` monitoring endpoint               |
+| `scripts/`              | `run_web.ps1`, `migrate.ps1`, `db_health.ps1`           |
+| `ai_excel_dashboard.py` | Report engine (monolith)                                |
+| `data_io.py`            | Read Excel/CSV into pandas                              |
+| `dashboard_locale.py`   | EN/AR report UI strings                                 |
+| `web_strings.py`        | EN/AR Django shell strings                              |
+| `assets/logos/`         | Company/subcompany logos for the header                 |
+| `examples/`             | Optional anonymized sample `.xlsx` for testing          |
+| `docs/EXCEL_SCHEMA.md`  | Expected Excel columns and row rules                    |
+
 
 ## SMTP (optional — send observation email and 2FA)
 
-Set SMTP variables in **`.env`** in the project root (copy from `.env.example`). Restart the server after changes.
+Set SMTP variables in `**.env`** in the project root (copy from `.env.example`). Restart the server after changes.
 
-| Variable | Example |
-|----------|---------|
-| `AI_EXCEL_SMTP_HOST` | `smtp.gmail.com` |
-| `AI_EXCEL_SMTP_PORT` | `587` |
-| `AI_EXCEL_SMTP_USER` | `noreply@YourDomain.com` |
-| `AI_EXCEL_SMTP_PASSWORD` | `your-smtp-password` |
-| `AI_EXCEL_SMTP_FROM` | `noreply@YourDomain.com` |
-| `AI_EXCEL_SMTP_FROM_NAME` | `Audit Dashboard` |
-| `AI_EXCEL_SMTP_USE_TLS` | `true` |
+
+| Variable                  | Example                  |
+| ------------------------- | ------------------------ |
+| `AI_EXCEL_SMTP_HOST`      | `smtp.gmail.com`         |
+| `AI_EXCEL_SMTP_PORT`      | `587`                    |
+| `AI_EXCEL_SMTP_USER`      | `noreply@YourDomain.com` |
+| `AI_EXCEL_SMTP_PASSWORD`  | `your-smtp-password`     |
+| `AI_EXCEL_SMTP_FROM`      | `noreply@YourDomain.com` |
+| `AI_EXCEL_SMTP_FROM_NAME` | `Audit Dashboard`        |
+| `AI_EXCEL_SMTP_USE_TLS`   | `true`                   |
+
 
 Verify: `python manage.py test_smtp` (add `--send --to you@example.com` to send a probe message).
 
 ## Web API (Django)
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/login/` | GET/POST | Authentication |
-| `/select-company/` | GET/POST | Choose active tenant |
-| `/` | GET | Upload form (login required) |
-| `/analyze` | POST | Process upload → create dashboard draft |
-| `/dashboards/` | GET | List dashboards |
-| `/dashboards/<id>/serve/` | GET | Generated report HTML |
-| `/api/version` | GET | JSON build version + module path |
-| `/api/send-obs-email` | POST | Send observation email (needs SMTP config) |
-| `/api/parse-audit-plan-pptx` | POST | Parse audit plan PowerPoint |
-| `/api/exports/health` | GET | Health check for external monitoring |
+
+| Endpoint                     | Method   | Purpose                                    |
+| ---------------------------- | -------- | ------------------------------------------ |
+| `/login/`                    | GET/POST | Authentication                             |
+| `/select-company/`           | GET/POST | Choose active tenant                       |
+| `/`                          | GET      | Upload form (login required)               |
+| `/analyze`                   | POST     | Process upload → create dashboard draft    |
+| `/dashboards/`               | GET      | List dashboards                            |
+| `/dashboards/<id>/serve/`    | GET      | Generated report HTML                      |
+| `/api/version`               | GET      | JSON build version + module path           |
+| `/api/send-obs-email`        | POST     | Send observation email (needs SMTP config) |
+| `/api/parse-audit-plan-pptx` | POST     | Parse audit plan PowerPoint                |
+| `/api/exports/health`        | GET      | Health check for external monitoring       |
+
 
 ## Excel format
 
@@ -106,7 +112,7 @@ See **[docs/EXCEL_SCHEMA.md](docs/EXCEL_SCHEMA.md)** for required columns, optio
 
 ## AI dashboard templates (`template_type: ai`)
 
-Dashboards created from the upload form (e.g. `/dashboards/2/`) use template code **`ai`**. The report inside the iframe is **English-only** regardless of site UI language. The surrounding Django pages (sidebar, toolbar) still follow the session language.
+Dashboards created from the upload form (e.g. `/dashboards/2/`) use template code `**ai`**. The report inside the iframe is **English-only** regardless of site UI language. The surrounding Django pages (sidebar, toolbar) still follow the session language.
 
 ### Request flow
 
@@ -117,40 +123,46 @@ Dashboards created from the upload form (e.g. `/dashboards/2/`) use template cod
 
 ### Django templates (site shell around the report)
 
-| Path | Role |
-|------|------|
-| `templates/reports_app/dashboard_detail.html` | Dashboard page: toolbar + `<iframe src="…/serve/">` |
-| `templates/reports_app/dashboard_list.html` | List of saved dashboards |
-| `templates/reports_app/upload.html` | Upload form (`/`) |
-| `templates/base.html` | Shared layout: sidebar, topbar, messages |
-| `web_strings.py` | Bilingual strings for the Django shell (not the report iframe) |
+
+| Path                                          | Role                                                           |
+| --------------------------------------------- | -------------------------------------------------------------- |
+| `templates/reports_app/dashboard_detail.html` | Dashboard page: toolbar + `<iframe src="…/serve/">`            |
+| `templates/reports_app/dashboard_list.html`   | List of saved dashboards                                       |
+| `templates/reports_app/upload.html`           | Upload form (`/`)                                              |
+| `templates/base.html`                         | Shared layout: sidebar, topbar, messages                       |
+| `web_strings.py`                              | Bilingual strings for the Django shell (not the report iframe) |
+
 
 ### Report HTML generator (iframe content — not Django templates)
 
 The audit dashboard HTML/CSS/JS is built in Python, not as `.html` files under `templates/`:
 
-| Path | Role |
-|------|------|
-| `ai_excel_dashboard.py` → `generate_finance_report()` | Main report builder; inline HTML template starts ~line 2245 |
-| `ai_excel_dashboard.py` → `build_audit_observation_payload()` | Audit observations table, filters, charts data |
-| `ai_excel_dashboard.py` → `build_multi_dashboard_shell()` | Multi-workbook tab shell (legacy multi-file uploads) |
-| `dashboard_locale.py` | Report UI strings (`tr(loc, "…")`) — EN/AR keys |
-| `data_io.py` | Read Excel/CSV into pandas |
-| `reports_app/services/report_generation.py` | `store_upload_to_db()`, `generate_from_db_data()`, `report_locale_for_dashboard()` |
 
-Locale for `ai` dashboards is forced to **`en`** in:
+| Path                                                          | Role                                                                               |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `ai_excel_dashboard.py` → `generate_finance_report()`         | Main report builder; inline HTML template starts ~line 2245                        |
+| `ai_excel_dashboard.py` → `build_audit_observation_payload()` | Audit observations table, filters, charts data                                     |
+| `ai_excel_dashboard.py` → `build_multi_dashboard_shell()`     | Multi-workbook tab shell (legacy multi-file uploads)                               |
+| `dashboard_locale.py`                                         | Report UI strings (`tr(loc, "…")`) — EN/AR keys                                    |
+| `data_io.py`                                                  | Read Excel/CSV into pandas                                                         |
+| `reports_app/services/report_generation.py`                   | `store_upload_to_db()`, `generate_from_db_data()`, `report_locale_for_dashboard()` |
+
+
+Locale for `ai` dashboards is forced to `**en**` in:
 
 - `reports_app/views.py` → `dashboard_serve()` (cache key + generation)
 - `reports_app/services/report_generation.py` → `store_upload_to_db()`, `generate_from_db_data()`
 
 ### Cached report files
 
-| Path | Role |
-|------|------|
-| `media/dashboards/<id>_en.html` | Cached English report for dashboard `<id>` (used for `ai` type) |
-| `media/dashboards/<id>_ar.html` | Arabic cache (only for non-`ai` template types, if added later) |
-| `media/decks/<report_id>/deck*.pptx` | Optional audit committee slide decks |
-| `media/decks/<report_id>/high_risk_deck*.pptx` | Optional high-risk slide decks |
+
+| Path                                           | Role                                                            |
+| ---------------------------------------------- | --------------------------------------------------------------- |
+| `media/dashboards/<id>_en.html`                | Cached English report for dashboard `<id>` (used for `ai` type) |
+| `media/dashboards/<id>_ar.html`                | Arabic cache (only for non-`ai` template types, if added later) |
+| `media/decks/<report_id>/deck*.pptx`           | Optional audit committee slide decks                            |
+| `media/decks/<report_id>/high_risk_deck*.pptx` | Optional high-risk slide decks                                  |
+
 
 Force regeneration after editing `ai_excel_dashboard.py`:
 
@@ -182,3 +194,4 @@ Development build: `requirements-dev.txt` (pytest, ruff, black).
 - Run tests: `pytest`
 - Lint/format: `ruff check .` and `black .`
 - Optional hooks: `pre-commit install`
+

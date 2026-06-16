@@ -72,6 +72,20 @@ class UserProfile(models.Model):
             "before accessing the application."
         ),
     )
+    preferred_language = models.CharField(
+        max_length=2,
+        choices=(("en", _("English")), ("ar", _("Arabic"))),
+        default="en",
+        verbose_name=_("Preferred language"),
+        help_text=_("UI language for the dashboard and administration site."),
+    )
+    preferred_theme = models.CharField(
+        max_length=5,
+        choices=(("light", _("Light")), ("dark", _("Dark"))),
+        default="light",
+        verbose_name=_("Preferred theme"),
+        help_text=_("Light or dark appearance for the dashboard and admin site."),
+    )
 
     def is_password_expired(self) -> bool:
         if not self.password_expiry_enabled:

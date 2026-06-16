@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{{ ui.upload_page_title }}{% endblock %}
 
 {% block page_title %}
@@ -9,124 +10,7 @@
 {% endblock %}
 
 {% block extra_head %}
-<style>
-    .upload-card { max-width: 760px; margin: 0 auto; }
-
-    /* ── Icon picker ───────────────────────────── */
-    .icon-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: .6rem;
-    }
-    @media (max-width: 500px) { .icon-grid { grid-template-columns: repeat(4, 1fr); } }
-    .icon-opt { display: none; }
-    .icon-label {
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        gap: .35rem; padding: .85rem .5rem;
-        background: #f8fafc; border: 2px solid var(--border);
-        border-radius: 12px; cursor: pointer;
-        transition: all .15s;
-        font-size: .73rem; color: var(--muted);
-        text-align: center;
-    }
-    .icon-label i { font-size: 1.5rem; color: var(--muted); transition: color .15s; }
-    .icon-label:hover {
-        border-color: var(--accent); background: #eff6ff;
-    }
-    .icon-label:hover i { color: var(--accent); }
-    .icon-opt:checked + .icon-label {
-        border-color: var(--accent); background: #eff6ff;
-        box-shadow: 0 0 0 3px rgba(59,130,246,.15);
-    }
-    .icon-opt:checked + .icon-label i { color: var(--accent-dark); }
-    .icon-opt:checked + .icon-label { color: var(--accent-dark); font-weight: 600; }
-
-    /* ── File drop zone ─────────────────────────── */
-    .file-zone {
-        border: 2px dashed var(--border);
-        border-radius: 12px; padding: 2rem 1rem;
-        text-align: center; cursor: pointer;
-        transition: all .2s; background: #f8fafc;
-        position: relative;
-    }
-    .file-zone:hover, .file-zone.drag-over {
-        border-color: var(--accent); background: #eff6ff;
-    }
-    .file-zone input[type=file] {
-        position: absolute; inset: 0; opacity: 0; cursor: pointer;
-    }
-    .file-zone .fz-icon { font-size: 2.2rem; color: #94a3b8; margin-bottom: .5rem; }
-    .file-zone .fz-text { font-weight: 600; color: var(--text); font-size: .9rem; }
-    .file-zone .fz-hint { font-size: .78rem; color: var(--muted); margin-top: .3rem; }
-    .file-zone .fz-selected { font-size: .85rem; color: var(--success); font-weight: 600; margin-top: .5rem; display: none; }
-    .file-zone.file-zone--compact { padding: 1.25rem 1rem; }
-    .file-zone.file-zone--compact .fz-icon { font-size: 1.6rem; margin-bottom: .35rem; }
-
-    /* ── Template badge ─────────────────────────── */
-    .template-badge {
-        display: inline-flex; align-items: center; gap: .5rem;
-        background: linear-gradient(135deg, #eff6ff, #e0e7ff);
-        border: 1px solid #bfdbfe; border-radius: 10px;
-        padding: .6rem 1rem; font-size: .84rem; color: var(--accent-dark);
-        font-weight: 600; cursor: default;
-    }
-
-    /* ── Processing overlay ─────────────────────── */
-    #uploadOverlay {
-        display: none; position: fixed; inset: 0;
-        background: rgba(15,31,61,.7); backdrop-filter: blur(4px);
-        z-index: 9999; align-items: center; justify-content: center; flex-direction: column; gap: 1rem;
-    }
-    .spin {
-        width: 52px; height: 52px; border-radius: 50%;
-        border: 4px solid rgba(255,255,255,.2); border-top-color: #60a5fa;
-        animation: spin .75s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    #uploadOverlay p { color: #fff; font-size: 1rem; font-weight: 600; margin: 0; }
-
-    .form-section { margin-bottom: 1.75rem; }
-    .section-label {
-        font-size: .78rem; font-weight: 700; text-transform: uppercase;
-        letter-spacing: .06em; color: var(--muted);
-        margin-bottom: .75rem; display: flex; align-items: center; gap: .4rem;
-    }
-
-    /* ── Extra file zones ─────────────────────── */
-    .extra-file-zone {
-        border: 2px dashed var(--border); border-radius: 10px;
-        padding: .85rem .5rem; text-align: center; cursor: pointer;
-        background: #f8fafc; position: relative; transition: all .15s;
-    }
-    .extra-file-zone:hover { border-color: var(--accent); background: #eff6ff; }
-    .extra-file-zone input[type=file] {
-        position: absolute; inset: 0; opacity: 0; cursor: pointer;
-    }
-    .extra-file-zone.filled { border-color: var(--success); background: #f0fdf4; }
-
-    details > summary { list-style: none; }
-    details > summary::-webkit-details-marker { display: none; }
-    details[open] > summary i.bi-file-earmark-slides,
-    details[open] > summary i.bi-exclamation-triangle-fill { color: var(--accent); }
-
-    .attach-existing {
-        display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
-        padding: .65rem .85rem; margin: .75rem 0 .5rem;
-        background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
-        font-size: .82rem;
-    }
-    .attach-existing__name { font-weight: 600; color: var(--text); word-break: break-all; }
-    .attach-existing__meta { color: var(--muted); font-size: .76rem; flex: 1 1 100%; margin: 0; }
-    .attach-removed-notice {
-        display: none; padding: .55rem .85rem; margin: .75rem 0 .5rem;
-        background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px;
-        font-size: .82rem; color: #b91c1c;
-    }
-    .attach-replace-hint {
-        display: none; font-size: .76rem; color: var(--accent-dark);
-        margin: .35rem 0 .5rem;
-    }
-</style>
+<link rel="stylesheet" href="{% static 'css/upload-page.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -142,7 +26,7 @@
         <div class="card-header d-flex align-items-center gap-2">
             <i class="bi bi-cloud-upload-fill" style="color:var(--accent);"></i>
             {{ ui.upload_heading }}
-            <span class="ms-2" style="font-size:.78rem;font-weight:400;color:var(--muted);">
+            <span class="ms-2 upload-card-header-sub">
                 {{ ui.upload_subheading }}
             </span>
         </div>
@@ -176,7 +60,7 @@
                 <div class="form-section">
                     <div class="section-label">
                         <i class="bi bi-tag-fill"></i> {{ ui.upload_name_label }}
-                        <span style="color:var(--danger);">*</span>
+                        <span class="section-label__required">*</span>
                     </div>
                     <input type="text" name="dashboard_name" id="id_name"
                            class="form-control form-control-lg"
@@ -191,8 +75,8 @@
                 <div class="form-section">
                     <div class="section-label">
                         <i class="bi bi-grid-fill"></i> {{ ui.upload_icon_label }}
-                        <span style="color:var(--danger);">*</span>
-                        <span style="font-size:.72rem;font-weight:400;margin-top:1px;"> — {{ ui.upload_icon_hint }}</span>
+                        <span class="section-label__required">*</span>
+                        <span class="section-label__hint"> — {{ ui.upload_icon_hint }}</span>
                     </div>
                     <div class="icon-grid">
                         {% with icons=icon_choices %}
@@ -230,7 +114,7 @@
                         </div>
                         {% endwith %}
                     </div>
-                    <div class="text-danger mt-1" id="iconError" style="font-size:.84rem;display:none;">{{ ui.upload_err_icon }}</div>
+                    <div class="upload-field-error text-danger mt-1" id="iconError">{{ ui.upload_err_icon }}</div>
                 </div>
 
                 <!-- ── Template type ── -->
@@ -240,7 +124,7 @@
                         {% for tt in template_types %}
                         <label class="template-badge" style="cursor:pointer;">
                             <input type="radio" name="template_type" value="{{ tt.code }}"
-                                   style="display:none;" required
+                                   required
                                    {% if selected_template == tt.code %}checked
                                    {% elif not selected_template and forloop.first %}checked{% endif %}>
                             <i class="bi {{ tt.icon|default:'bi-stars' }}"></i>
@@ -261,8 +145,8 @@
                 <div class="form-section">
                     <div class="section-label">
                         <i class="bi bi-file-earmark-arrow-up-fill"></i> {{ ui.upload_file_label }}
-                        <span style="color:var(--danger);">*</span>
-                        <span style="font-size:.72rem;font-weight:400;margin-top:1px;"> — {{ ui.upload_file_hint }}</span>
+                        <span class="section-label__required">*</span>
+                        <span class="section-label__hint"> — {{ ui.upload_file_hint }}</span>
                     </div>
 
                     <!-- Primary file (required) -->
@@ -275,19 +159,19 @@
                             <i class="bi bi-check-circle-fill me-1"></i><span id="fileName"></span>
                         </div>
                     </div>
-                    <div class="text-danger mt-1" id="fileError" style="font-size:.84rem;display:none;">{{ ui.upload_err_file }}</div>
+                    <div class="upload-field-error text-danger mt-1" id="fileError">{{ ui.upload_err_file }}</div>
                 </div>
 
                 <!-- ── Optional attachments (PPTX/PDF) ── -->
                 {% for slot in attachment_slots %}
                 <div class="form-section">
                     <details id="{{ slot.details_id }}"{% if slot.has_existing %} open{% endif %}>
-                        <summary style="cursor:pointer;font-size:.82rem;font-weight:600;color:var(--muted);user-select:none;">
+                        <summary>
                             <i class="bi {{ slot.summary_icon }} me-1"></i>
                             {{ slot.label }}
                         </summary>
                         {% if slot.hint %}
-                        <p style="font-size:.78rem;color:var(--muted);margin:.75rem 0 .5rem;">{{ slot.hint }}</p>
+                        <p class="attach-details-hint">{{ slot.hint }}</p>
                         {% endif %}
                         {% if is_edit_mode and slot.has_existing %}
                         <div class="attach-existing" id="{{ slot.kind }}ExistingPanel">
@@ -351,8 +235,8 @@
             fileNameEl.textContent = this.files[0].name;
             fileSelected.style.display = 'block';
             fileError.style.display = 'none';
-            fileZone.style.borderColor = 'var(--success)';
-            fileZone.style.background  = '#f0fdf4';
+            fileZone.classList.add('is-filled');
+            fileZone.classList.remove('is-invalid-zone');
         }
     });
 
@@ -395,10 +279,12 @@
         // File
         if (!fileInput.files.length) {
             fileError.style.display = 'block';
-            fileZone.style.borderColor = 'var(--danger)';
+            fileZone.classList.add('is-invalid-zone');
+            fileZone.classList.remove('is-filled');
             valid = false;
         } else {
             fileError.style.display = 'none';
+            fileZone.classList.remove('is-invalid-zone');
         }
 
         if (!valid) { e.preventDefault(); return; }
@@ -427,8 +313,8 @@ function markAttachmentRemove(kind, fieldPrefix) {
     if (replaceHint) replaceHint.style.display = 'none';
     if (selected) selected.style.display = 'none';
     if (zone) {
-        zone.style.borderColor = '';
-        zone.style.background = '';
+        zone.classList.remove('is-filled');
+        zone.classList.remove('is-invalid-zone');
     }
     if (fileIn) fileIn.value = '';
 }
@@ -450,12 +336,11 @@ function onAttachmentFile(input, kind, fieldPrefix) {
         if (replaceHint) replaceHint.style.display = (!hadRemove && panel) ? 'block' : 'none';
         if (nameEl) nameEl.textContent = input.files[0].name;
         if (selected) selected.style.display = 'block';
-        zone.style.borderColor = 'var(--success)';
-        zone.style.background = '#f0fdf4';
+        zone.classList.add('is-filled');
+        zone.classList.remove('is-invalid-zone');
     } else {
         if (selected) selected.style.display = 'none';
-        zone.style.borderColor = '';
-        zone.style.background = '';
+        zone.classList.remove('is-filled');
         if (replaceHint) replaceHint.style.display = 'none';
         if (removeIn && removeIn.value !== '1' && panel) panel.style.display = '';
     }

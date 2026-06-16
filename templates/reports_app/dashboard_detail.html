@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{{ dashboard.name }} — {{ ui.brand_name }}{% endblock %}
 
 {% block page_title %}
@@ -12,44 +13,13 @@
 {% endblock %}
 
 {% block extra_head %}
-<style>
-    .page-body { padding: 0 !important; }
-    .dash-toolbar {
-        background: #fff; border-bottom: 1px solid var(--border);
-        padding: .55rem 1.25rem;
-        display: flex; align-items: center; gap: .65rem; flex-wrap: wrap;
-    }
-    .meta-pill {
-        display: inline-flex; align-items: center; gap: .35rem;
-        background: #f8fafc; border: 1px solid var(--border);
-        border-radius: 20px; padding: .2rem .75rem;
-        font-size: .73rem; color: var(--muted); white-space: nowrap;
-    }
-    .dash-frame { width: 100%; border: none; display: block; background: var(--bg); }
-    .toolbar-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
-    .badge-status-draft { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
-    .badge-status-published { background: #f0fdf4; color: #047857; border: 1px solid #86efac; }
-    .badge-status-rejected { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; }
-    .reject-log-panel {
-        background: #fff; border-top: 1px solid var(--border);
-        padding: .85rem 1.25rem;
-        position: static;
-    }
-    .reject-log-item {
-        border: 1px solid #fecaca; border-radius: 8px;
-        background: #fffbfb; padding: .65rem .85rem; margin-bottom: .5rem;
-        font-size: .82rem;
-    }
-    .reject-log-item:last-child { margin-bottom: 0; }
-    .reject-log-meta { font-size: .72rem; color: var(--muted); margin-bottom: .35rem; }
-    .badge-deleted { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
-</style>
+<link rel="stylesheet" href="{% static 'css/dashboard-pages.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="dash-toolbar">
-    <span class="meta-pill" style="font-weight:600;font-size:.8rem;color:var(--accent-dark);">
-        <i class="bi {{ dashboard.icon|default:'bi-bar-chart-line-fill' }}" style="font-size:.9rem;"></i>
+    <span class="meta-pill meta-pill--title">
+        <i class="bi {{ dashboard.icon|default:'bi-bar-chart-line-fill' }}"></i>
         {{ dashboard.name }}
     </span>
     <span class="meta-pill"><i class="bi bi-calendar3"></i> {{ dashboard.created_at|date:"Y/m/d H:i" }}</span>
@@ -191,7 +161,6 @@
 (function () {
     var f = document.getElementById('dashFrame');
     function resize() {
-        /* Fill viewport below toolbar only; rejection logs sit below and scroll with the page. */
         f.style.height = Math.max(320, window.innerHeight - f.getBoundingClientRect().top) + 'px';
     }
     resize();

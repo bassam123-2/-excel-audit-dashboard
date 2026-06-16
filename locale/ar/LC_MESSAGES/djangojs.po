@@ -1,7 +1,7 @@
 # Arabic JavaScript translations for Django admin widgets.
 msgid ""
 msgstr ""
-"Project-Id-Version: Excel Audit Dashboard\n"
+"Project-Id-Version: Audit Dashboard\n"
 "Language: ar\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"

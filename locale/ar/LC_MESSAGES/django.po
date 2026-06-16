@@ -1,7 +1,7 @@
-# Arabic translations for Excel Audit Dashboard.
+# Arabic translations for Audit Dashboard.
 msgid ""
 msgstr ""
-"Project-Id-Version: Excel Audit Dashboard\n"
+"Project-Id-Version: Audit Dashboard\n"
 "Language: ar\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"

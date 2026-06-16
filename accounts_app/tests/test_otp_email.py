@@ -29,7 +29,7 @@ def test_otp_email_subject_no_company_suffix():
     content = build_otp_email_content(code="123456", locale="ar")
     subject = content["subject"]
     assert "—" not in subject
-    assert "شركة مجموعة عبداللطيف العيسى القابضة" not in subject
+    assert "Audit Dashboard" not in subject
     assert subject == "رمز التحقق Your OTP Code"
 
 
@@ -40,7 +40,7 @@ def test_otp_email_bilingual_plain():
     assert "123456" in plain
     assert "السلام عليكم" in plain
     assert "Hello" in plain
-    assert "شركة مجموعة عبداللطيف العيسى القابضة" in plain
+    assert "Audit Dashboard" in plain
 
 
 @pytest.mark.unit
@@ -63,4 +63,4 @@ def test_resolve_logo_url_from_base_url():
     assert url is not None
     assert url.startswith("https://dashboard.example.com/static/logos/")
     assert "Abdullatif" in url
-
+

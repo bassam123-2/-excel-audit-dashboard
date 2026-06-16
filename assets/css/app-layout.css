@@ -50,8 +50,10 @@ html[data-theme="dark"] {
     --border: #334155;
     --text: #f1f5f9;
     --muted: #94a3b8;
-    --navy: #020617;
-    --navy2: #0f172a;
+    --heading: #f8fafc;
+    --input-bg: #0f172a;
+    --navy: #0f1f3d;
+    --navy2: #162136;
 }
 
 html[data-theme="dark"] body {

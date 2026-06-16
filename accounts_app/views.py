@@ -23,6 +23,20 @@ from audit_app.company_access import (
     user_must_select_company,
 )
 from accounts_app.navigation import resolve_default_home
+from accounts_app.services.user_language import (
+    DEFAULT_UI_LANG,
+    apply_ui_lang_to_request,
+    persist_preferred_language,
+    resolve_ui_lang,
+    set_language_cookie,
+    sync_user_language_after_login,
+)
+from accounts_app.services.user_theme import (
+    apply_ui_theme_to_request,
+    persist_preferred_theme,
+    resolve_ui_theme,
+    sync_user_theme_after_login,
+)
 from reports_app.dashboard_workflow import dashboard_url_belongs_to_company
 from web_strings import get_ui
 
@@ -56,7 +70,7 @@ def login_view(request):
             return redirect("select_company")
         return redirect(resolve_default_home(request.user, request))
 
-    lang = request.session.get("ui_lang", "ar")
+    lang = request.session.get("ui_lang", DEFAULT_UI_LANG)
     ui = get_ui(lang)
     next_url = _safe_next_url(request.GET.get("next") or "")
 
@@ -114,6 +128,8 @@ def login_view(request):
                     else:
                         clear_failed_logins(username, client_ip)
                         login(request, user)
+                        sync_user_language_after_login(request, user)
+                        sync_user_theme_after_login(request, user)
                         return _finish_login(request, user, next_url)
                 else:
                     record_failed_login(username, client_ip)
@@ -145,7 +161,7 @@ def verify_2fa_view(request):
         verify_otp,
     )
 
-    lang = request.session.get("ui_lang", "ar")
+    lang = request.session.get("ui_lang", DEFAULT_UI_LANG)
     ui = get_ui(lang)
     user_id = request.session.get("pending_2fa_user_id")
     if not user_id:
@@ -203,6 +219,8 @@ def verify_2fa_view(request):
                     request.session.pop("pending_2fa_user_id", None)
                     next_url = request.session.pop("pending_2fa_next", "") or ""
                     login(request, user)
+                    sync_user_language_after_login(request, user)
+                    sync_user_theme_after_login(request, user)
                     return _finish_login(request, user, next_url)
                 record_verify_2fa_failure(client_ip)
                 error = ui.get("verify_2fa_invalid", "Invalid or expired code.")
@@ -236,44 +254,57 @@ def switch_language(request):
     """
     Toggle (or set) the UI language between 'ar' and 'en'.
 
-    Stores the choice in two places:
-      • request.session["ui_lang"]    — our custom context processor key
-      • LANGUAGE_COOKIE_NAME cookie   — LocaleMiddleware reads this for admin i18n
+    Anonymous users: session + cookie.
+    Authenticated users: also persist preferred_language on UserProfile.
     """
-    from django.conf import settings as _conf
-    from django.utils import translation
-
     explicit = request.GET.get("lang") or request.POST.get("lang")
     if explicit in ("ar", "en"):
         new_lang = explicit
     else:
-        current = (
-            request.session.get("ui_lang")
-            or translation.get_language()
-            or "ar"
-        )
-        current = str(current).split("-")[0]
+        current = resolve_ui_lang(request)
         new_lang = "en" if current == "ar" else "ar"
 
-    request.session["ui_lang"] = new_lang
-    translation.activate(new_lang)
+    apply_ui_lang_to_request(request, new_lang)
+    if request.user.is_authenticated:
+        persist_preferred_language(request.user, new_lang)
 
     next_url = request.GET.get("next") or request.POST.get("next") or "/"
     if not next_url.startswith("/") or next_url.startswith("//"):
         next_url = "/"
 
     response = redirect(next_url)
-    response.set_cookie(
-        _conf.LANGUAGE_COOKIE_NAME,
-        new_lang,
-        max_age=_conf.LANGUAGE_COOKIE_AGE,
-        path=_conf.LANGUAGE_COOKIE_PATH,
-        domain=_conf.LANGUAGE_COOKIE_DOMAIN,
-        secure=_conf.LANGUAGE_COOKIE_SECURE,
-        httponly=_conf.LANGUAGE_COOKIE_HTTPONLY,
-        samesite=_conf.LANGUAGE_COOKIE_SAMESITE,
-    )
+    set_language_cookie(response, new_lang)
     return response
+
+
+@require_http_methods(["POST"])
+def switch_theme(request):
+    """
+    Set UI theme to light or dark.
+
+    Anonymous users: session only.
+    Authenticated users: also persist preferred_theme on UserProfile.
+    """
+    from django.http import JsonResponse
+
+    explicit = request.POST.get("theme")
+    if explicit in ("light", "dark"):
+        new_theme = explicit
+    else:
+        current = resolve_ui_theme(request)
+        new_theme = "light" if current == "dark" else "dark"
+
+    apply_ui_theme_to_request(request, new_theme)
+    if request.user.is_authenticated:
+        persist_preferred_theme(request.user, new_theme)
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({"theme": new_theme})
+
+    next_url = request.POST.get("next") or request.GET.get("next") or "/"
+    if not next_url.startswith("/") or next_url.startswith("//"):
+        next_url = "/"
+    return redirect(next_url)
 
 
 @login_required
@@ -281,7 +312,7 @@ def setup_required_view(request):
     if active_companies_exist():
         return redirect(resolve_default_home(request.user, request))
 
-    lang = request.session.get("ui_lang", "ar")
+    lang = request.session.get("ui_lang", DEFAULT_UI_LANG)
     ui = get_ui(lang)
     admin_add_company_url = reverse("admin:audit_app_company_add")
 
@@ -301,7 +332,7 @@ def select_company_view(request):
         return redirect("setup_required")
 
     companies = user_companies(request.user)
-    lang = request.session.get("ui_lang", "ar")
+    lang = request.session.get("ui_lang", DEFAULT_UI_LANG)
     ui = get_ui(lang)
 
     if not companies.exists():
@@ -334,7 +365,7 @@ def select_company_view(request):
 @login_required
 @require_http_methods(["POST"])
 def switch_company_view(request):
-    lang = request.session.get("ui_lang", "ar")
+    lang = request.session.get("ui_lang", DEFAULT_UI_LANG)
     ui = get_ui(lang)
     raw_id = request.POST.get("company_id", "").strip()
     next_url = request.POST.get("next") or resolve_default_home(request.user, request)
@@ -366,7 +397,7 @@ def profile_view(request):
     from django.contrib.auth.password_validation import validate_password
     from django.core.exceptions import ValidationError
 
-    lang = request.session.get("ui_lang", "ar")
+    lang = request.session.get("ui_lang", DEFAULT_UI_LANG)
     ui = get_ui(lang)
 
     profile, _ = UserProfile.objects.get_or_create(user=request.user)

@@ -197,7 +197,7 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
         or (resubmit_dashboard.name if resubmit_dashboard else "")
         or ""
     )
-    lang = normalize_locale(request.session.get("ui_lang", "ar"))
+    lang = normalize_locale(request.session.get("ui_lang", "en"))
     return {
         "icon_choices": ICON_CHOICES,
         "template_types": DashboardTemplateType.objects.filter(is_active=True),
@@ -231,7 +231,7 @@ def index(request):
     if not _has_upload_perm(request.user, request):
         if _has_view_perm(request.user, request):
             return redirect("dashboard_list")
-        lang = request.session.get("ui_lang", "ar")
+        lang = request.session.get("ui_lang", "en")
         messages.error(request, get_ui(lang)["alert_no_upload_perm"])
         return redirect("profile")
 
@@ -249,7 +249,7 @@ def analyze(request):
         return redirect("select_company")
 
     if not _has_upload_perm(request.user, request):
-        lang = request.session.get("ui_lang", "ar")
+        lang = request.session.get("ui_lang", "en")
         messages.error(request, get_ui(lang)["alert_no_upload_perm"])
         return redirect("upload")
 
@@ -258,7 +258,7 @@ def analyze(request):
     if request.method != "POST":
         return HttpResponse("Method not allowed", status=405)
 
-    lang = request.session.get("ui_lang", "ar")
+    lang = request.session.get("ui_lang", "en")
     ui = get_ui(lang)
 
     form = _upload_form_from_post(request.POST)
@@ -347,7 +347,7 @@ def dashboard_list(request):
         return redirect("select_company")
 
     if not _has_view_perm(request.user, request):
-        lang = request.session.get("ui_lang", "ar")
+        lang = request.session.get("ui_lang", "en")
         messages.error(request, get_ui(lang)["alert_no_view_perm"])
         return redirect("profile")
 
@@ -392,7 +392,7 @@ def dashboard_list(request):
 @login_required
 def dashboard_detail(request, pk: int):
     if not _has_view_perm(request.user, request):
-        lang = request.session.get("ui_lang", "ar")
+        lang = request.session.get("ui_lang", "en")
         messages.error(request, get_ui(lang)["alert_no_view_perm"])
         return redirect("profile")
 
@@ -425,7 +425,7 @@ def dashboard_detail(request, pk: int):
 @login_required
 @require_http_methods(["POST"])
 def dashboard_delete(request, pk: int):
-    lang = request.session.get("ui_lang", "ar")
+    lang = request.session.get("ui_lang", "en")
     ui = get_ui(lang)
 
     dashboard = _resolve_dashboard_request(request, pk)
@@ -456,7 +456,7 @@ def dashboard_delete(request, pk: int):
 @login_required
 @require_http_methods(["POST"])
 def dashboard_restore(request, pk: int):
-    lang = request.session.get("ui_lang", "ar")
+    lang = request.session.get("ui_lang", "en")
     ui = get_ui(lang)
 
     if not _has_delete_perm(request.user):
@@ -561,7 +561,7 @@ def _review_action_redirect(request, dashboard, *, not_pending_msg: str):
 @login_required
 @require_http_methods(["POST"])
 def dashboard_approve(request, pk: int):
-    lang = request.session.get("ui_lang", "ar")
+    lang = request.session.get("ui_lang", "en")
     ui = get_ui(lang)
     dashboard = _resolve_dashboard_request(request, pk)
     if not dashboard:
@@ -602,7 +602,7 @@ def dashboard_approve(request, pk: int):
 @login_required
 @require_http_methods(["POST"])
 def dashboard_reject(request, pk: int):
-    lang = request.session.get("ui_lang", "ar")
+    lang = request.session.get("ui_lang", "en")
     ui = get_ui(lang)
     dashboard = _resolve_dashboard_request(request, pk)
     if not dashboard:

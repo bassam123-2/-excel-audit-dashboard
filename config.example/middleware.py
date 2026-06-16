@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import uuid
 
-from django.utils import translation
-
 from config.error_logging.context import (
     build_context_from_request,
     clear_request_context,
@@ -69,17 +67,47 @@ class ErrorTrackingMiddleware:
         return None
 
 
-class UiLanguageSyncMiddleware:
+class UserLanguageMiddleware:
     """
-    After LocaleMiddleware activates the language (cookie / Accept-Language),
-    mirror it into session['ui_lang'] so admin and main site stay in sync.
+    Resolve UI language after authentication is known.
+
+    • Anonymous users: session, then LocaleMiddleware/cookie, then English default.
+    • Authenticated users: profile preferred_language (persisted when they switch).
     """
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        active = (translation.get_language() or "ar").split("-")[0]
-        if active in ("ar", "en"):
-            request.session["ui_lang"] = active
+        from accounts_app.services.user_language import (
+            apply_ui_lang_to_request,
+            resolve_ui_lang,
+            set_language_cookie,
+        )
+
+        lang = resolve_ui_lang(request)
+        apply_ui_lang_to_request(request, lang)
+        response = self.get_response(request)
+        set_language_cookie(response, lang)
+        return response
+
+
+class UserThemeMiddleware:
+    """
+    Resolve UI theme after authentication is known.
+
+    • Anonymous users: session, default light.
+    • Authenticated users: profile preferred_theme (default light).
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from accounts_app.services.user_theme import (
+            apply_ui_theme_to_request,
+            resolve_ui_theme,
+        )
+
+        apply_ui_theme_to_request(request, resolve_ui_theme(request))
         return self.get_response(request)

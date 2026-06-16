@@ -218,7 +218,7 @@ def _resolve_all_deck_attachments(
 
     existing_source = existing_source if isinstance(existing_source, dict) else {}
     enabled_kinds = get_enabled_attachment_kinds(company)
-    locale = normalize_locale(request.session.get("ui_lang", "ar"))
+    locale = normalize_locale(request.session.get("ui_lang", "en"))
     resolved: dict[str, list[str]] = {}
     for spec in ATTACHMENT_SPECS:
         kind = spec["kind"]
@@ -344,7 +344,7 @@ def report_locale_for_dashboard(dashboard, request) -> str:
     """Locale for generated report HTML (iframe content). AI dashboards are English-only."""
     if getattr(dashboard, "template_type", None) == "ai":
         return "en"
-    return normalize_locale(request.session.get("ui_lang", "ar"))
+    return normalize_locale(request.session.get("ui_lang", "en"))
 
 
 def _persist_upload(upload, tmp_dir: str) -> str:
@@ -397,7 +397,7 @@ def store_upload_to_db(
     )
     from reports_app.dashboard_workflow import mark_dashboard_draft
 
-    ui_locale = normalize_locale(request.session.get("ui_lang", "ar"))
+    ui_locale = normalize_locale(request.session.get("ui_lang", "en"))
     active_company = getattr(request, "active_company", None)
     if active_company is None:
         raise ValueError(tr(ui_locale, "err_no_active_company"))
@@ -582,7 +582,7 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
     if getattr(dashboard, "template_type", None) == "ai":
         locale = "en"
     elif locale is None:
-        locale = request.session.get("ui_lang", session.locale or "ar")
+        locale = request.session.get("ui_lang", session.locale or "en")
     locale = normalize_locale(locale)
 
     raw = json.loads(session.raw_data_json)

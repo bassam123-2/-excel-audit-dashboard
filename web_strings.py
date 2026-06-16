@@ -12,7 +12,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "ar": {
         # ── Brand ────────────────────────────────
         "brand_name": "لوحة التدقيق",
-        "brand_sub": "Excel Audit Dashboard",
+        "brand_sub": "Audit Dashboard",
         # ── Sidebar sections ─────────────────────
         "section_uploads": "رفع البيانات",
         "section_reports": "التقارير",
@@ -30,7 +30,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         # ── Login ─────────────────────────────────
         "login_page_title": "تسجيل الدخول — لوحة التدقيق",
         "login_title": "لوحة تحكم التدقيق",
-        "login_subtitle": "Excel Audit Dashboard — تسجيل الدخول",
+        "login_subtitle": "تسجيل الدخول",
         "login_username": "اسم المستخدم",
         "login_username_ph": "أدخل اسم المستخدم",
         "login_password": "كلمة المرور",
@@ -261,7 +261,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "en": {
         # ── Brand ────────────────────────────────
         "brand_name": "Audit Dashboard",
-        "brand_sub": "Excel Audit Dashboard",
+        "brand_sub": "Audit Dashboard",
         # ── Sidebar sections ─────────────────────
         "section_uploads": "Data Upload",
         "section_reports": "Reports",
@@ -279,7 +279,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         # ── Login ─────────────────────────────────
         "login_page_title": "Sign In — Audit Dashboard",
         "login_title": "Audit Dashboard",
-        "login_subtitle": "Excel Audit Dashboard — Sign In",
+        "login_subtitle": "Sign In",
         "login_username": "Username",
         "login_username_ph": "Enter your username",
         "login_password": "Password",

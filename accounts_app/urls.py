@@ -10,6 +10,7 @@ from .views import (
     setup_required_view,
     switch_company_view,
     switch_language,
+    switch_theme,
     verify_2fa_view,
 )
 
@@ -22,4 +23,5 @@ urlpatterns = [
     path("select-company/", select_company_view, name="select_company"),
     path("switch-company/", switch_company_view, name="switch_company"),
     path("lang/switch/", switch_language, name="switch_language"),
+    path("theme/switch/", switch_theme, name="switch_theme"),
 ]

@@ -8,8 +8,8 @@ _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _BASE not in sys.path:
     sys.path.insert(0, _BASE)
 
-from django.utils import translation
-
+from accounts_app.services.user_language import resolve_ui_lang
+from accounts_app.services.user_theme import resolve_ui_theme
 from audit_app.company_access import (
     active_companies_exist,
     get_active_company,
@@ -33,13 +33,8 @@ def ui_context(request) -> dict:
       lang, is_rtl, dir, ui              — language & translations
       can_upload_files, can_view_dashboards  — permission booleans (safe in templates)
     """
-    lang = (
-        request.session.get("ui_lang")
-        or translation.get_language()
-        or "ar"
-    )
-    lang = str(lang).split("-")[0]
-    lang = "ar" if lang not in ("ar", "en") else lang
+    lang = resolve_ui_lang(request)
+    ui_theme = resolve_ui_theme(request)
     can_upload = False
     can_view = False
     can_manage_users = False
@@ -73,6 +68,7 @@ def ui_context(request) -> dict:
 
     return {
         "lang": lang,
+        "ui_theme": ui_theme,
         "is_rtl": lang == "ar",
         "dir": "rtl" if lang == "ar" else "ltr",
         "ui": get_ui(lang),

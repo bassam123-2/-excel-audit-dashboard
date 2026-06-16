@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 {% load static %}
-<html lang="{{ lang }}" dir="{{ dir }}">
+<html lang="{{ lang }}" dir="{{ dir }}" data-ui-theme="{{ ui_theme|default:'light' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -30,6 +30,8 @@
             --border: #e2e8f0;
             --text: #1e293b;
             --muted: #64748b;
+            --heading: #0f1f3d;
+            --input-bg: #f8fafc;
             --radius: 12px;
         }
         *, *::before, *::after { box-sizing: border-box; }
@@ -264,7 +266,9 @@
         .breadcrumb-nav .current { color: var(--text); font-weight: 600; }
     </style>
     <link rel="stylesheet" href="{% static 'css/app-layout.css' %}">
+    <link rel="stylesheet" href="{% static 'css/dark-theme.css' %}">
     <link rel="manifest" href="{% static 'manifest.json' %}">
+    <script>(function(){var t=document.documentElement.getAttribute("data-ui-theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");})();</script>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -402,24 +406,10 @@
 })();
 </script>
 <script src="{% static 'js/app-layout.js' %}"></script>
+<script>window.UI_THEME_SWITCH_URL = "{% url 'switch_theme' %}";</script>
+<script src="{% static 'js/theme-toggle.js' %}"></script>
 <script>
 (function () {
-    var key = "ui-theme";
-    var root = document.documentElement;
-    var saved = localStorage.getItem(key);
-    if (saved === "dark") root.setAttribute("data-theme", "dark");
-    document.querySelectorAll(".js-theme-toggle").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-            var dark = root.getAttribute("data-theme") === "dark";
-            if (dark) {
-                root.removeAttribute("data-theme");
-                localStorage.setItem(key, "light");
-            } else {
-                root.setAttribute("data-theme", "dark");
-                localStorage.setItem(key, "dark");
-            }
-        });
-    });
     if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("{% static 'sw.js' %}").catch(function () {});
     }
