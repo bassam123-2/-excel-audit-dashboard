@@ -15,7 +15,7 @@ def make_user(username: str, *, email: str = "", password: str = "Test@1234") ->
         last_name="User",
     )
     profile = user.profile
-    profile.two_factor_enabled = False
+    profile.two_factor_enabled = False  # keep tests on simple login path unless 2FA is under test
     profile.job_title = profile.job_title or "Tester"
     profile.save(update_fields=["two_factor_enabled", "job_title"])
     return user

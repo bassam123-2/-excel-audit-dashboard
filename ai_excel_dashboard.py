@@ -155,8 +155,8 @@ def _company_logo_catalog_roots() -> list[Path]:
     return out
 
 
-def build_company_logo_catalog() -> dict[str, Any]:
-    """Map company / subcompany labels to embedded logo data URIs from assets/logos/."""
+def _build_filesystem_logo_catalog() -> dict[str, Any]:
+    """Scan assets/logos/ for legacy/fallback logo mappings."""
     default_uri = detect_brand_logo_data_uri()
     companies: dict[str, str] = {}
     subcompanies: dict[str, str] = {}
@@ -222,6 +222,77 @@ def build_company_logo_catalog() -> dict[str, Any]:
         "caseSensitiveCodes": sorted(_CASE_SENSITIVE_LOGO_CODES),
     }
 
+
+def _filefield_to_logo_data_uri(file_field) -> str | None:
+    if not file_field:
+        return None
+    try:
+        return _path_to_logo_data_uri(Path(file_field.path))
+    except Exception:
+        return None
+
+
+def _register_company_logo_keys(
+    companies: dict[str, str],
+    subcompanies: dict[str, str],
+    company_obj,
+    uri: str,
+    *,
+    parent_key: str | None = None,
+) -> None:
+    from audit_app.models import COMPANY_KIND_SUBSIDIARY
+
+    keys = {_logo_catalog_company_key(company_obj.code)}
+    keys.add(_logo_catalog_company_key(company_obj.name))
+    for label in company_obj.accepted_excel_names():
+        keys.add(_logo_catalog_company_key(label))
+    keys.discard("")
+    if company_obj.company_kind == COMPANY_KIND_SUBSIDIARY and parent_key:
+        sub_key = _logo_catalog_company_key(company_obj.code)
+        if sub_key:
+            subcompanies[f"{parent_key}|{sub_key}"] = uri
+    for key in keys:
+        if key:
+            companies[key] = uri
+        if key in _CASE_SENSITIVE_LOGO_CODES:
+            companies[key.upper()] = uri
+
+
+def build_company_logo_catalog(company_entity=None) -> dict[str, Any]:
+    """Map company / subcompany labels to embedded logo data URIs."""
+    catalog = _build_filesystem_logo_catalog()
+    if company_entity is None:
+        return catalog
+
+    from audit_app.company_access import active_subsidiaries_of, tenant_root
+
+    companies: dict[str, str] = dict(catalog.get("companies") or {})
+    subcompanies: dict[str, str] = dict(catalog.get("subcompanies") or {})
+    default_uri = catalog.get("default") or ""
+
+    root = tenant_root(company_entity)
+    root_uri = _filefield_to_logo_data_uri(root.logo) if root.logo else ""
+    if root_uri:
+        default_uri = root_uri
+        _register_company_logo_keys(companies, subcompanies, root, root_uri)
+        parent_key = _logo_catalog_company_key(root.code)
+        for sub in active_subsidiaries_of(root):
+            sub_uri = _filefield_to_logo_data_uri(sub.logo) if sub.logo else root_uri
+            if sub_uri:
+                _register_company_logo_keys(
+                    companies,
+                    subcompanies,
+                    sub,
+                    sub_uri,
+                    parent_key=parent_key,
+                )
+
+    return {
+        "default": default_uri or catalog.get("default") or "",
+        "companies": companies,
+        "subcompanies": subcompanies,
+        "caseSensitiveCodes": sorted(_CASE_SENSITIVE_LOGO_CODES),
+    }
 
 def content_fingerprint(df: pd.DataFrame, source_name: str) -> str:
     """Stable hash of file name + schema + cell data so each dataset gets a unique identity."""
@@ -2024,6 +2095,7 @@ def generate_finance_report(
     embedded_special_assignment_decks_by_company_path: dict[str, str] | None = None,
     allow_multiple_audit_companies: bool = False,
     enabled_attachment_kinds: set[str] | frozenset[str] | None = None,
+    company_entity=None,
 ) -> tuple[str, dict[str, Any]]:
     loc = normalize_locale(locale)
     enabled_kinds = (
@@ -2238,7 +2310,7 @@ def generate_finance_report(
             )
             if sa_embedded:
                 chart_payload["embedded_special_assignment_slide_deck"] = sa_embedded
-    logo_catalog = build_company_logo_catalog()
+    logo_catalog = build_company_logo_catalog(company_entity)
     chart_payload["brand_logo_catalog"] = logo_catalog
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

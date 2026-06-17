@@ -333,6 +333,11 @@ class CompanyAccessTests(TestCase):
             self.assertIn(f"att_{code}", form.fields)
 
     def test_company_admin_form_persists_disabled_attachments(self):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
         from audit_app.admin_forms import (
             ATTACHMENT_KIND_CODES,
             CompanyAdminForm,
@@ -343,6 +348,7 @@ class CompanyAccessTests(TestCase):
         data = {
             "code": "TST",
             "name": "Test Co",
+            "company_kind": "main",
             "is_active": "on",
             "excel_company_names": "[]",
         }
@@ -352,7 +358,10 @@ class CompanyAccessTests(TestCase):
                 continue
             data[field_name] = "on"
 
-        form = CompanyAdminForm(data=data, instance=company)
+        buffer = BytesIO()
+        Image.new("RGB", (8, 8), color="blue").save(buffer, format="PNG")
+        logo = SimpleUploadedFile("logo.png", buffer.getvalue(), content_type="image/png")
+        form = CompanyAdminForm(data=data, files={"logo": logo}, instance=company)
         self.assertTrue(form.is_valid(), form.errors)
         form.save(commit=False)
         form.save_attachment_settings(company)
@@ -391,6 +400,35 @@ class CompanyAccessTests(TestCase):
         response = client.get("/")
         self.assertEqual(response.status_code, 302)
         self.assertIn("/select-company/", response.url)
+
+    def test_multi_company_staff_can_open_admin_without_selecting_company(self):
+        multi = User.objects.create_user(
+            "multi_staff",
+            password="Test@1234",
+            email="multi-staff@example.com",
+            is_staff=True,
+        )
+        profile = multi.profile
+        profile.two_factor_enabled = False
+        profile.save(update_fields=["two_factor_enabled"])
+        CompanyMembership.objects.create(
+            user=multi,
+            company=self.btc,
+            can_upload=True,
+            can_view=True,
+        )
+        CompanyMembership.objects.create(
+            user=multi,
+            company=self.nat,
+            can_upload=True,
+            can_view=True,
+        )
+
+        client = Client()
+        client.post("/login/", {"username": "multi_staff", "password": "Test@1234"})
+        response = client.get("/admin/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("/select-company/", response.get("Location", ""))
 
     def test_login_redirects_to_dashboard_list(self):
         client = Client()
@@ -460,3 +498,61 @@ class CompanyAccessTests(TestCase):
         response = client.get(f"/dashboards/{btc_dash.pk}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(client.session.get(SESSION_ACTIVE_COMPANY_KEY), self.btc.pk)
+
+    def test_inactive_company_dashboards_hidden(self):
+        dash = self._dashboard(self.btc, self.btc_uploader, "Inactive Dash")
+        self.btc.is_active = False
+        self.btc.save(update_fields=["is_active"])
+
+        ids = set(
+            dashboards_queryset_for_user(self.btc_uploader, self.btc).values_list(
+                "pk", flat=True
+            )
+        )
+        self.assertNotIn(dash.pk, ids)
+
+    def test_excel_subcompany_validation_rejects_unknown_code(self):
+        import pandas as pd
+
+        from audit_app.company_access import validate_excel_subcompanies_for_tenant
+
+        df = pd.DataFrame(
+            {
+                "Company": ["BTC"],
+                "Subcompany": ["UNKNOWN_SUB"],
+            }
+        )
+        from audit_app.company_access import extract_excel_subcompany_names_from_df
+
+        names = extract_excel_subcompany_names_from_df(df)
+        with self.assertRaises(ValueError):
+            validate_excel_subcompanies_for_tenant(self.btc, names, locale="en")
+
+    def test_subsidiary_not_selectable_as_active_company(self):
+        from audit_app.company_access import set_active_company, user_companies
+
+        sub = Company.objects.create(
+            code="BTC-SUB",
+            name="BTC Sub",
+            company_kind="subsidiary",
+            parent=self.btc,
+            excel_company_names=["BTC-SUB"],
+        )
+        CompanyMembership.objects.create(
+            user=self.btc_uploader,
+            company=sub,
+            can_upload=True,
+            can_view=True,
+        )
+        self.assertNotIn(sub.pk, list(user_companies(self.btc_uploader).values_list("pk", flat=True)))
+
+        client = Client()
+        client.force_login(self.btc_uploader)
+        request = client.request().wsgi_request
+        request.user = self.btc_uploader
+        from django.contrib.sessions.middleware import SessionMiddleware
+
+        middleware = SessionMiddleware(lambda req: None)
+        middleware.process_request(request)
+        request.session.save()
+        self.assertFalse(set_active_company(request, sub.pk))

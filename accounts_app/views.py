@@ -138,10 +138,17 @@ def login_view(request):
     else:
         form = AuthenticationForm(request)
 
+    session_expired_msg = ""
+    if request.GET.get("session_expired") == "1":
+        session_expired_msg = ui.get(
+            "login_session_expired",
+            "Your session ended after one hour of inactivity. Please sign in again.",
+        )
+
     return render(
         request,
         "accounts/login.html",
-        {"form": form, "next": next_url},
+        {"form": form, "next": next_url, "session_expired_msg": session_expired_msg},
     )
 
 

@@ -19,10 +19,23 @@ class AuditAppConfig(AppConfig):
         def ensure_company_attachment_settings(sender, instance, **kwargs):
             instance.ensure_attachment_settings()
 
+        @receiver(post_save, sender=Company)
+        def invalidate_dashboard_html_on_company_change(sender, instance, created, **kwargs):
+            if created:
+                return
+            _invalidate_company_tree_dashboard_html_cache(instance)
+
         @receiver(post_save, sender=CompanyAttachmentSetting)
         @receiver(post_delete, sender=CompanyAttachmentSetting)
         def invalidate_dashboard_html_on_attachment_change(sender, instance, **kwargs):
             _invalidate_company_dashboard_html_cache(instance.company_id)
+
+
+def _invalidate_company_tree_dashboard_html_cache(company) -> None:
+    from audit_app.company_access import tenant_company_scope
+
+    for scoped in tenant_company_scope(company):
+        _invalidate_company_dashboard_html_cache(scoped.pk)
 
 
 def _invalidate_company_dashboard_html_cache(company_id: int) -> None:

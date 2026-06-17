@@ -11,7 +11,14 @@ from accounts_app.models import UserProfile
 
 User = get_user_model()
 
-from audit_app.models import ATTACHMENT_KIND_CHOICES, ATTACHMENT_KIND_CODES, Company, CompanyAttachmentSetting
+from audit_app.models import (
+    ATTACHMENT_KIND_CHOICES,
+    ATTACHMENT_KIND_CODES,
+    COMPANY_KIND_MAIN,
+    COMPANY_KIND_SUBSIDIARY,
+    Company,
+    CompanyAttachmentSetting,
+)
 
 IS_STAFF_LABEL = _("Admin")
 IS_STAFF_HELP = _(
@@ -99,7 +106,7 @@ def apply_user_profile_form(user, cleaned_data: dict) -> None:
     if not user.pk:
         return
     _save_user_job_title(user, cleaned_data.get("job_title", ""))
-    _save_user_two_factor(user, cleaned_data.get("two_factor_enabled", False))
+    _save_user_two_factor(user, cleaned_data.get("two_factor_enabled", True))
     _save_user_password_expiry(
         user, cleaned_data.get("password_expiry_enabled", True)
     )
@@ -162,7 +169,7 @@ class MandatoryPasswordAdminCreationForm(UserCreationForm):
     two_factor_enabled = forms.BooleanField(
         label=_("Email two-factor authentication"),
         required=False,
-        initial=False,
+        initial=True,
         help_text=_("When enabled, a one-time code is sent by email at sign-in."),
     )
     password_expiry_enabled = forms.BooleanField(
@@ -347,16 +354,44 @@ def company_attachment_field_name(kind: str) -> str:
     return f"att_{kind}"
 
 
+LOGO_MAX_BYTES = 2 * 1024 * 1024
+LOGO_ALLOWED_CONTENT_TYPES = frozenset(
+    {"image/png", "image/jpeg", "image/webp", "image/gif"}
+)
+
+
 class _CompanyAdminFormBase(forms.ModelForm):
     """Company form with attachment enable/disable toggles on add and edit."""
 
     class Meta:
         model = Company
-        fields = ("code", "name", "is_active", "excel_company_names")
+        fields = (
+            "code",
+            "name",
+            "company_kind",
+            "parent",
+            "logo",
+            "is_active",
+            "excel_company_names",
+        )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.instance.pk:
+        from audit_app.company_access import active_main_companies
+
+        self.fields["parent"].queryset = active_main_companies().exclude(
+            pk=self.instance.pk if self.instance.pk else None
+        )
+        self.fields["parent"].required = False
+        self.fields["logo"].required = not bool(self.instance.pk and self.instance.logo)
+        kind = (
+            (self.data.get("company_kind") if self.data else None)
+            or (self.instance.company_kind if self.instance.pk else COMPANY_KIND_MAIN)
+        )
+        if kind == COMPANY_KIND_SUBSIDIARY:
+            for code in ATTACHMENT_KIND_CODES:
+                self.fields.pop(company_attachment_field_name(code), None)
+        elif self.instance.pk:
             for code, _ in ATTACHMENT_KIND_CHOICES:
                 field_name = company_attachment_field_name(code)
                 setting = self.instance.attachment_settings.filter(
@@ -365,8 +400,50 @@ class _CompanyAdminFormBase(forms.ModelForm):
                 if setting is not None:
                     self.fields[field_name].initial = setting.is_enabled
 
+    def clean_logo(self):
+        logo = self.cleaned_data.get("logo")
+        if logo is False:
+            return self.instance.logo if self.instance.pk else None
+        if not logo:
+            if self.instance.pk and self.instance.logo:
+                return self.instance.logo
+            raise forms.ValidationError(_("Company logo is required."))
+        content_type = getattr(logo, "content_type", "") or ""
+        if content_type and content_type not in LOGO_ALLOWED_CONTENT_TYPES:
+            raise forms.ValidationError(
+                _("Logo must be PNG, JPEG, WebP, or GIF.")
+            )
+        size = getattr(logo, "size", 0) or 0
+        if size > LOGO_MAX_BYTES:
+            raise forms.ValidationError(
+                _("Logo file is too large (maximum %(max)s MB).")
+                % {"max": LOGO_MAX_BYTES // (1024 * 1024)}
+            )
+        return logo
+
+    def clean(self):
+        cleaned = super().clean()
+        kind = cleaned.get("company_kind") or COMPANY_KIND_MAIN
+        parent = cleaned.get("parent")
+        if kind == COMPANY_KIND_SUBSIDIARY:
+            if parent is None:
+                self.add_error(
+                    "parent",
+                    _("Select the parent main company for a subsidiary."),
+                )
+        else:
+            cleaned["parent"] = None
+            if parent is not None:
+                self.add_error(
+                    "parent",
+                    _("Main companies cannot have a parent."),
+                )
+        return cleaned
+
     def save_attachment_settings(self, company: Company) -> None:
         """Persist attachment toggles (Admin saves the company with commit=False first)."""
+        if company.is_subsidiary:
+            return
         if not company.pk or not getattr(self, "cleaned_data", None):
             return
         for code in ATTACHMENT_KIND_CODES:

@@ -1,15 +1,77 @@
 """Multi-tenant company access: session company, Excel validation, membership permissions."""
 from __future__ import annotations
 
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
+from django.utils.translation import gettext_lazy as _
 
-from audit_app.models import ATTACHMENT_KIND_CODES, Company, CompanyAttachmentSetting, CompanyMembership
+from audit_app.models import (
+    ATTACHMENT_KIND_CODES,
+    COMPANY_KIND_MAIN,
+    COMPANY_KIND_SUBSIDIARY,
+    Company,
+    CompanyAttachmentSetting,
+    CompanyMembership,
+)
 
 SESSION_ACTIVE_COMPANY_KEY = "active_company_id"
 
 
+def active_company_queryset() -> QuerySet[Company]:
+    return Company.objects.filter(is_active=True)
+
+
+def active_main_companies() -> QuerySet[Company]:
+    return active_company_queryset().filter(
+        company_kind=COMPANY_KIND_MAIN,
+        parent__isnull=True,
+    )
+
+
+def active_subsidiaries_of(parent: Company) -> QuerySet[Company]:
+    return active_company_queryset().filter(
+        company_kind=COMPANY_KIND_SUBSIDIARY,
+        parent=parent,
+    )
+
+
+def company_is_effectively_active(company: Company | None) -> bool:
+    if company is None or not company.is_active:
+        return False
+    if company.parent_id is None:
+        return True
+    parent = company.parent
+    while parent is not None:
+        if not parent.is_active:
+            return False
+        parent = parent.parent
+    return True
+
+
+def tenant_root(company: Company) -> Company:
+    return company.tenant_root()
+
+
+def tenant_company_scope(company: Company) -> QuerySet[Company]:
+    root = tenant_root(company)
+    return active_company_queryset().filter(Q(pk=root.pk) | Q(parent=root))
+
+
+def find_company_by_excel_token(
+    token: str,
+    queryset: QuerySet[Company] | None = None,
+) -> Company | None:
+    token = str(token or "").strip()
+    if not token:
+        return None
+    qs = queryset if queryset is not None else active_company_queryset()
+    for company in qs:
+        if company.matches_excel_token(token):
+            return company
+    return None
+
+
 def active_companies_exist() -> bool:
-    return Company.objects.filter(is_active=True).exists()
+    return active_main_companies().exists()
 
 
 def user_can_manage_companies(user) -> bool:
@@ -21,19 +83,31 @@ def user_can_manage_companies(user) -> bool:
 
 
 def user_companies(user) -> QuerySet[Company]:
+    """Companies the user may select as the active tenant (main companies only)."""
     if not user.is_authenticated:
         return Company.objects.none()
+    qs = active_main_companies()
     if user.is_superuser:
-        return Company.objects.filter(is_active=True).order_by("code")
+        return qs.order_by("code")
     return (
-        Company.objects.filter(is_active=True, memberships__user=user)
+        qs.filter(memberships__user=user)
         .distinct()
         .order_by("code")
     )
 
 
+def resolve_tenant_company(company: Company | None) -> Company | None:
+    """Return the main company that owns uploads/dashboards for this record."""
+    if company is None:
+        return None
+    return tenant_root(company)
+
+
 def user_membership(user, company: Company | None) -> CompanyMembership | None:
     if not user.is_authenticated or company is None:
+        return None
+    company = resolve_tenant_company(company)
+    if company is None or not company_is_effectively_active(company):
         return None
     if user.is_superuser:
         return CompanyMembership(
@@ -64,7 +138,7 @@ def has_company_perm(user, company: Company | None, perm: str) -> bool:
         return False
     if user.is_superuser:
         return True
-    if company is None:
+    if company is None or not company_is_effectively_active(resolve_tenant_company(company)):
         return False
     membership = user_membership(user, company)
     if membership is None:
@@ -83,8 +157,8 @@ def has_company_perm(user, company: Company | None, perm: str) -> bool:
 
 
 def set_active_company(request, company_id: int) -> bool:
-    company = Company.objects.filter(pk=company_id, is_active=True).first()
-    if company is None:
+    company = active_main_companies().filter(pk=company_id).first()
+    if company is None or not company_is_effectively_active(company):
         return False
     if not request.user.is_superuser:
         if not CompanyMembership.objects.filter(user=request.user, company=company).exists():
@@ -100,8 +174,8 @@ def get_active_company(request) -> Company | None:
 
     company_id = request.session.get(SESSION_ACTIVE_COMPANY_KEY)
     if company_id:
-        company = Company.objects.filter(pk=company_id, is_active=True).first()
-        if company and user_membership(request.user, company) is not None:
+        company = active_main_companies().filter(pk=company_id).first()
+        if company and company_is_effectively_active(company) and user_membership(request.user, company) is not None:
             return company
         request.session.pop(SESSION_ACTIVE_COMPANY_KEY, None)
 
@@ -115,6 +189,7 @@ def get_active_company(request) -> Company | None:
 
 
 def get_enabled_attachment_kinds(company: Company | None) -> set[str]:
+    company = resolve_tenant_company(company)
     if company is None:
         return set(ATTACHMENT_KIND_CODES)
     enabled = set(
@@ -134,34 +209,109 @@ def validate_excel_company_for_tenant(
     *,
     locale: str = "en",
 ) -> None:
-    """Raise ValueError if any Excel Company value does not match the active tenant."""
+    """Raise ValueError if any Excel Company value is not a registered active main company."""
     from dashboard_locale import tr
 
     if not excel_company_names:
         return
+    root = tenant_root(company)
+    scope = tenant_company_scope(company).filter(
+        company_kind=COMPANY_KIND_MAIN,
+        parent__isnull=True,
+    )
+    allowed_labels = sorted(
+        {
+            label
+            for co in scope
+            for label in co.accepted_excel_names() + [co.code, co.name]
+            if str(label).strip()
+        }
+    )
+    allowed_display = ", ".join(allowed_labels) if allowed_labels else root.code
+
     for name in excel_company_names:
-        if not company.matches_excel_company(name):
-            allowed = ", ".join(company.accepted_excel_names())
+        matched = find_company_by_excel_token(name, scope)
+        if matched is None:
             raise ValueError(
                 tr(
                     locale,
-                    "err_excel_company_mismatch",
+                    "err_excel_company_unregistered",
                     excel_name=name,
-                    company_code=company.code,
-                    allowed=allowed,
+                    company_code=root.code,
+                    allowed=allowed_display,
                 )
             )
 
 
-def extract_excel_company_names_from_df(df, locale: str = "en") -> set[str]:
-    from ai_excel_dashboard import _filter_option_token, resolve_audit_observation_columns
+def validate_excel_subcompanies_for_tenant(
+    company: Company,
+    excel_subcompany_names: set[str],
+    *,
+    locale: str = "en",
+) -> None:
+    """Raise ValueError if any Excel Subcompany value is not a registered active subsidiary."""
+    from dashboard_locale import tr
+
+    if not excel_subcompany_names:
+        return
+    root = tenant_root(company)
+    scope = active_subsidiaries_of(root)
+    allowed_labels = sorted(
+        {
+            label
+            for co in scope
+            for label in co.accepted_excel_names() + [co.code, co.name]
+            if str(label).strip()
+        }
+    )
+    allowed_display = ", ".join(allowed_labels) if allowed_labels else str(_("(none registered)"))
+
+    for name in excel_subcompany_names:
+        matched = find_company_by_excel_token(name, scope)
+        if matched is None:
+            raise ValueError(
+                tr(
+                    locale,
+                    "err_excel_subcompany_unregistered",
+                    excel_name=name,
+                    company_code=root.code,
+                    allowed=allowed_display,
+                )
+            )
+
+
+def _extract_dimension_values_from_df(df, dimension: str) -> set[str]:
+    from ai_excel_dashboard import (
+        _filter_option_token,
+        _norm_audit_header,
+        resolve_audit_observation_columns,
+    )
 
     colmap = resolve_audit_observation_columns(df)
-    if not colmap or "company" not in colmap:
+    col = colmap.get(dimension) if colmap else None
+    if col is None:
+        aliases = {
+            "company": ("company",),
+            "subcompany": ("subcompany", "sub company", "sub-company", "sub_company"),
+        }.get(dimension, ())
+        n2c = {_norm_audit_header(c): str(c) for c in df.columns}
+        for alias in aliases:
+            key = _norm_audit_header(alias)
+            if key in n2c:
+                col = n2c[key]
+                break
+    if not col:
         return set()
-    col = colmap["company"]
     return {
         _filter_option_token(x)
         for x in df[col].dropna().unique()
         if _filter_option_token(x) != ""
     }
+
+
+def extract_excel_company_names_from_df(df, locale: str = "en") -> set[str]:
+    return _extract_dimension_values_from_df(df, "company")
+
+
+def extract_excel_subcompany_names_from_df(df, locale: str = "en") -> set[str]:
+    return _extract_dimension_values_from_df(df, "subcompany")

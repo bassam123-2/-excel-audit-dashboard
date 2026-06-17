@@ -17,7 +17,7 @@ def ensure_user_profile(sender, instance, created, **kwargs) -> None:
             user=instance,
             defaults={
                 "password_changed_at": timezone.now(),
-                "two_factor_enabled": False,
+                "two_factor_enabled": True,
                 "password_expiry_enabled": True,
             },
         )

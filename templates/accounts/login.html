@@ -147,6 +147,12 @@
         <h2>{{ ui.login_title }}</h2>
         <p>{{ ui.login_subtitle }}</p>
 
+        {% if session_expired_msg %}
+        <div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-clock-history"></i> {{ session_expired_msg }}
+        </div>
+        {% endif %}
+
         {% if form.non_field_errors %}
         {% for error in form.non_field_errors %}
         <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
@@ -219,6 +225,12 @@
         <div class="login-card-icon"><i class="bi bi-bar-chart-line-fill"></i></div>
         <h2>{{ ui.login_title }}</h2>
         <p>{{ ui.login_subtitle }}</p>
+
+        {% if session_expired_msg %}
+        <div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-clock-history"></i> {{ session_expired_msg }}
+        </div>
+        {% endif %}
 
         {% if form.non_field_errors %}
         {% for error in form.non_field_errors %}

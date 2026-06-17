@@ -14,7 +14,7 @@ from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
-from django.utils.html import escape
+from django.utils.html import escape, format_html
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_protect
@@ -811,15 +811,41 @@ admin.site.register(Group, ProtectedGroupAdmin)
 # ── App models ───────────────────────────────────────────────────────
 
 
+class ActiveCompanyFkMixin:
+    """Limit company foreign-key widgets to active main companies (tenant scope)."""
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "company":
+            from audit_app.company_access import active_main_companies
+
+            kwargs["queryset"] = active_main_companies().order_by("code")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
     form = CompanyAdminForm
-    list_display = ("code", "name", "is_active", "created_at")
+    list_display = ("code", "name", "company_kind", "parent", "is_active", "created_at")
     search_fields = ("code", "name")
-    list_filter = ("is_active",)
+    list_filter = ("is_active", "company_kind")
     prepopulated_fields = {"code": ("name",)}
+    autocomplete_fields = ("parent",)
+    readonly_fields = ("logo_preview",)
     fieldsets = (
-        (None, {"fields": ("code", "name", "is_active")}),
+        (
+            None,
+            {
+                "fields": (
+                    "code",
+                    "name",
+                    "company_kind",
+                    "parent",
+                    "logo",
+                    "logo_preview",
+                    "is_active",
+                )
+            },
+        ),
         (_("Excel mapping"), {"fields": ("excel_company_names",)}),
         (
             _("Attachments (enable or disable per company)"),
@@ -832,13 +858,48 @@ class CompanyAdmin(admin.ModelAdmin):
         ),
     )
 
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = list(super().get_fieldsets(request, obj))
+        kind = request.POST.get("company_kind") if request.method == "POST" else None
+        if (obj and obj.is_subsidiary) or kind == "subsidiary":
+            fieldsets = [
+                fs
+                for fs in fieldsets
+                if fs[0] != _("Attachments (enable or disable per company)")
+            ]
+        return fieldsets
+
+    class Media:
+        js = ("js/admin_company_form.js",)
+
+    def logo_preview(self, obj):
+        if obj and obj.logo:
+            return format_html(
+                '<img src="{}" alt="" style="max-height:80px;max-width:200px;">',
+                obj.logo.url,
+            )
+        return "—"
+
+    logo_preview.short_description = _("Logo preview")
+
+    def get_search_results(self, request, queryset, search_term):
+        queryset = queryset.filter(is_active=True)
+        return super().get_search_results(request, queryset, search_term)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "parent":
+            from audit_app.company_access import active_main_companies
+
+            kwargs["queryset"] = active_main_companies().order_by("code")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         form.save_attachment_settings(obj)
 
 
 @admin.register(CompanyMembership)
-class CompanyMembershipAdmin(admin.ModelAdmin):
+class CompanyMembershipAdmin(ActiveCompanyFkMixin, admin.ModelAdmin):
     list_display = (
         "user",
         "company",
@@ -875,12 +936,8 @@ class ObservationRecordAdmin(admin.ModelAdmin):
     list_filter = ("audit_year", "company", "subcompany")
 
 
-@admin.register(CompanyLogo)
-class CompanyLogoAdmin(admin.ModelAdmin):
-    list_display = ("id", "company_key", "subcompany_key", "asset_path")
-    search_fields = ("company_key", "subcompany_key")
-
-
+# Legacy filesystem logo table — superseded by Company.logo (kept for data migration only).
+# admin.site.unregister(CompanyLogo) — not registered
 @admin.register(ReportArtifact)
 class ReportArtifactAdmin(admin.ModelAdmin):
     list_display = ("id", "report_id", "report_version", "rows", "columns", "created_at")
@@ -919,7 +976,7 @@ class DashboardRejectionLogAdmin(admin.ModelAdmin):
 
 
 @admin.register(Dashboard)
-class DashboardAdmin(admin.ModelAdmin):
+class DashboardAdmin(ActiveCompanyFkMixin, admin.ModelAdmin):
     list_display = (
         "id", "name", "company", "status", "is_deleted", "icon", "template_type", "created_by", "created_at",
     )

@@ -6,8 +6,14 @@ import re
 from django.db.models import Q, QuerySet
 from django.utils import timezone
 
-from audit_app.company_access import active_companies_exist, has_company_perm, user_must_select_company
-from audit_app.models import Company, Dashboard, DashboardRejectionLog, DashboardStatus
+from audit_app.company_access import (
+    active_companies_exist,
+    company_is_effectively_active,
+    has_company_perm,
+    resolve_tenant_company,
+    user_must_select_company,
+)
+from audit_app.models import COMPANY_KIND_MAIN, Company, Dashboard, DashboardRejectionLog, DashboardStatus
 
 _DASHBOARD_PK_URL = re.compile(r"^/dashboards/(\d+)(?:/|$)")
 
@@ -118,7 +124,8 @@ def user_can_see_dashboard(user, dashboard: Dashboard, company: Company | None =
 
 def dashboards_queryset_for_user(user, company: Company | None = None) -> QuerySet[Dashboard]:
     qs = (
-        Dashboard.objects.filter(is_deleted=False)
+        Dashboard.objects.filter(is_deleted=False, company__is_active=True)
+        .filter(company__company_kind=COMPANY_KIND_MAIN)
         .select_related("created_by", "upload_session", "reviewed_by", "company")
     )
     if company is not None:
@@ -143,7 +150,7 @@ def deleted_dashboards_queryset_for_user(user, company: Company | None = None) -
     if not has_delete_perm(user):
         return Dashboard.objects.none()
     qs = (
-        Dashboard.objects.filter(is_deleted=True)
+        Dashboard.objects.filter(is_deleted=True, company__is_active=True)
         .select_related("created_by", "upload_session", "reviewed_by", "deleted_by", "company")
         .order_by("-deleted_at", "-created_at")
     )
@@ -172,6 +179,8 @@ def get_dashboard_for_review(user, pk: int, company: Company | None = None) -> D
 def user_has_company_access(user, company: Company | None) -> bool:
     if company is None:
         return True
+    if not company_is_effectively_active(company):
+        return False
     from audit_app.company_access import user_membership
 
     return user_membership(user, company) is not None
@@ -195,7 +204,14 @@ def load_dashboard_cross_company(
             return None
     elif not user_can_see_dashboard(user, dashboard, company=dashboard.company):
         return None
-    if dashboard.company_id and not user_has_company_access(user, dashboard.company):
+    tenant = resolve_tenant_company(dashboard.company) if dashboard.company_id else None
+    if dashboard.company_id and (
+        tenant is None
+        or not dashboard.company.is_main
+        or not company_is_effectively_active(tenant)
+    ):
+        return None
+    if dashboard.company_id and not user_has_company_access(user, tenant):
         return None
     return dashboard
 

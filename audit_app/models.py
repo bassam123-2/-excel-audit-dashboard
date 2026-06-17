@@ -2,8 +2,16 @@
 from __future__ import annotations
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+
+COMPANY_KIND_MAIN = "main"
+COMPANY_KIND_SUBSIDIARY = "subsidiary"
+COMPANY_KIND_CHOICES = [
+    (COMPANY_KIND_MAIN, _("Main company")),
+    (COMPANY_KIND_SUBSIDIARY, _("Subsidiary")),
+]
 
 
 ATTACHMENT_KIND_CHOICES = [
@@ -37,6 +45,31 @@ class Company(models.Model):
             "(defaults to the company code if empty)."
         ),
     )
+    company_kind = models.CharField(
+        max_length=16,
+        choices=COMPANY_KIND_CHOICES,
+        default=COMPANY_KIND_MAIN,
+        verbose_name=_("Company type"),
+        help_text=_(
+            "Main companies have their own dashboards and Excel uploads. "
+            "Subsidiaries are registered only for Excel subcompany codes and logos."
+        ),
+    )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="subsidiaries",
+        verbose_name=_("Parent company"),
+        help_text=_("Required when the company type is Subsidiary."),
+    )
+    logo = models.ImageField(
+        upload_to="company_logos/%Y/%m/",
+        blank=True,
+        verbose_name=_("Company logo"),
+        help_text=_("PNG, JPEG, or WebP. Required for all companies."),
+    )
     is_active = models.BooleanField(default=True, verbose_name=_("Active"))
     created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
 
@@ -48,6 +81,24 @@ class Company(models.Model):
     def __str__(self) -> str:
         return f"{self.code} — {self.name}"
 
+    @property
+    def is_main(self) -> bool:
+        return self.company_kind == COMPANY_KIND_MAIN
+
+    @property
+    def is_subsidiary(self) -> bool:
+        return self.company_kind == COMPANY_KIND_SUBSIDIARY
+
+    def tenant_root(self) -> "Company":
+        current = self
+        seen: set[int] = set()
+        while current.parent_id is not None:
+            if current.pk in seen:
+                break
+            seen.add(current.pk)
+            current = current.parent
+        return current
+
     def accepted_excel_names(self) -> list[str]:
         names = [str(n).strip() for n in (self.excel_company_names or []) if str(n).strip()]
         if not names:
@@ -55,13 +106,46 @@ class Company(models.Model):
         return names
 
     def matches_excel_company(self, excel_name: str) -> bool:
+        return self.matches_excel_token(excel_name)
+
+    def matches_excel_token(self, excel_name: str) -> bool:
         token = str(excel_name or "").strip()
         if not token:
             return False
         normalized = token.casefold()
+        if self.code.casefold() == normalized:
+            return True
+        if self.name.casefold() == normalized:
+            return True
         return any(n.casefold() == normalized for n in self.accepted_excel_names())
 
+    def clean(self) -> None:
+        errors: dict[str, str] = {}
+        if self.is_subsidiary:
+            if self.parent_id is None:
+                errors["parent"] = _("Select the parent main company for a subsidiary.")
+            elif self.parent_id == self.pk:
+                errors["parent"] = _("A company cannot be its own parent.")
+            elif self.parent and not self.parent.is_main:
+                errors["parent"] = _("Parent must be a main company.")
+        else:
+            if self.parent_id is not None:
+                errors["parent"] = _("Main companies cannot have a parent.")
+        if self.parent_id and self.pk:
+            ancestor = self.parent
+            seen: set[int] = {self.pk}
+            while ancestor is not None:
+                if ancestor.pk in seen:
+                    errors["parent"] = _("Circular parent chain is not allowed.")
+                    break
+                seen.add(ancestor.pk)
+                ancestor = ancestor.parent
+        if errors:
+            raise ValidationError(errors)
+
     def ensure_attachment_settings(self) -> None:
+        if self.is_subsidiary:
+            return
         existing = set(
             self.attachment_settings.values_list("attachment_kind", flat=True)
         )

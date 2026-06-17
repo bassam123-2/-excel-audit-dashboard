@@ -1,9 +1,12 @@
 """Password expiry redirect and active-company session enforcement."""
 from __future__ import annotations
 
+from urllib.parse import quote
+
+from django.contrib.auth import logout
 from django.shortcuts import redirect
 from django.urls import reverse
-from urllib.parse import quote
+from django.utils import timezone
 
 from accounts_app.models import UserProfile
 from audit_app.company_access import active_companies_exist, get_active_company, user_must_select_company
@@ -95,3 +98,40 @@ class PasswordExpiryMiddleware:
     def _password_expired(self, user) -> bool:
         profile, _ = UserProfile.objects.get_or_create(user=user)
         return profile.is_password_expired()
+
+
+class IdleSessionMiddleware:
+    """Log out authenticated users after a period of inactivity."""
+
+    SESSION_LAST_ACTIVITY_KEY = "_last_activity"
+    EXEMPT_PREFIXES = (
+        "/static/",
+        "/media/",
+    )
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from django.conf import settings
+
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated and not self._is_exempt(request.path):
+            timeout = int(getattr(settings, "IDLE_SESSION_TIMEOUT_SECONDS", 3600))
+            now_ts = timezone.now().timestamp()
+            last_ts = request.session.get(self.SESSION_LAST_ACTIVITY_KEY)
+            if last_ts is not None and (now_ts - float(last_ts)) > timeout:
+                logout(request)
+                request.session.flush()
+                return redirect(reverse("login") + "?session_expired=1")
+            request.session[self.SESSION_LAST_ACTIVITY_KEY] = now_ts
+            request.session.modified = True
+
+        return self.get_response(request)
+
+    def _is_exempt(self, path: str) -> bool:
+        if path in ActiveCompanyMiddleware.EXEMPT_PATHS:
+            return True
+        if path.startswith("/profile"):
+            return True
+        return any(path.startswith(prefix) for prefix in self.EXEMPT_PREFIXES)

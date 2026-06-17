@@ -65,6 +65,26 @@ def test_creation_form_excludes_workflow_email_field():
 
 
 @pytest.mark.django_db
+def test_creation_form_two_factor_enabled_by_default():
+    form = MandatoryPasswordAdminCreationForm()
+    assert form.fields["two_factor_enabled"].initial is True
+
+
+@pytest.mark.django_db
+def test_new_user_profile_two_factor_default_true():
+    user = User.objects.create_user(
+        username="new2fa",
+        email="new2fa@example.com",
+        password="Str0ng!Pass",
+        first_name="New",
+        last_name="User",
+    )
+    user.profile.job_title = "Analyst"
+    user.profile.save(update_fields=["job_title"])
+    assert user.profile.two_factor_enabled is True
+
+
+@pytest.mark.django_db
 def test_change_form_non_superuser_excludes_workflow_email_field(btc_company):
     user = make_user("regular_admin_user", email="regular@example.com")
     form = AdminUserChangeForm(instance=user)

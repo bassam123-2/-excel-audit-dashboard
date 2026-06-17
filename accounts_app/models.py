@@ -49,11 +49,11 @@ class UserProfile(models.Model):
         ),
     )
     two_factor_enabled = models.BooleanField(
-        default=False,
+        default=True,
         verbose_name=_("Email two-factor authentication"),
         help_text=_(
             "When enabled, a one-time code is sent by email at sign-in. "
-            "Disabled by default — enable per user or for all users from the admin."
+            "Enabled by default for new users — disable per user from the admin if needed."
         ),
     )
     receive_workflow_emails = models.BooleanField(

@@ -393,12 +393,15 @@ def store_upload_to_db(
     from audit_app.models import Dashboard, DashboardStatus, ICON_CHOICES, UploadSession
     from audit_app.company_access import (
         extract_excel_company_names_from_df,
+        extract_excel_subcompany_names_from_df,
+        resolve_tenant_company,
         validate_excel_company_for_tenant,
+        validate_excel_subcompanies_for_tenant,
     )
     from reports_app.dashboard_workflow import mark_dashboard_draft
 
     ui_locale = normalize_locale(request.session.get("ui_lang", "en"))
-    active_company = getattr(request, "active_company", None)
+    active_company = resolve_tenant_company(getattr(request, "active_company", None))
     if active_company is None:
         raise ValueError(tr(ui_locale, "err_no_active_company"))
     sheet = None
@@ -448,6 +451,10 @@ def store_upload_to_db(
 
         excel_companies = extract_excel_company_names_from_df(primary_df, ui_locale)
         validate_excel_company_for_tenant(active_company, excel_companies, locale=ui_locale)
+        excel_subcompanies = extract_excel_subcompany_names_from_df(primary_df, ui_locale)
+        validate_excel_subcompanies_for_tenant(
+            active_company, excel_subcompanies, locale=ui_locale
+        )
 
         # ── Persist audit observation records (primary file only) ─────
         _, audit_payload = generate_finance_report(
@@ -456,6 +463,7 @@ def store_upload_to_db(
             sheet_name=sheet,
             locale=ui_locale,
             allow_multiple_audit_companies=False,
+            company_entity=active_company,
         )
         primary_audit_payload = audit_payload or {}
         if resubmit_dashboard:
@@ -615,6 +623,7 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
             locale=locale,
             allow_multiple_audit_companies=False,
             enabled_attachment_kinds=enabled_kinds,
+            company_entity=dashboard.company,
             **attachment_kwargs,
         )
     else:
@@ -637,6 +646,7 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
                 locale=locale,
                 allow_multiple_audit_companies=False,
                 enabled_attachment_kinds=enabled_kinds,
+                company_entity=dashboard.company,
                 **tab_attachment_kwargs,
             )
             title = workbook_dashboard_tab_title(df, source, locale)
