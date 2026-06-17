@@ -119,3 +119,57 @@ def test_new_user_profile_defaults_to_light_theme():
     profile.job_title = "Analyst"
     profile.save(update_fields=["job_title"])
     assert profile.preferred_theme == "light"
+
+
+@pytest.mark.django_db
+def test_switch_theme_works_before_company_selection(client: Client):
+    from audit_app.models import Company, CompanyMembership
+
+    user = User.objects.create_user(
+        username="multitheme",
+        email="multitheme@example.com",
+        password="Str0ng!Pass",
+        first_name="Multi",
+        last_name="Theme",
+        is_staff=True,
+    )
+    profile = UserProfile.objects.get(user=user)
+    profile.job_title = "Analyst"
+    profile.two_factor_enabled = False
+    profile.save(update_fields=["job_title", "two_factor_enabled"])
+
+    btc, _ = Company.objects.get_or_create(
+        code="BTC",
+        defaults={"name": "BTC", "excel_company_names": ["BTC"]},
+    )
+    nat, _ = Company.objects.get_or_create(
+        code="NAT",
+        defaults={"name": "NAT", "excel_company_names": ["NAT"]},
+    )
+    for company in (btc, nat):
+        company.ensure_attachment_settings()
+        CompanyMembership.objects.create(
+            user=user,
+            company=company,
+            can_upload=True,
+            can_view=True,
+        )
+
+    client.force_login(user)
+    assert client.get("/select-company/").status_code == 200
+
+    response = client.post(
+        reverse("switch_theme"),
+        {"theme": "dark"},
+        HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+    )
+    assert response.status_code == 200
+    assert json.loads(response.content)["theme"] == "dark"
+
+    profile.refresh_from_db()
+    assert profile.preferred_theme == "dark"
+
+    admin_response = client.get("/admin/")
+    assert admin_response.status_code == 200
+    admin_html = admin_response.content.decode()
+    assert 'var t="dark"' in admin_html

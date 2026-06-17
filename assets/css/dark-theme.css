@@ -87,6 +87,48 @@ html[data-theme="dark"] .text-secondary {
     color: var(--muted) !important;
 }
 
+/* Company picker & list groups */
+html[data-theme="dark"] .list-group {
+    border-color: var(--border);
+}
+
+html[data-theme="dark"] .list-group-item {
+    background: var(--input-bg);
+    border-color: var(--border);
+    color: var(--text);
+}
+
+html[data-theme="dark"] .list-group-item-action:hover,
+html[data-theme="dark"] .list-group-item-action:focus {
+    background: var(--selected-bg);
+    color: var(--text);
+}
+
+html[data-theme="dark"] .list-group-item:has(.form-check-input:checked) {
+    background: var(--selected-bg);
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+html[data-theme="dark"] .list-group-item strong {
+    color: var(--heading);
+}
+
+html[data-theme="dark"] .form-check-input {
+    background-color: var(--input-bg);
+    border-color: var(--border);
+}
+
+html[data-theme="dark"] .form-check-input:checked {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+html[data-theme="dark"] .form-check-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
 html[data-theme="dark"] .badge.bg-light.text-dark,
 html[data-theme="dark"] .badge.text-bg-light {
     background: var(--input-bg) !important;

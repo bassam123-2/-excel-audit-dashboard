@@ -29,6 +29,7 @@ class ActiveCompanyMiddleware:
         "/setup-required/",
         "/profile/",
         "/lang/switch/",
+        "/theme/switch/",
         "/api/",
         "/favicon.ico",
     )
