@@ -10,6 +10,47 @@ from django.utils.translation import gettext_lazy as _
 
 PASSWORD_MAX_AGE_DAYS = 180
 
+DEFAULT_OTP_TTL_SECONDS = 600
+MIN_OTP_TTL_SECONDS = 60
+MAX_OTP_TTL_SECONDS = 3600
+
+
+class ProjectSecuritySettings(models.Model):
+    """Project-wide security settings (singleton row, pk=1)."""
+
+    otp_ttl_seconds = models.PositiveIntegerField(
+        default=DEFAULT_OTP_TTL_SECONDS,
+        verbose_name=_("OTP validity (seconds)"),
+        help_text=_(
+            "How long email verification codes remain valid. "
+            "The resend cooldown uses the same duration. "
+            f"Allowed range: {MIN_OTP_TTL_SECONDS}–{MAX_OTP_TTL_SECONDS} seconds."
+        ),
+    )
+
+    class Meta:
+        verbose_name = _("Project security settings")
+        verbose_name_plural = _("Project security settings")
+
+    def __str__(self) -> str:
+        minutes = max(1, self.otp_ttl_seconds // 60)
+        return _("OTP validity: {minutes} min").format(minutes=minutes)
+
+    def save(self, *args, **kwargs) -> None:
+        self.pk = 1
+        super().save(*args, **kwargs)
+        from accounts_app.services.otp_settings import invalidate_otp_settings_cache
+
+        invalidate_otp_settings_cache()
+
+    @classmethod
+    def load(cls) -> ProjectSecuritySettings:
+        obj, _ = cls.objects.get_or_create(
+            pk=1,
+            defaults={"otp_ttl_seconds": DEFAULT_OTP_TTL_SECONDS},
+        )
+        return obj
+
 
 class UserProfile(models.Model):
     """Extended profile fields for Django auth users."""

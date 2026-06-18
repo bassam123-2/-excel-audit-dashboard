@@ -98,6 +98,20 @@ All SMTP settings live in **`.env`** only. Restart Django after editing.
 
 Verify: `python manage.py test_smtp`
 
+## 2b. Redis (required for email OTP / shared cache)
+
+OTP codes and rate limits are stored in **Redis** so every app worker sees the same data.
+
+| Variable | Example |
+|----------|---------|
+| `REDIS_URL` | `redis://127.0.0.1:6379/1` |
+
+**Full guide (local Windows/Laragon + VPS):** [REDIS_SETUP.md](REDIS_SETUP.md)
+
+After `REDIS_URL` is set, restart Django. Tests use in-memory cache automatically.
+
+**OTP validity** (default 10 minutes, including resend cooldown) can be changed in Django admin under **Project security settings**.
+
 ## 3. MySQL database
 
 See [MYSQL_SETUP.md](MYSQL_SETUP.md) for creating the database and user.

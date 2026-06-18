@@ -9,11 +9,11 @@ from accounts_app.services.email_branding import (
     render_bilingual_plain,
     render_otp_code,
 )
-from accounts_app.services.two_factor import OTP_TTL_SECONDS
+from accounts_app.services.otp_settings import get_otp_ttl_seconds
 
 
 def otp_validity_minutes() -> int:
-    return max(1, OTP_TTL_SECONDS // 60)
+    return max(1, get_otp_ttl_seconds() // 60)
 
 
 def build_otp_email_content(

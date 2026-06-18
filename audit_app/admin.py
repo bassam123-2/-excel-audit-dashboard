@@ -825,7 +825,8 @@ class ActiveCompanyFkMixin:
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
     form = CompanyAdminForm
-    list_display = ("code", "name", "company_kind", "parent", "is_active", "created_at")
+    list_display = ("active_status_display", "code", "name", "company_kind", "parent", "created_at")
+    list_display_links = ("code",)
     search_fields = ("code", "name")
     list_filter = ("is_active", "company_kind")
     prepopulated_fields = {"code": ("name",)}
@@ -882,9 +883,32 @@ class CompanyAdmin(admin.ModelAdmin):
 
     logo_preview.short_description = _("Logo preview")
 
+    @admin.display(description=_("Status"), ordering="is_active")
+    def active_status_display(self, obj):
+        if obj.is_active:
+            return format_html(
+                '<i class="bi bi-check-circle-fill company-active-status company-active-status--yes" '
+                'title="{}" aria-label="{}"></i>',
+                _("Active"),
+                _("Active"),
+            )
+        return format_html(
+            '<i class="bi bi-x-circle-fill company-active-status company-active-status--no" '
+            'title="{}" aria-label="{}"></i>',
+            _("Inactive"),
+            _("Inactive"),
+        )
+
     def get_search_results(self, request, queryset, search_term):
-        queryset = queryset.filter(is_active=True)
+        """Changelist search includes inactive companies; autocomplete keeps active only."""
+        if "/autocomplete/" in request.path:
+            queryset = queryset.filter(is_active=True)
         return super().get_search_results(request, queryset, search_term)
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["title"] = _("Companies (active and inactive)")
+        return super().changelist_view(request, extra_context=extra_context)
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "parent":

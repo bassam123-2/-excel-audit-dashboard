@@ -7,6 +7,13 @@ LOGGING = build_logging_config(BASE_DIR, enabled=False)  # noqa: F405
 
 EMAIL_DISPATCH_SYNC = True
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "excel-audit-dashboard-test",
+    }
+}
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",

@@ -988,3 +988,16 @@ html[dir="rtl"] .aligned label { text-align: right !important; }
 /* Scrollbar */
 .sidebar::-webkit-scrollbar { width: 4px; }
 .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 4px; }
+
+/* Company list — read-only active / inactive status */
+.company-active-status {
+    font-size: 1.15rem;
+    line-height: 1;
+    vertical-align: middle;
+}
+.company-active-status--yes {
+    color: var(--success);
+}
+.company-active-status--no {
+    color: var(--danger);
+}

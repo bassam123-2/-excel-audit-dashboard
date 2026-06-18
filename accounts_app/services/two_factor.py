@@ -8,10 +8,18 @@ from typing import Any
 from django.core.cache import cache
 from django.utils import timezone
 
-OTP_TTL_SECONDS = 600
+from accounts_app.models import DEFAULT_OTP_TTL_SECONDS
+from accounts_app.services.otp_settings import (
+    get_otp_resend_cooldown_seconds,
+    get_otp_ttl_seconds,
+)
+
+# Backward-compatible defaults for tests and imports.
+OTP_TTL_SECONDS = DEFAULT_OTP_TTL_SECONDS
+OTP_RESEND_COOLDOWN_SECONDS = DEFAULT_OTP_TTL_SECONDS
+
 OTP_MAX_ATTEMPTS = 5
 OTP_LENGTH = 6
-OTP_RESEND_COOLDOWN_SECONDS = 120
 
 
 def _cache_key(user_id: int) -> str:
@@ -30,14 +38,15 @@ def get_resend_cooldown_remaining(user_id: int) -> int:
         elapsed = timezone.now().timestamp() - float(sent_at)
     except (TypeError, ValueError):
         return 0
-    return max(0, int(OTP_RESEND_COOLDOWN_SECONDS - elapsed))
+    cooldown = get_otp_resend_cooldown_seconds()
+    return max(0, int(cooldown - elapsed))
 
 
 def record_otp_sent(user_id: int) -> None:
     cache.set(
         _resend_cooldown_key(user_id),
         timezone.now().timestamp(),
-        OTP_RESEND_COOLDOWN_SECONDS,
+        get_otp_resend_cooldown_seconds(),
     )
 
 
@@ -48,7 +57,8 @@ def _hash_otp(user_id: int, code: str) -> str:
 def generate_and_store_otp(user_id: int) -> str:
     code = "".join(secrets.choice("0123456789") for _ in range(OTP_LENGTH))
     payload = {"hash": _hash_otp(user_id, code), "attempts": 0}
-    cache.set(_cache_key(user_id), payload, OTP_TTL_SECONDS)
+    ttl = get_otp_ttl_seconds()
+    cache.set(_cache_key(user_id), payload, ttl)
     return code
 
 
@@ -56,6 +66,7 @@ def verify_otp(user_id: int, code: str) -> bool:
     payload = cache.get(_cache_key(user_id))
     if not payload:
         return False
+    ttl = get_otp_ttl_seconds()
     attempts = int(payload.get("attempts", 0))
     if attempts >= OTP_MAX_ATTEMPTS:
         cache.delete(_cache_key(user_id))
@@ -63,11 +74,11 @@ def verify_otp(user_id: int, code: str) -> bool:
     normalized = str(code or "").strip()
     if not normalized or len(normalized) != OTP_LENGTH or not normalized.isdigit():
         payload["attempts"] = attempts + 1
-        cache.set(_cache_key(user_id), payload, OTP_TTL_SECONDS)
+        cache.set(_cache_key(user_id), payload, ttl)
         return False
     if payload.get("hash") != _hash_otp(user_id, normalized):
         payload["attempts"] = attempts + 1
-        cache.set(_cache_key(user_id), payload, OTP_TTL_SECONDS)
+        cache.set(_cache_key(user_id), payload, ttl)
         return False
     cache.delete(_cache_key(user_id))
     return True

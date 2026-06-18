@@ -134,12 +134,27 @@ EMAIL_DISPATCH_SYNC = os.environ.get("EMAIL_DISPATCH_SYNC", "").lower() in (
     "yes",
 )
 
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "excel-audit-dashboard",
+_redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/1").strip()
+_redis_protocol = os.environ.get("REDIS_PROTOCOL", "").strip()
+_redis_cache_options: dict = {}
+if _redis_protocol in ("2", "3"):
+    _redis_cache_options["protocol"] = int(_redis_protocol)
+
+if _redis_url:
+    _default_cache = {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": _redis_url,
     }
-}
+    if _redis_cache_options:
+        _default_cache["OPTIONS"] = _redis_cache_options
+    CACHES = {"default": _default_cache}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "excel-audit-dashboard",
+        }
+    }
 
 # ── Centralized error tracking ────────────────────────────────────────
 # Error logs are written to BASE_DIR/logs/errors/ (server-side only).

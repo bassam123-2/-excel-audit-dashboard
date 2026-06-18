@@ -28,7 +28,7 @@ python scripts/run_tests.py
 
 | ID | Scenario | Test file | Status |
 |----|----------|-----------|--------|
-| OTP-04 | Resend cooldown 120s | `accounts_app/tests/test_otp_resend_cooldown.py` | covered |
+| OTP-04 | Resend cooldown matches OTP TTL | `accounts_app/tests/test_otp_resend_cooldown.py` | covered |
 
 ## Schema / Migrations (DB)
 
