@@ -104,6 +104,76 @@
     border: 1px solid #fca5a5;
 }
 
+.badge-status-review {
+    background: #fffbeb;
+    color: #b45309;
+    border: 1px solid #fcd34d;
+}
+
+.badge-status-workflow {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #93c5fd;
+}
+
+.dashboard-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.dashboard-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 0.78rem;
+    text-decoration: none;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.dashboard-filter-chip:hover {
+    color: var(--accent-dark);
+    border-color: var(--accent);
+}
+
+.dashboard-filter-chip.is-active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.dashboard-filter-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.08);
+    font-size: 0.68rem;
+    font-weight: 600;
+}
+
+.dashboard-filter-chip.is-active .dashboard-filter-count {
+    background: rgba(255, 255, 255, 0.22);
+    color: #fff;
+}
+
+.db-card-wrap.status-under_review {
+    border-inline-start: 3px solid #f59e0b;
+}
+
+.db-card-wrap.status-in_workflow {
+    border-inline-start: 3px solid #3b82f6;
+}
+
 .badge-deleted {
     background: var(--input-bg, #f1f5f9);
     color: var(--muted);

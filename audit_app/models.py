@@ -71,6 +71,18 @@ class Company(models.Model):
         help_text=_("PNG, JPEG, or WebP. Required for all companies."),
     )
     is_active = models.BooleanField(default=True, verbose_name=_("Active"))
+    use_workflow_v2 = models.BooleanField(
+        default=True,
+        verbose_name=_("Use multi-step workflow"),
+        help_text=_(
+            "When enabled, uploads stay as private drafts until submit; "
+            "approval starts a configurable acknowledgment chain before publish."
+        ),
+    )
+    notify_creator_on_publish = models.BooleanField(
+        default=True,
+        verbose_name=_("Email creator when dashboard is published"),
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
 
     class Meta:
@@ -362,6 +374,8 @@ TEMPLATE_TYPE_CHOICES = [
 
 class DashboardStatus(models.TextChoices):
     DRAFT = "draft", _("Draft")
+    UNDER_REVIEW = "under_review", _("Under review")
+    IN_WORKFLOW = "in_workflow", _("In workflow")
     PUBLISHED = "published", _("Published")
     REJECTED = "rejected", _("Rejected")
 
@@ -431,6 +445,11 @@ class Dashboard(models.Model):
         blank=True,
         related_name="reviewed_dashboards",
         verbose_name=_("Reviewed by"),
+    )
+    submitted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Submitted for review at"),
     )
     is_deleted = models.BooleanField(
         default=False,
@@ -509,3 +528,172 @@ class DashboardRejectionLog(models.Model):
 
     def __str__(self) -> str:
         return f"Rejection #{self.pk} on dashboard {self.dashboard_id}"
+
+
+class WorkflowTemplate(models.Model):
+    """Per-company configurable acknowledgment chain before publish."""
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="workflow_templates",
+        verbose_name=_("Company"),
+    )
+    name = models.CharField(max_length=128, default=_("Default"), verbose_name=_("Name"))
+    version = models.PositiveIntegerField(
+        default=1,
+        verbose_name=_("Version"),
+        editable=False,
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name=_("Active"),
+        editable=False,
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
+    updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Updated at"))
+
+    class Meta:
+        verbose_name = _("Workflow template")
+        verbose_name_plural = _("Workflow templates")
+        ordering = ["company__code", "-version"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "version"],
+                name="uniq_workflow_template_company_version",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.company.code} v{self.version}"
+
+
+class WorkflowTemplateStep(models.Model):
+    """Ordered assignee in a workflow template."""
+
+    template = models.ForeignKey(
+        WorkflowTemplate,
+        on_delete=models.CASCADE,
+        related_name="steps",
+        verbose_name=_("Template"),
+    )
+    step_order = models.PositiveIntegerField(verbose_name=_("Step order"))
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="workflow_template_steps",
+        verbose_name=_("Assignee"),
+    )
+
+    class Meta:
+        verbose_name = _("Workflow template step")
+        verbose_name_plural = _("Workflow template steps")
+        ordering = ["template_id", "step_order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["template", "step_order"],
+                name="uniq_workflow_template_step_order",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.template} step {self.step_order}"
+
+
+class DashboardWorkflowInstance(models.Model):
+    """Frozen workflow run for a single dashboard (snapshot of template version)."""
+
+    dashboard = models.OneToOneField(
+        Dashboard,
+        on_delete=models.CASCADE,
+        related_name="workflow_instance",
+        verbose_name=_("Dashboard"),
+    )
+    template_version = models.PositiveIntegerField(verbose_name=_("Template version"))
+    current_step_index = models.PositiveIntegerField(default=0, verbose_name=_("Current step"))
+    total_steps = models.PositiveIntegerField(default=0, verbose_name=_("Total steps"))
+    current_assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_workflow_dashboards",
+        verbose_name=_("Current assignee"),
+    )
+    is_complete = models.BooleanField(default=False, verbose_name=_("Complete"))
+    started_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Started at"))
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Completed at"),
+    )
+
+    class Meta:
+        verbose_name = _("Dashboard workflow instance")
+        verbose_name_plural = _("Dashboard workflow instances")
+
+    def __str__(self) -> str:
+        return f"Workflow for dashboard {self.dashboard_id}"
+
+
+class DashboardWorkflowStepSnapshot(models.Model):
+    """Frozen step assignees when a workflow instance starts."""
+
+    instance = models.ForeignKey(
+        DashboardWorkflowInstance,
+        on_delete=models.CASCADE,
+        related_name="step_snapshots",
+        verbose_name=_("Workflow instance"),
+    )
+    step_order = models.PositiveIntegerField(verbose_name=_("Step order"))
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="workflow_step_snapshots",
+        verbose_name=_("Assignee"),
+    )
+
+    class Meta:
+        verbose_name = _("Workflow step snapshot")
+        verbose_name_plural = _("Workflow step snapshots")
+        ordering = ["instance_id", "step_order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["instance", "step_order"],
+                name="uniq_workflow_instance_step_order",
+            ),
+        ]
+
+
+class DashboardWorkflowStepLog(models.Model):
+    """Audit trail when an assignee clicks «acknowledged»."""
+
+    instance = models.ForeignKey(
+        DashboardWorkflowInstance,
+        on_delete=models.CASCADE,
+        related_name="step_logs",
+        verbose_name=_("Workflow instance"),
+    )
+    step_order = models.PositiveIntegerField(verbose_name=_("Step order"))
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workflow_acknowledgments",
+        verbose_name=_("Assignee"),
+    )
+    acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workflow_acknowledgments_performed",
+        verbose_name=_("Acknowledged by"),
+    )
+    acknowledged_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Acknowledged at"))
+
+    class Meta:
+        verbose_name = _("Workflow step log")
+        verbose_name_plural = _("Workflow step logs")
+        ordering = ["-acknowledged_at"]

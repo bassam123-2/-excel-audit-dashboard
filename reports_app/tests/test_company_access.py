@@ -168,7 +168,7 @@ class CompanyAccessTests(TestCase):
         )
         published = self._dashboard(self.btc, deleter, "Published Dash")
 
-        self.assertFalse(can_user_delete_dashboard(deleter, draft, self.btc))
+        self.assertTrue(can_user_delete_dashboard(deleter, draft, self.btc))
         self.assertFalse(can_user_delete_dashboard(deleter, published, self.btc))
         self.assertTrue(can_user_delete_dashboard(superuser, draft, self.btc))
         self.assertTrue(can_user_delete_dashboard(superuser, published, self.btc))

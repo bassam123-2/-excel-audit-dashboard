@@ -63,6 +63,19 @@
     {% endif %}
 </div>
 
+{% if dashboard_filters and not show_trash %}
+<div class="dashboard-filter-bar mb-3" role="group" aria-label="{% if is_rtl %}تصفية اللوحات{% else %}Filter dashboards{% endif %}">
+    {% for f in dashboard_filters %}
+    <a href="?filter={{ f.key }}"
+       class="dashboard-filter-chip{% if active_dashboard_filter == f.key %} is-active{% endif %}"
+       aria-pressed="{% if active_dashboard_filter == f.key %}true{% else %}false{% endif %}">
+        {{ f.label }}
+        <span class="dashboard-filter-count">{{ f.count }}</span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
 {% if dashboards %}
 <div class="db-grid" id="dbGrid">
     {% for db in dashboards %}
@@ -95,6 +108,10 @@
             <span class="badge badge-deleted"><i class="bi bi-trash me-1"></i>{{ ui.dl_deleted_badge }}</span>
             {% elif db.status == "draft" %}
             <span class="badge badge-status-draft"><i class="bi bi-pencil-square me-1"></i>{{ ui.wf_status_draft }}</span>
+            {% elif db.status == "under_review" %}
+            <span class="badge badge-status-review"><i class="bi bi-hourglass-split me-1"></i>{{ ui.wf_status_under_review }}</span>
+            {% elif db.status == "in_workflow" %}
+            <span class="badge badge-status-workflow"><i class="bi bi-diagram-3 me-1"></i>{{ ui.wf_status_in_workflow }}</span>
             {% elif db.status == "rejected" %}
             <span class="badge badge-status-rejected"><i class="bi bi-x-circle me-1"></i>{{ ui.wf_status_rejected }}</span>
             {% else %}
@@ -110,7 +127,7 @@
                 </button>
             </form>
             {% elif not show_trash %}
-            {% if can_review_dashboards and db.status == "draft" %}
+            {% if can_review_dashboards and db.status == "under_review" %}
             <div class="wf-actions">
                 <button type="button" class="btn btn-success btn-sm js-approve-btn"
                         data-approve-url="{% url 'dashboard_approve' db.pk %}"

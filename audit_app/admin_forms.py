@@ -1,10 +1,12 @@
 """Admin user forms — password authentication is always required."""
 
 from django import forms
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import SetPasswordMixin, UserChangeForm, UserCreationForm
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
+from django.forms.models import BaseInlineFormSet
 from django.utils.translation import gettext_lazy as _
 
 from accounts_app.models import UserProfile
@@ -18,6 +20,7 @@ from audit_app.models import (
     COMPANY_KIND_SUBSIDIARY,
     Company,
     CompanyAttachmentSetting,
+    WorkflowTemplateStep,
 )
 
 IS_STAFF_LABEL = _("Admin")
@@ -474,3 +477,62 @@ CompanyAdminForm = type(
         for code, label in ATTACHMENT_KIND_CHOICES
     },
 )
+
+
+# ── Workflow template step inline (admin) ─────────────────────────────
+
+
+class WorkflowTemplateStepForm(forms.ModelForm):
+    """Only assignee is editable; step order comes from row order (drag-and-drop)."""
+
+    wf_row_order = forms.IntegerField(widget=forms.HiddenInput(), required=False, label="")
+
+    class Meta:
+        model = WorkflowTemplateStep
+        fields = ("assignee",)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from audit_app.admin_utils import (
+            WorkflowAssigneeAutocompleteWidget,
+            format_admin_user_label,
+        )
+
+        if self.instance.pk:
+            self.fields["wf_row_order"].initial = self.instance.step_order
+
+        assignee_field = self.fields.get("assignee")
+        if assignee_field is not None:
+            assignee_field.label_from_instance = format_admin_user_label
+            db_field = WorkflowTemplateStep._meta.get_field("assignee")
+            assignee_field.widget = WorkflowAssigneeAutocompleteWidget(
+                db_field,
+                admin.site,
+                choices=assignee_field.choices,
+            )
+
+
+class WorkflowTemplateStepFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        assignees: list = []
+        for form in self.forms:
+            if not form.cleaned_data or form.cleaned_data.get("DELETE"):
+                continue
+            assignee = form.cleaned_data.get("assignee")
+            if assignee:
+                assignees.append(assignee)
+        if self.instance.pk and not assignees:
+            raise forms.ValidationError(
+                _("Add at least one workflow step with an assignee.")
+            )
+        assignee_ids = [assignee.pk for assignee in assignees]
+        if len(assignee_ids) != len(set(assignee_ids)):
+            raise forms.ValidationError(
+                _("Each person can appear only once in the workflow chain.")
+            )
+
+    def get_form_kwargs(self, index):
+        kwargs = super().get_form_kwargs(index)
+        kwargs["label_suffix"] = ""
+        return kwargs

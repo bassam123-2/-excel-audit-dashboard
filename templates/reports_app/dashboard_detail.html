@@ -32,6 +32,16 @@
     <span class="meta-pill"><i class="bi bi-layout-wtf"></i> {{ dashboard.get_template_display_name }}</span>
     {% if dashboard.status == "draft" %}
     <span class="badge badge-status-draft"><i class="bi bi-pencil-square me-1"></i>{{ ui.wf_status_draft }}</span>
+    {% elif dashboard.status == "under_review" %}
+    <span class="badge badge-status-review"><i class="bi bi-hourglass-split me-1"></i>{{ ui.wf_status_under_review }}</span>
+    {% elif dashboard.status == "in_workflow" %}
+    <span class="badge badge-status-workflow"><i class="bi bi-diagram-3 me-1"></i>{{ ui.wf_status_in_workflow }}</span>
+    {% if workflow_progress %}
+    <span class="meta-pill"><i class="bi bi-list-ol"></i> {{ workflow_progress }}</span>
+    {% endif %}
+    {% if workflow_assignee_name %}
+    <span class="meta-pill"><i class="bi bi-person-check"></i> {{ workflow_assignee_name }}</span>
+    {% endif %}
     {% elif dashboard.status == "rejected" %}
     <span class="badge badge-status-rejected"><i class="bi bi-x-circle me-1"></i>{{ ui.wf_status_rejected }}</span>
     {% else %}
@@ -54,11 +64,35 @@
             <i class="bi bi-trash"></i> {{ ui.dl_trash_btn }}
         </a>
         {% endif %}
-        {% if can_approve_reject %}
+        {% if can_acknowledge %}
+        <form method="post" action="{% url 'dashboard_acknowledge' dashboard.pk %}" class="d-inline"
+              onsubmit="return confirm('{{ ui.wf_ack_confirm|escapejs }}');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
+                <i class="bi bi-eye-fill"></i> {{ ui.wf_ack_btn }}
+            </button>
+        </form>
+        {% endif %}
+        {% if can_submit_for_review %}
+        <form method="post" action="{% url 'dashboard_submit' dashboard.pk %}" class="d-inline"
+              onsubmit="return confirm('{{ ui.wf_submit_confirm|escapejs }}');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-info d-flex align-items-center gap-1">
+                <i class="bi bi-send-fill"></i> {{ ui.wf_submit_btn }}
+            </button>
+        </form>
+        {% endif %}
+        {% if can_approve_reject and dashboard.status == "under_review" %}
         <button type="button" class="btn btn-sm btn-success d-flex align-items-center gap-1"
                 data-bs-toggle="modal" data-bs-target="#approveModal">
             <i class="bi bi-check-lg"></i> {{ ui.wf_approve_btn }}
         </button>
+        <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
+                data-bs-toggle="modal" data-bs-target="#rejectModal">
+            <i class="bi bi-x-lg"></i> {{ ui.wf_reject_btn }}
+        </button>
+        {% endif %}
+        {% if can_approve_reject and dashboard.status == "in_workflow" %}
         <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
                 data-bs-toggle="modal" data-bs-target="#rejectModal">
             <i class="bi bi-x-lg"></i> {{ ui.wf_reject_btn }}
@@ -83,7 +117,7 @@
     </div>
 </div>
 
-{% if can_approve_reject %}
+{% if can_approve_reject and dashboard.status == "under_review" %}
 <div class="modal fade" id="approveModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -105,6 +139,9 @@
         </div>
     </div>
 </div>
+{% endif %}
+{% if can_approve_reject %}
+{% if dashboard.status == "under_review" or dashboard.status == "in_workflow" %}
 <div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -127,6 +164,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 {% endif %}
 
 <iframe id="dashFrame"

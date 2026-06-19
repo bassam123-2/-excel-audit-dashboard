@@ -6,6 +6,7 @@ from django.views.generic import RedirectView
 from .views import (
     analyze,
     api_version,
+    dashboard_acknowledge,
     dashboard_approve,
     dashboard_detail,
     dashboard_delete,
@@ -13,6 +14,7 @@ from .views import (
     dashboard_reject,
     dashboard_restore,
     dashboard_serve,
+    dashboard_submit,
     favicon,
     index,
 )
@@ -34,5 +36,7 @@ urlpatterns = [
     path("dashboards/<int:pk>/restore/", dashboard_restore, name="dashboard_restore"),
     path("dashboards/<int:pk>/approve/", dashboard_approve, name="dashboard_approve"),
     path("dashboards/<int:pk>/reject/", dashboard_reject, name="dashboard_reject"),
+    path("dashboards/<int:pk>/submit/", dashboard_submit, name="dashboard_submit"),
+    path("dashboards/<int:pk>/acknowledge/", dashboard_acknowledge, name="dashboard_acknowledge"),
     path("dashboards/<int:pk>/serve/", dashboard_serve, name="dashboard_serve"),
 ]
