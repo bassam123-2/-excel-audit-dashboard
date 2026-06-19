@@ -1,3 +1,5 @@
+"""Django app config for export health monitoring."""
+
 from django.apps import AppConfig
 
 

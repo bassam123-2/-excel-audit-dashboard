@@ -2,10 +2,19 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+.venv_new/
+.env
+config/
+.cursor/
 
 # Generated / local runtime
 audit_logs/*.json
-*.html
+
+# Generated HTML reports only — keep Django templates/ in Git
+ai_analysis_report.html
+*_analysis_report.html
+*_report.html
+media/dashboards/*.html
 _test_report.html
 dist/
 build/
@@ -16,5 +25,5 @@ tmp_*.pptx
 _pptx_inspect.txt
 _pv.txt
 
-# Secrets (keep example in dist/)
-smtp_config.json
+# Server-side application and error logs (never commit)
+logs/

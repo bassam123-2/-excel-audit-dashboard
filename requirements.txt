@@ -1,7 +1,7 @@
-flask
 django>=5.0
 mysqlclient
 python-dotenv
+redis>=5.0
 pandas
 openpyxl
 fpdf2

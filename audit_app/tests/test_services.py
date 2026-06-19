@@ -1,6 +1,6 @@
 import pandas as pd
 
-from audit_app.services.audit_processing import resolve_columns
+from ai_excel_dashboard import resolve_audit_observation_columns
 
 
 def test_resolve_columns_minimum_aliases():
@@ -13,6 +13,6 @@ def test_resolve_columns_minimum_aliases():
             "Observation Name": ["Missing control"],
         }
     )
-    colmap = resolve_columns(df)
+    colmap = resolve_audit_observation_columns(df)
     assert colmap is not None
     assert colmap["audit_year"] == "Audit Year"

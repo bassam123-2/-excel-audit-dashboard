@@ -45,7 +45,7 @@ Rows that only have **IA Status** (e.g. `Closed`) with no year and no observatio
 
 PNG files under `assets/logos/` map to filters:
 
-- `nat.png`, `aum.png`, `saco.png`, `autostar.png`, `btc.png`
+- `company_a.png`, `company_b.png`, `company_c.png`, `company_d.png`, `company_e.png`
 - `_default.png` — fallback logo
 
 Subcompany logos can live in subfolders under `assets/logos/` (see `build_company_logo_catalog()`).

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}{{ ui.setup_required_page_title }}{% endblock %}
+
+{% block page_title %}
+<span class="d-flex align-items-center gap-2">
+    <i class="bi bi-building-exclamation" style="color:var(--accent);"></i>
+    {{ ui.setup_required_title }}
+</span>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4 p-md-5 text-center">
+                <div class="mb-3">
+                    <i class="bi bi-building-x" style="font-size:2.5rem;color:var(--accent);"></i>
+                </div>
+                {% if can_manage_companies %}
+                <p class="text-muted mb-4">{{ ui.setup_required_admin_body }}</p>
+                <a href="{{ admin_add_company_url }}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle me-1"></i> {{ ui.setup_required_admin_btn }}
+                </a>
+                {% else %}
+                <p class="text-muted mb-0">{{ ui.setup_required_user_body }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

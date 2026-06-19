@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ ui.dl_page_title }}{% endblock %}
+
+{% block page_title %}
+<span class="d-flex align-items-center gap-2">
+    <i class="bi {% if show_trash %}bi-trash{% else %}bi-grid-3x3-gap-fill{% endif %}" style="color:var(--accent);"></i>
+    {% if show_trash %}{{ ui.dl_trash_heading }}{% else %}{{ ui.dl_heading }}{% endif %}
+</span>
+{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/dashboard-pages.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<!-- Stats bar -->
+<div class="stats-bar">
+    <div class="stat-card">
+        <div class="stat-icon blue"><i class="bi bi-grid-3x3-gap-fill"></i></div>
+        <div>
+            <div class="stat-val">{{ dashboards.count }}</div>
+            <div class="stat-lbl">{{ ui.dl_total_prefix }}</div>
+        </div>
+    </div>
+    {% if can_upload_files %}
+    <div class="stat-card stat-card--clickable" onclick="window.location='{% url 'upload' %}'">
+        <div class="stat-icon green"><i class="bi bi-plus-circle-fill"></i></div>
+        <div>
+            <div class="stat-val stat-val--compact">{{ ui.dl_new_btn }}</div>
+            <div class="stat-lbl">{% if is_rtl %}إنشاء لوحة تحكم جديدة{% else %}Create a new dashboard{% endif %}</div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Toolbar -->
+<div class="d-flex align-items-center justify-content-between mb-3 gap-2 flex-wrap">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="search-box">
+            <input type="text" id="dbSearch" class="form-control form-control-sm"
+                   placeholder="{% if is_rtl %}بحث...{% else %}Search...{% endif %}">
+            <i class="bi bi-search"></i>
+        </div>
+        {% if can_delete_dashboards %}
+        <div class="list-tabs">
+            <a href="{% url 'dashboard_list' %}"
+               class="btn btn-sm {% if not show_trash %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                <i class="bi bi-grid-3x3-gap"></i> {{ ui.dl_active_btn }}
+            </a>
+            <a href="{% url 'dashboard_list' %}?trash=1"
+               class="btn btn-sm {% if show_trash %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                <i class="bi bi-trash"></i> {{ ui.dl_trash_btn }}
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    {% if can_upload_files and not show_trash %}
+    <a href="{% url 'upload' %}" class="btn btn-primary btn-sm d-flex align-items-center gap-2">
+        <i class="bi bi-plus-lg"></i> {{ ui.dl_new_btn }}
+    </a>
+    {% endif %}
+</div>
+
+{% if dashboards %}
+<div class="db-grid" id="dbGrid">
+    {% for db in dashboards %}
+    <div class="db-card-wrap status-{{ db.status }}{% if show_trash %} is-deleted{% endif %}" data-name="{{ db.name|lower }}">
+        <a href="{% url 'dashboard_detail' db.pk %}" class="db-card d-flex align-items-start gap-3">
+            <div class="db-card-icon">
+                <i class="bi {{ db.icon|default:'bi-bar-chart-line-fill' }}"></i>
+            </div>
+            <div class="flex-grow-1" style="min-width:0;">
+                <div class="db-card-name text-truncate">{{ db.name }}</div>
+                {% if db.description %}
+                <div class="db-card-meta text-truncate">{{ db.description }}</div>
+                {% endif %}
+                <div class="dc-date mt-1 d-flex align-items-center gap-1 flex-wrap">
+                    <i class="bi bi-calendar3"></i>{{ db.created_at|date:"Y/m/d H:i" }}
+                    {% if show_trash and db.deleted_at %}
+                    &nbsp;·&nbsp;<i class="bi bi-trash"></i>{{ db.deleted_at|date:"Y/m/d H:i" }}
+                    {% endif %}
+                    {% if db.created_by %}
+                    &nbsp;·&nbsp;<i class="bi bi-person"></i>{{ db.created_by.get_full_name|default:db.created_by.username }}
+                    {% endif %}
+                </div>
+            </div>
+            <div class="dc-arrow">
+                <i class="bi bi-chevron-{% if is_rtl %}left{% else %}right{% endif %}"></i>
+            </div>
+        </a>
+        <div class="db-card-footer">
+            {% if show_trash %}
+            <span class="badge badge-deleted"><i class="bi bi-trash me-1"></i>{{ ui.dl_deleted_badge }}</span>
+            {% elif db.status == "draft" %}
+            <span class="badge badge-status-draft"><i class="bi bi-pencil-square me-1"></i>{{ ui.wf_status_draft }}</span>
+            {% elif db.status == "rejected" %}
+            <span class="badge badge-status-rejected"><i class="bi bi-x-circle me-1"></i>{{ ui.wf_status_rejected }}</span>
+            {% else %}
+            <span class="badge badge-status-published"><i class="bi bi-check-circle me-1"></i>{{ ui.wf_status_published }}</span>
+            {% endif %}
+            <span class="badge badge-template">{{ db.get_template_display_name }}</span>
+            {% if show_trash and can_delete_dashboards %}
+            <form method="post" action="{% url 'dashboard_restore' db.pk %}" class="db-card-delete"
+                  onsubmit="return confirm('{{ ui.dl_restore_confirm|escapejs }}'.replace('{name}', '{{ db.name|escapejs }}'));">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success btn-sm db-card-restore-btn">
+                    <i class="bi bi-arrow-counterclockwise"></i> {{ ui.dl_restore_btn }}
+                </button>
+            </form>
+            {% elif not show_trash %}
+            {% if can_review_dashboards and db.status == "draft" %}
+            <div class="wf-actions">
+                <button type="button" class="btn btn-success btn-sm js-approve-btn"
+                        data-approve-url="{% url 'dashboard_approve' db.pk %}"
+                        data-name="{{ db.name|escape }}">
+                    <i class="bi bi-check-lg"></i> {{ ui.wf_approve_btn }}
+                </button>
+                <button type="button" class="btn btn-outline-danger btn-sm js-reject-btn"
+                        data-reject-url="{% url 'dashboard_reject' db.pk %}"
+                        data-name="{{ db.name|escape }}">
+                    <i class="bi bi-x-lg"></i> {{ ui.wf_reject_btn }}
+                </button>
+            </div>
+            {% endif %}
+            {% if can_delete_dashboards and db.pk in deletable_dashboard_ids and not show_trash %}
+            <form method="post" action="{% url 'dashboard_delete' db.pk %}" class="db-card-delete js-super-delete-form"
+                  data-dashboard-pk="{{ db.pk }}"
+                  data-dashboard-name="{{ db.name|escape }}">
+                {% csrf_token %}
+                <button type="submit" class="db-card-delete-btn" title="{{ ui.dl_delete_btn }}" aria-label="{{ ui.dl_delete_btn }}: {{ db.name }}">
+                    <i class="bi bi-trash-fill"></i>
+                </button>
+            </form>
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% else %}
+<div class="empty-state">
+    <div class="empty-icon"><i class="bi bi-bar-chart-line"></i></div>
+    <h5 class="empty-state-title">{% if show_trash %}{{ ui.dl_trash_empty_title }}{% else %}{{ ui.dl_empty_title }}{% endif %}</h5>
+    <p style="color:var(--muted);font-size:.875rem;max-width:320px;margin:.5rem auto 0;">
+        {% if show_trash %}{{ ui.dl_trash_empty_sub }}
+        {% elif can_upload_files %}{{ ui.dl_empty_sub_uploader }}{% else %}{{ ui.dl_empty_sub_viewer }}{% endif %}
+    </p>
+    {% if can_upload_files and not show_trash %}
+    <a href="{% url 'upload' %}" class="btn btn-primary mt-3">
+        <i class="bi bi-cloud-upload me-1"></i> {{ ui.dl_upload_btn }}
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if can_review_dashboards %}
+<div class="modal fade" id="approveModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="approveForm" method="post" action="">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-check-circle me-1 text-success"></i>{{ ui.wf_approve_title }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ ui.wf_cancel }}"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fw-semibold mb-2" id="approveDashName"></p>
+                    <p class="mb-0">{{ ui.wf_approve_confirm }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
+                    <button type="submit" class="btn btn-success">{{ ui.wf_approve_submit }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="rejectForm" method="post" action="">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-x-octagon me-1 text-danger"></i>{{ ui.wf_reject_title }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ ui.wf_cancel }}"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2" id="rejectDashName"></p>
+                    <label for="rejectionReason" class="form-label fw-semibold">{{ ui.wf_reject_reason_label }}</label>
+                    <textarea name="rejection_reason" id="rejectionReason" class="form-control" required
+                              placeholder="{{ ui.wf_reject_reason_ph }}"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
+                    <button type="submit" class="btn btn-danger">{{ ui.wf_reject_submit }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if can_delete_dashboards and undo_deleted_pk %}
+<div id="undoToast" class="undo-toast" role="status" aria-live="polite"
+     data-pk="{{ undo_deleted_pk }}"
+     data-restore-url="{% url 'dashboard_restore' undo_deleted_pk %}"
+     data-expired-msg="{{ ui.dl_undo_expired|escapejs }}"
+     data-msg-template="{{ ui.dl_undo_message|escapejs }}"
+     data-name="{{ undo_deleted_name|escapejs }}">
+    <span class="undo-toast-msg" id="undoToastMsg"></span>
+    <span class="undo-toast-timer" id="undoTimer">30s</span>
+    <form method="post" action="{% url 'dashboard_restore' undo_deleted_pk %}" class="d-inline" id="undoForm">
+        {% csrf_token %}
+        <button type="submit" class="btn-undo">{{ ui.dl_undo_btn }}</button>
+    </form>
+    <button type="button" class="undo-toast-close" id="undoDismiss" aria-label="{% if is_rtl %}إغلاق{% else %}Dismiss{% endif %}">&times;</button>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    function getCsrfToken() {
+        var match = document.cookie.match(/csrftoken=([^;]+)/);
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    function showUndoToast(pk, name) {
+        var existing = document.getElementById('undoToast');
+        if (existing) existing.remove();
+
+        var toast = document.createElement('div');
+        toast.id = 'undoToast';
+        toast.className = 'undo-toast';
+        toast.setAttribute('role', 'status');
+        toast.dataset.pk = String(pk);
+        toast.dataset.msgTemplate = '{{ ui.dl_undo_message|escapejs }}';
+        toast.dataset.expiredMsg = '{{ ui.dl_undo_expired|escapejs }}';
+        toast.innerHTML =
+            '<span class="undo-toast-msg" id="undoToastMsg"></span>' +
+            '<span class="undo-toast-timer" id="undoTimer">30s</span>' +
+            '<form method="post" action="/dashboards/' + pk + '/restore/" class="d-inline" id="undoForm">' +
+            '<input type="hidden" name="csrfmiddlewaretoken" value="' + getCsrfToken() + '">' +
+            '<button type="submit" class="btn-undo">{{ ui.dl_undo_btn|escapejs }}</button></form>' +
+            '<button type="button" class="undo-toast-close" id="undoDismiss">&times;</button>';
+        document.body.appendChild(toast);
+        initUndoToast(toast, name);
+    }
+
+    function initUndoToast(toast, nameOverride) {
+        if (!toast) return;
+        var msgEl = toast.querySelector('#undoToastMsg');
+        var timerEl = toast.querySelector('#undoTimer');
+        var dismissBtn = toast.querySelector('#undoDismiss');
+        var template = toast.dataset.msgTemplate || '';
+        var displayName = nameOverride || toast.dataset.name || '';
+        if (msgEl) msgEl.textContent = template.replace('{name}', displayName);
+
+        var seconds = 30;
+        var interval = setInterval(function () {
+            seconds -= 1;
+            if (timerEl) timerEl.textContent = seconds + 's';
+            if (seconds <= 0) {
+                clearInterval(interval);
+                toast.remove();
+            }
+        }, 1000);
+        if (dismissBtn) {
+            dismissBtn.addEventListener('click', function () {
+                clearInterval(interval);
+                toast.remove();
+            });
+        }
+    }
+
+    {% if can_delete_dashboards %}
+    var deleteConfirmTpl = '{{ ui.dl_delete_confirm|escapejs }}';
+    document.querySelectorAll('.js-super-delete-form').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var name = form.dataset.dashboardName || '';
+            if (!confirm(deleteConfirmTpl.replace('{name}', name))) return;
+            var btn = form.querySelector('button[type="submit"]');
+            if (btn) btn.disabled = true;
+            fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: new FormData(form),
+            }).then(function (res) {
+                if (!res.ok) throw new Error('delete failed');
+                return res.json();
+            }).then(function (data) {
+                var wrap = form.closest('.db-card-wrap');
+                if (wrap) wrap.remove();
+                showUndoToast(data.pk, data.name || name);
+            }).catch(function () {
+                if (btn) btn.disabled = false;
+                form.submit();
+            });
+        });
+    });
+    {% endif %}
+
+    {% if can_delete_dashboards and undo_deleted_pk %}
+    initUndoToast(document.getElementById('undoToast'));
+    {% endif %}
+})();
+{% if can_review_dashboards %}
+(function () {
+    var modalEl = document.getElementById('approveModal');
+    if (!modalEl) return;
+    var modal = new bootstrap.Modal(modalEl);
+    var form = document.getElementById('approveForm');
+    var nameEl = document.getElementById('approveDashName');
+    form.addEventListener('submit', function () {
+        var submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+    });
+    document.querySelectorAll('.js-approve-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var approveUrl = btn.getAttribute('data-approve-url') || '';
+            var name = btn.getAttribute('data-name') || '';
+            form.action = approveUrl;
+            if (nameEl) nameEl.textContent = name;
+            var submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = false;
+            modal.show();
+        });
+    });
+})();
+(function () {
+    var modalEl = document.getElementById('rejectModal');
+    if (!modalEl) return;
+    var modal = new bootstrap.Modal(modalEl);
+    var form = document.getElementById('rejectForm');
+    var nameEl = document.getElementById('rejectDashName');
+    var reasonEl = document.getElementById('rejectionReason');
+    form.addEventListener('submit', function () {
+        var submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+    });
+    document.querySelectorAll('.js-reject-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var rejectUrl = btn.getAttribute('data-reject-url') || '';
+            var name = btn.getAttribute('data-name') || '';
+            form.action = rejectUrl;
+            nameEl.textContent = name;
+            reasonEl.value = '';
+            var submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = false;
+            modal.show();
+        });
+    });
+})();
+{% endif %}
+var inp = document.getElementById('dbSearch');
+if (inp) {
+    inp.addEventListener('input', function () {
+        var q = this.value.trim().toLowerCase();
+        document.querySelectorAll('#dbGrid .db-card-wrap').forEach(function (el) {
+            el.style.display = (!q || el.dataset.name.includes(q)) ? '' : 'none';
+        });
+    });
+}
+</script>
+{% endblock %}

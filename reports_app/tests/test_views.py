@@ -1,6 +1,8 @@
+import pytest
 from django.test import Client
 
 
+@pytest.mark.django_db
 def test_version_endpoint_returns_payload():
     client = Client()
     response = client.get("/api/version")
@@ -10,8 +12,10 @@ def test_version_endpoint_returns_payload():
     assert "module_file" in payload
 
 
-def test_index_page_renders():
+@pytest.mark.django_db
+def test_home_page_requires_login():
     client = Client()
     response = client.get("/")
-    assert response.status_code == 200
-    assert "text/html" in response["Content-Type"]
+    # Dashboard list at / requires authentication; unauthenticated users go to login.
+    assert response.status_code == 302
+    assert response.url.startswith("/login/")

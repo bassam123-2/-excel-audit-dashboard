@@ -1,3 +1,4 @@
+"""Health check endpoint for external uptime monitors."""
 from __future__ import annotations
 
 from django.http import JsonResponse

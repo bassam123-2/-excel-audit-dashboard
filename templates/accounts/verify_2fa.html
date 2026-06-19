@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="{{ lang }}" dir="{{ dir }}" data-ui-theme="{{ ui_theme|default:'light' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ ui.verify_2fa_page_title }}</title>
+    <script>(function(){var t=document.documentElement.getAttribute("data-ui-theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");})();</script>
+    {% if is_rtl %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css">
+    {% else %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    {% endif %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{% static 'css/app-layout.css' %}">
+    <link rel="stylesheet" href="{% static 'css/dark-theme.css' %}">
+    <style>
+        body { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f0f4f9; }
+        .card-box { max-width: 390px; width: 100%; background: #fff; border-radius: 18px; padding: 2rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 30px rgba(0,0,0,.08); }
+        .btn.is-loading { pointer-events: none; opacity: .85; }
+        @keyframes btnSpin { to { transform: rotate(360deg); } }
+        .btn .btn-spinner {
+            width: 1rem; height: 1rem;
+            border: 2px solid rgba(255,255,255,.35);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: btnSpin .7s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .btn-link .btn-spinner {
+            border-color: rgba(13,110,253,.25);
+            border-top-color: #0d6efd;
+        }
+        .cooldown-hint { font-size: .85rem; color: #64748b; text-align: center; }
+    </style>
+</head>
+<body>
+<div class="card-box">
+    <div class="text-center mb-3"><i class="bi bi-shield-lock-fill fs-2 text-primary"></i></div>
+    <h2 class="h5 fw-bold">{{ ui.verify_2fa_title }}</h2>
+    <p class="text-muted small">{{ subtitle }}</p>
+    {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+    <form method="post" class="js-2fa-form">
+        {% csrf_token %}
+        <label class="form-label fw-semibold">{{ ui.verify_2fa_code_label }}</label>
+        <input type="text" name="otp_code" class="form-control mb-3" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" placeholder="{{ ui.verify_2fa_code_ph }}" required autofocus>
+        <button type="submit" class="btn btn-primary w-100 mb-2" data-loading-text="{{ ui.verify_2fa_submit_loading }}">{{ ui.verify_2fa_submit }}</button>
+    </form>
+    <form method="post" class="mt-2 js-2fa-form js-resend-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="resend">
+        <button type="submit" class="btn btn-link w-100 js-resend-btn" data-loading-text="{{ ui.verify_2fa_resend_loading }}"
+                {% if resend_cooldown %}disabled{% endif %}>{{ ui.verify_2fa_resend }}</button>
+        <p class="cooldown-hint js-cooldown-hint mb-0" {% if not resend_cooldown %}style="display:none"{% endif %}
+           data-template="{{ ui.verify_2fa_resend_cooldown }}">
+            {% if resend_cooldown %}{{ ui.verify_2fa_resend_cooldown|default:"" }}{% endif %}
+        </p>
+    </form>
+    <a href="{% url 'logout' %}" class="btn btn-outline-secondary w-100 mt-2">{{ ui.nav_logout }}</a>
+</div>
+<script>
+document.querySelectorAll('.js-2fa-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        var btn = form.querySelector('button[type="submit"]');
+        if (!btn || btn.classList.contains('is-loading')) {
+            e.preventDefault();
+            return;
+        }
+        btn.classList.add('is-loading');
+        btn.setAttribute('aria-busy', 'true');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-spinner" role="status" aria-hidden="true"></span> ' +
+            (btn.getAttribute('data-loading-text') || '…');
+    });
+});
+(function () {
+    var seconds = {{ resend_cooldown|default:0 }};
+    var btn = document.querySelector('.js-resend-btn');
+    var hint = document.querySelector('.js-cooldown-hint');
+    if (!btn || seconds <= 0) return;
+    var template = hint ? (hint.getAttribute('data-template') || 'Wait {seconds}s') : '';
+    function tick() {
+        if (seconds <= 0) {
+            btn.disabled = false;
+            if (hint) hint.style.display = 'none';
+            return;
+        }
+        btn.disabled = true;
+        if (hint) {
+            hint.style.display = 'block';
+            hint.textContent = template.replace('{seconds}', String(seconds));
+        }
+        seconds -= 1;
+        setTimeout(tick, 1000);
+    }
+    tick();
+})();
+</script>
+</body>
+</html>

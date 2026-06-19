@@ -1,83 +1,102 @@
 # Architecture
 
-## High-level flow
+## High-level flow (active Django path)
 
 ```mermaid
 flowchart LR
-  subgraph input
-    XLSX[Excel / CSV file]
-    PPTX[Optional audit plan PPTX]
+  subgraph auth
+    LOGIN["/login/"]
+    CO["/select-company/"]
   end
 
-  subgraph python
-    DJANGO[reports_app/mail_app]
-    IO[data_io.read_input_file]
+  subgraph input
+    XLSX[Excel / CSV]
+    PPTX[Optional PPTX decks]
+  end
+
+  subgraph django
+    VIEWS[reports_app views]
+    RG[report_generation]
+    WF[dashboard_workflow]
+    CA[company_access]
+  end
+
+  subgraph engine
+    IO[data_io]
     CORE[ai_excel_dashboard]
     LOC[dashboard_locale]
-    EXP[export_bundle]
   end
 
   subgraph output
     HTML[Interactive HTML report]
-    ZIP[ZIP / PDF export]
     MAIL[SMTP email]
   end
 
-  XLSX --> DJANGO --> IO --> CORE
-  PPTX --> DJANGO --> CORE
-  CORE --> LOC
-  CORE --> HTML
-  CORE --> EXP --> ZIP
-  DJANGO --> MAIL
+  LOGIN --> CO --> VIEWS
+  XLSX --> VIEWS --> RG --> IO --> CORE
+  RG --> CA
+  VIEWS --> WF
+  PPTX --> VIEWS --> CORE
+  CORE --> LOC --> HTML
+  CORE --> MAIL
 ```
 
 ## Runtime mode
 
-| Mode | Entry file | User action |
+| Mode | Entry | User action |
 |------|------------|-------------|
-| **Web (active)** | `manage.py` + `config/` | Browser upload at `/` → `/analyze` |
-| **Desktop (legacy)** | `ai_excel_dashboard.py` | Kept only for transition |
+| **Web (active)** | `manage.py` + `config/` | Login → company → upload → `/dashboards/` → serve |
 
-Both call **`generate_finance_report()`** in `ai_excel_dashboard.py`, which:
+Both the Django app and `python ai_excel_dashboard.py` (redirect) use the same report engine via **`generate_finance_report()`**, which:
 
-1. Loads the dataframe (`data_io`)
+1. Loads the dataframe (`data_io.read_input_file`)
 2. Detects columns (`resolve_audit_observation_columns`, `detect_primary_columns`)
 3. Builds JSON payloads (`build_audit_observation_payload`, finance KPIs, logos)
-4. Embeds payloads into a single HTML page (large inline JavaScript)
-5. Optionally injects API URLs for email / PPTX parse (via `reports_app.services.report_generation`)
+4. Embeds payloads into a single HTML page (inline JavaScript)
+5. Injects API URLs for email / PPTX parse (`inject_web_mail_api` in `report_generation.py`)
+
+## Upload architecture (store + lazy generate)
+
+Legacy Flask-style “upload → HTML immediately” was removed. The active path:
+
+1. **`store_upload_to_db`** — reads Excel, validates company tenant, stores rows as JSON in `UploadSession`, saves decks to `media/decks/`, creates `Dashboard` (draft).
+2. **`generate_from_db_data`** — on `/dashboards/<id>/serve/`, rebuilds pandas from JSON and calls `generate_finance_report`.
+3. Optional HTML cache under `media/dashboards/<id>_<locale>.html`.
+
+## Authentication and multi-tenancy
+
+| Layer | Module | Role |
+|-------|--------|------|
+| Login / 2FA / password expiry | `accounts_app` | Session auth |
+| Active company in session | `accounts_app.middleware.ActiveCompanyMiddleware` | Tenant context on each request |
+| Excel company validation | `audit_app.company_access` | Match upload to `Company.excel_company_names` |
+| Dashboard permissions | `reports_app.dashboard_workflow` | Upload, view, review, delete |
 
 ## Important symbols in `ai_excel_dashboard.py`
 
-| Symbol | Line area (approx.) | Role |
-|--------|---------------------|------|
-| `REPORT_VERSION` | top | Deploy tag; bump when report logic changes |
-| `build_company_logo_catalog` | ~187 | Maps Company/Subcompany → logo images |
-| `resolve_audit_observation_columns` | ~904 | Excel header → logical fields |
-| `build_audit_observation_payload` | ~1035 | Rows + filters for audit UI |
+| Symbol | Line (approx.) | Role |
+|--------|----------------|------|
+| `REPORT_VERSION` | top | Deploy tag |
+| `build_company_logo_catalog` | ~187 | Company → logo images |
+| `resolve_audit_observation_columns` | ~965 | Excel header → logical fields |
+| `build_audit_observation_payload` | ~1096 | Rows + filters for audit UI |
 | `_audit_observation_row_is_usable` | ~829 | Drops empty trailing Excel rows |
-| `generate_finance_report` | ~1966 | Main HTML generator |
-| `main` | ~12843 | Tk desktop entry |
+| `generate_finance_report` | ~2067 | Main HTML generator |
+| `load_smtp_config` | ~12168 | SMTP from `.env` / environment |
 
-Search the file for these names rather than reading top-to-bottom.
+Full index: **[CODE_MAP.md](CODE_MAP.md)**.
 
-## Web-only pieces (Django)
+## Web API endpoints
 
-- Upload form and analyze flow (`reports_app/views.py`)
-- `GET /api/version` — confirm deployed build
-- `POST /api/send-obs-email` (`mail_app/views.py`)
-- `POST /api/parse-audit-plan-pptx` (`mail_app/views.py`)
-
-## `exact_dashboard.py`
-
-Separate code path that renders a **reference-style** dashboard from similar data. Used when integrating a fixed layout; not the main audit HTML most users see. Check `reports_app/services/report_generation.py` for when it runs.
+| Endpoint | App | Purpose |
+|----------|-----|---------|
+| `/`, `/analyze` | `reports_app` | Upload form and processing |
+| `/dashboards/` | `reports_app` | List, detail, serve, approve/reject |
+| `/api/version` | `reports_app` | JSON build version |
+| `/api/send-obs-email` | `mail_app` | Send observation email |
+| `/api/parse-audit-plan-pptx` | `mail_app` | Parse audit plan PowerPoint |
+| `/api/exports/health` | `exports_app` | Health check for monitoring |
 
 ## Future refactor (optional)
 
-To make the repo easier long-term, consider splitting `ai_excel_dashboard.py` into:
-
-- `audit_columns.py` — column resolution + payload
-- `report_html/` — `.html` + `.js` templates
-- `gui_app.py` — Tk only
-- `smtp_helpers.py` — mail config
-
-No refactor is required to run or deploy the current project.
+Splitting `ai_excel_dashboard.py` into smaller modules (columns, HTML templates, SMTP, GUI) would improve maintainability but is not required to run or deploy the current project.

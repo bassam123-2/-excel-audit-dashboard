@@ -1,3 +1,4 @@
+"""Persist report artifacts and observation rows after Excel analysis."""
 from __future__ import annotations
 
 from typing import Any
@@ -18,6 +19,7 @@ def persist_report_result(
     observation_rows: list[dict[str, Any]],
     audit_payload: dict[str, Any],
 ) -> UploadSession:
+    """Create UploadSession, ObservationRecord rows, and ReportArtifact for one analysis run."""
     session = UploadSession.objects.create(
         source_name=source_name,
         sheet_name=sheet_name or "",

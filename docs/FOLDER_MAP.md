@@ -1,50 +1,55 @@
 # Folder map
 
-Use this as a map before opening `ai_excel_dashboard.py` (the largest file).
+Use this as a map before opening `ai_excel_dashboard.py` (the largest file). Symbol index: **[CODE_MAP.md](CODE_MAP.md)**.
 
 ```
-excel-dashboard/                 ← rename repo on GitHub if possible (no spaces)
+excel-audit-dashboard/
 │
 ├── START_HERE.md                ← onboarding checklist for new developers
-├── README.md                    ← install, run, deploy
+├── README.md                    ← overview, APIs, SMTP
 ├── requirements.txt             ← runtime Python packages
-├── requirements-dev.txt         ← + PyInstaller for .exe build
-├── smtp_config.example.json     ← copy → smtp_config.json (never commit real config)
+├── requirements-dev.txt         ← pytest, ruff, black
+├── .env.example                 ← copy → .env (secrets, DB, SMTP — sole SMTP source)
 │
 ├── manage.py                    ← ENTRY: Django commands / runserver
-├── config/                      ← Django settings + urls
-├── reports_app/                 ← Upload/analyze/version views
-├── audit_app/                   ← Models, admin, audit services
-├── mail_app/                    ← Email + audit-plan parse APIs
-├── exports_app/                 ← Export endpoints/services
-├── web_app.py                   ← Deprecated Flask shim (kept for transition)
-├── ai_excel_dashboard.py        ← Legacy monolith logic reused by Django services
+├── config/                      ← Django settings + urls (copy from config.example/)
+├── config.example/              ← settings template — copy to config/ before first run
+│
+├── accounts_app/                ← login, 2FA, password expiry, company selection
+├── audit_app/                   ← models, admin, company access, persistence
+├── reports_app/                 ← upload, dashboards, version API
+├── mail_app/                    ← email + audit-plan parse APIs
+├── exports_app/                 ← export health endpoint
+│
+├── ai_excel_dashboard.py        ← report engine (monolith)
 ├── data_io.py                   ← read Excel / CSV
-├── dashboard_locale.py          ← English / Arabic UI strings
-├── export_bundle.py             ← ZIP / PDF export
-├── exact_dashboard.py           ← alternate “reference layout” renderer (optional path)
+├── dashboard_locale.py          ← English / Arabic report strings
+├── web_strings.py               ← Django shell UI strings
 │
-├── ai_excel_dashboard_v3_update.spec   ← PyInstaller → dist/*.exe
-│
+├── templates/                   ← Django HTML templates
+├── locale/                      ← Django i18n files
 ├── assets/
 │   ├── app_icon.ico
-│   ├── aagh_logo.png
-│   └── logos/                   ← company logos (nat, aum, saco, …)
+│   └── logos/                   ← company logos (company_a.png, _default.png, …)
 │
 ├── docs/
+│   ├── SETUP.md                 ← install from clone
+│   ├── USER_GUIDE.md            ← end-user workflow
+│   ├── CODE_MAP.md              ← symbol index for monolith
 │   ├── FOLDER_MAP.md            ← this file
-│   ├── ARCHITECTURE.md          ← data flow + “where to change what”
-│   └── EXCEL_SCHEMA.md          ← required Excel columns
+│   ├── ARCHITECTURE.md          ← data flow
+│   ├── EXCEL_SCHEMA.md          ← required Excel columns
+│   └── MYSQL_SETUP.md           ← database setup
 │
-├── scripts/                     ← double-click or run from terminal
+├── scripts/
 │   ├── run_web.ps1
 │   ├── migrate.ps1
-│   ├── db_health.ps1
-│   ├── run_desktop.ps1
-│   ├── build_exe.ps1
-│   └── stop_port_5000.ps1
+│   └── db_health.ps1
 │
-└── examples/                    ← put a small sample .xlsx here for testing
+├── legacy/
+│   └── README.md                ← removed legacy files log
+│
+└── examples/                    ← optional anonymized sample .xlsx
     └── README.md
 ```
 
@@ -52,24 +57,27 @@ excel-dashboard/                 ← rename repo on GitHub if possible (no space
 
 | Path | Why |
 |------|-----|
+| `config/` | Copied from `config.example/` per environment |
+| `.env` | Secrets (DB, Django, SMTP) |
 | `.venv/` | Python virtual environment |
-| `dist/`, `build/` | PyInstaller output |
-| `smtp_config.json` | Secrets |
-| `audit_logs/*.json` | Runtime upload logs |
-| `*.html` | Generated reports (re-create by upload) |
+| `media/` | Uploads, generated HTML cache, decks |
 
 ## If you need to change…
 
 | Goal | Start here |
 |------|------------|
+| Login / 2FA / company selection | `accounts_app/views.py`, `accounts_app/middleware.py` |
 | Upload page / Django routes | `reports_app/views.py`, `reports_app/urls.py` |
-| Audit charts, filters, logos in report | `ai_excel_dashboard.py` → search `build_audit_observation_payload`, `syncBrandLogo` |
+| Store upload / generate report | `reports_app/services/report_generation.py` |
+| Approve / reject / delete | `reports_app/dashboard_workflow.py` |
+| Audit charts, filters, logos in report | `ai_excel_dashboard.py` → `generate_finance_report` |
 | Persisted data models | `audit_app/models.py` |
+| Company tenant rules | `audit_app/company_access.py` |
 | SMTP/PPTX APIs | `mail_app/views.py` |
-| Excel column matching | `ai_excel_dashboard.py` → `AUDIT_OBS_ALIASES`, `resolve_audit_observation_columns` |
-| Translations | `dashboard_locale.py` |
+| Excel column matching | `resolve_audit_observation_columns` in `ai_excel_dashboard.py` |
+| Translations (report) | `dashboard_locale.py` |
+| Translations (Django shell) | `web_strings.py`, `templates/` |
 | How Excel is loaded | `data_io.py` |
-| Export ZIP/PDF | `export_bundle.py` |
 | Build version string | `REPORT_VERSION` in `ai_excel_dashboard.py` |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full flow diagram.

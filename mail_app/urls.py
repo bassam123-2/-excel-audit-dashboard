@@ -1,3 +1,5 @@
+"""URL routes under /api/ for mail endpoints."""
+
 from django.urls import path
 
 from .views import parse_audit_plan_pptx, send_obs_email

@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Dynamic Excel dashboard: validation, charts, and export-ready summaries.
 
-Main engine (~12k lines): audit payload, HTML/JS report, Tk GUI, SMTP.
+Main engine: audit payload, HTML/JS report, SMTP helpers.
 See START_HERE.md, docs/FOLDER_MAP.md, docs/ARCHITECTURE.md."""
 
 from __future__ import annotations
 
-import argparse
 import base64
-import ctypes
 import hashlib
 import html
 import json
@@ -21,30 +19,45 @@ import smtplib
 import ssl
 import subprocess
 import sys
-import threading
-import time
-import urllib.error
-import urllib.request
 import uuid
-import webbrowser
 import zipfile
 from datetime import datetime
 from email.utils import formataddr
 from email.header import Header
 from email.mime.text import MIMEText
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from tkinter import Canvas, StringVar, Tk, filedialog, messagebox, ttk
 
 from dashboard_locale import AR_MONTH_HINTS, normalize_locale, tr
 from data_io import ATTR_READ_NOTES, read_input_file
 
-REPORT_VERSION = "dashboard-v1.0.3"
-# Injected into generated HTML; replaced with a live URL when the Tk UI serves the report over HTTP.
+REPORT_VERSION = "dashboard-v1.0.4"
+ALL_ATTACHMENT_KINDS = frozenset(
+    {
+        "deck",
+        "highRisk",
+        "tgaViolations",
+        "missingVehicle",
+        "internalAuditQuarterly",
+        "specialAssignment",
+    }
+)
+_ATTACHMENT_TOGGLE_SPECS = (
+    ("deck", "audit-deck-attach-cb", "audit-deck-attach-label"),
+    ("highRisk", "audit-high-risk-cb", "audit-high-risk-label"),
+    ("tgaViolations", "audit-tga-violations-cb", "audit-tga-violations-label"),
+    ("missingVehicle", "audit-missing-vehicle-cb", "audit-missing-vehicle-label"),
+    (
+        "internalAuditQuarterly",
+        "audit-internal-audit-quarterly-cb",
+        "audit-internal-audit-quarterly-label",
+    ),
+    ("specialAssignment", "audit-special-assignment-cb", "audit-special-assignment-label"),
+)
+# Injected into generated HTML; replaced with Django API URLs via report_generation.inject_web_mail_api.
 _MAIL_API_MARKER = "window.__AI_EXCEL_MAIL_API__=null;"
 _PLAN_PARSE_API_MARKER = "window.__AI_EXCEL_PLAN_PARSE_URL__=null;"
 _SMTP_HELPER_HOST = "127.0.0.1"
@@ -52,46 +65,7 @@ _SMTP_HELPER_PORT = 51977
 _MAIL_API_FALLBACK_MARKER = (
     f'window.__AI_EXCEL_MAIL_API_FALLBACKS__=["http://127.0.0.1:{_SMTP_HELPER_PORT}/api/send-obs-email","http://localhost:{_SMTP_HELPER_PORT}/api/send-obs-email"];'
 )
-if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-    _DASHBOARD_ROOT = Path(getattr(sys, "_MEIPASS")).resolve()
-else:
-    _DASHBOARD_ROOT = Path(__file__).resolve().parent
-_APP_ICON_CANDIDATES = [
-    _DASHBOARD_ROOT / "assets" / "app_icon.ico",
-    Path("assets/app_icon.ico"),
-]
-
-
-def _get_app_icon_path() -> Path | None:
-    for p in _APP_ICON_CANDIDATES:
-        try:
-            if p.exists() and p.is_file():
-                return p.resolve()
-        except Exception:
-            continue
-    return None
-
-
-def _apply_window_icon(root: Tk) -> None:
-    icon_path = _get_app_icon_path()
-    if not icon_path:
-        return
-    try:
-        root.iconbitmap(str(icon_path))
-    except Exception:
-        pass
-
-
-def _configure_tk_scaling(root: Tk) -> None:
-    """Apply DPI-based scaling to reduce blur/soft rendering on Windows."""
-    if os.name != "nt":
-        return
-    try:
-        dpi = ctypes.windll.user32.GetDpiForWindow(root.winfo_id())
-        if dpi:
-            root.tk.call("tk", "scaling", float(dpi) / 72.0)
-    except Exception:
-        pass
+_DASHBOARD_ROOT = Path(__file__).resolve().parent
 
 
 def detect_brand_logo_data_uri() -> str:
@@ -166,12 +140,6 @@ def _company_logo_catalog_roots() -> list[Path]:
     if env_dir:
         roots.append(Path(env_dir).expanduser())
     try:
-        if getattr(sys, "frozen", False):
-            exedir = Path(sys.executable).resolve().parent
-            roots.append(exedir / "assets" / "logos")
-    except Exception:
-        pass
-    try:
         roots.append(Path.cwd().resolve() / "assets" / "logos")
     except Exception:
         pass
@@ -187,8 +155,8 @@ def _company_logo_catalog_roots() -> list[Path]:
     return out
 
 
-def build_company_logo_catalog() -> dict[str, Any]:
-    """Map company / subcompany labels to embedded logo data URIs from assets/logos/."""
+def _build_filesystem_logo_catalog() -> dict[str, Any]:
+    """Scan assets/logos/ for legacy/fallback logo mappings."""
     default_uri = detect_brand_logo_data_uri()
     companies: dict[str, str] = {}
     subcompanies: dict[str, str] = {}
@@ -254,6 +222,77 @@ def build_company_logo_catalog() -> dict[str, Any]:
         "caseSensitiveCodes": sorted(_CASE_SENSITIVE_LOGO_CODES),
     }
 
+
+def _filefield_to_logo_data_uri(file_field) -> str | None:
+    if not file_field:
+        return None
+    try:
+        return _path_to_logo_data_uri(Path(file_field.path))
+    except Exception:
+        return None
+
+
+def _register_company_logo_keys(
+    companies: dict[str, str],
+    subcompanies: dict[str, str],
+    company_obj,
+    uri: str,
+    *,
+    parent_key: str | None = None,
+) -> None:
+    from audit_app.models import COMPANY_KIND_SUBSIDIARY
+
+    keys = {_logo_catalog_company_key(company_obj.code)}
+    keys.add(_logo_catalog_company_key(company_obj.name))
+    for label in company_obj.accepted_excel_names():
+        keys.add(_logo_catalog_company_key(label))
+    keys.discard("")
+    if company_obj.company_kind == COMPANY_KIND_SUBSIDIARY and parent_key:
+        sub_key = _logo_catalog_company_key(company_obj.code)
+        if sub_key:
+            subcompanies[f"{parent_key}|{sub_key}"] = uri
+    for key in keys:
+        if key:
+            companies[key] = uri
+        if key in _CASE_SENSITIVE_LOGO_CODES:
+            companies[key.upper()] = uri
+
+
+def build_company_logo_catalog(company_entity=None) -> dict[str, Any]:
+    """Map company / subcompany labels to embedded logo data URIs."""
+    catalog = _build_filesystem_logo_catalog()
+    if company_entity is None:
+        return catalog
+
+    from audit_app.company_access import active_subsidiaries_of, tenant_root
+
+    companies: dict[str, str] = dict(catalog.get("companies") or {})
+    subcompanies: dict[str, str] = dict(catalog.get("subcompanies") or {})
+    default_uri = catalog.get("default") or ""
+
+    root = tenant_root(company_entity)
+    root_uri = _filefield_to_logo_data_uri(root.logo) if root.logo else ""
+    if root_uri:
+        default_uri = root_uri
+        _register_company_logo_keys(companies, subcompanies, root, root_uri)
+        parent_key = _logo_catalog_company_key(root.code)
+        for sub in active_subsidiaries_of(root):
+            sub_uri = _filefield_to_logo_data_uri(sub.logo) if sub.logo else root_uri
+            if sub_uri:
+                _register_company_logo_keys(
+                    companies,
+                    subcompanies,
+                    sub,
+                    sub_uri,
+                    parent_key=parent_key,
+                )
+
+    return {
+        "default": default_uri or catalog.get("default") or "",
+        "companies": companies,
+        "subcompanies": subcompanies,
+        "caseSensitiveCodes": sorted(_CASE_SENSITIVE_LOGO_CODES),
+    }
 
 def content_fingerprint(df: pd.DataFrame, source_name: str) -> str:
     """Stable hash of file name + schema + cell data so each dataset gets a unique identity."""
@@ -903,6 +942,36 @@ AUDIT_FILTER_SHORT = {
     "subcompany": "sco",
 }
 
+# Canonical observation-type order (matches standard audit workbook layout).
+OBS_TYPE_CANONICAL_ORDER: tuple[str, ...] = (
+    "Strategy",
+    "Operation",
+    "operation",
+    "ERP System",
+    "ERP system",
+    "Policies & Procedures",
+    "Authority Matrix & DoA",
+    "Org. Structure & JD & KPI's",
+    "Org. structure & JD & KPI's",
+)
+
+
+def _order_observation_types(file_order: list[str]) -> list[str]:
+    """Preserve workbook order while preferring the canonical observation-type sequence."""
+    used: set[str] = set()
+    ordered: list[str] = []
+    lower_to_actual = {v.lower(): v for v in file_order}
+    for canon in OBS_TYPE_CANONICAL_ORDER:
+        actual = lower_to_actual.get(canon.lower())
+        if actual and actual not in used:
+            ordered.append(actual)
+            used.add(actual)
+    for v in file_order:
+        if v not in used:
+            ordered.append(v)
+            used.add(v)
+    return ordered
+
 
 def resolve_audit_observation_columns(df: pd.DataFrame) -> dict[str, str] | None:
     """Map audit register columns to logical roles. Function is optional; other core columns are required."""
@@ -1091,14 +1160,14 @@ def build_audit_observation_payload(
     obs_type_order: list[str] = []
     if has_observation_type:
         ot_s = df_obs[colmap["observation_type"]]
-        obs_type_order = sorted(
-            {
-                _filter_option_token(x)
-                for x in ot_s.dropna().unique()
-                if _filter_option_token(x) != ""
-            },
-            key=lambda x: (len(x), x),
-        )[:80]
+        file_order: list[str] = []
+        seen_ot: set[str] = set()
+        for x in ot_s.dropna().unique():
+            tok = _filter_option_token(x)
+            if tok and tok not in seen_ot:
+                seen_ot.add(tok)
+                file_order.append(tok)
+        obs_type_order = _order_observation_types(file_order)[:80]
     rows_out: list[dict[str, Any]] = []
     for _, r in clip.iterrows():
         rec: dict[str, Any] = {
@@ -1308,13 +1377,15 @@ def build_audit_observation_payload(
             "reviewsDownload": tr(loc, "audit_reviews_download"),
             "reviewsPlaceholder": tr(loc, "audit_reviews_placeholder"),
             "additionalNotesToggleLabel": tr(loc, "audit_additional_notes_toggle_label"),
-            # Arabic chip/modal title in the HTML UI even when report locale is English.
-            "deckAttachToggleLabel": tr("ar", "audit_deck_attach_toggle_label"),
+            "deckAttachToggleLabel": tr(loc, "audit_deck_attach_toggle_label"),
             "deckUploadTitle": tr(loc, "audit_deck_upload_title"),
             "deckUploadHint": tr(loc, "audit_deck_upload_hint"),
             "deckBrowse": tr(loc, "audit_deck_browse"),
             "deckViewerTitle": tr(loc, "audit_deck_viewer_title"),
             "deckEmptyHint": tr(loc, "audit_deck_empty_hint"),
+            "deckNoAttachment": tr(loc, "audit_deck_no_attachment"),
+            "deckNoAttachmentTitle": tr(loc, "audit_deck_no_attachment_title"),
+            "deckNoAttachmentOk": tr(loc, "audit_deck_no_attachment_ok"),
             "deckSlideHeading": tr(loc, "audit_deck_slide_heading"),
             "deckPptLegacyWarn": tr(loc, "audit_deck_ppt_legacy_warn"),
             "deckReadError": tr(loc, "audit_deck_read_error"),
@@ -1341,6 +1412,18 @@ def build_audit_observation_payload(
                     "highRiskToggleLabel": tr("en", "audit_high_risk_toggle_label"),
                     "highRiskUploadTitle": tr("en", "audit_high_risk_upload_title"),
                     "highRiskUploadHint": tr("en", "audit_high_risk_upload_hint"),
+                    "tgaViolationsToggleLabel": tr("en", "audit_tga_violations_toggle_label"),
+                    "tgaViolationsUploadTitle": tr("en", "audit_tga_violations_upload_title"),
+                    "tgaViolationsUploadHint": tr("en", "audit_tga_violations_upload_hint"),
+                    "missingVehicleToggleLabel": tr("en", "audit_missing_vehicle_toggle_label"),
+                    "missingVehicleUploadTitle": tr("en", "audit_missing_vehicle_upload_title"),
+                    "missingVehicleUploadHint": tr("en", "audit_missing_vehicle_upload_hint"),
+                    "internalAuditQuarterlyToggleLabel": tr("en", "audit_internal_audit_quarterly_toggle_label"),
+                    "internalAuditQuarterlyUploadTitle": tr("en", "audit_internal_audit_quarterly_upload_title"),
+                    "internalAuditQuarterlyUploadHint": tr("en", "audit_internal_audit_quarterly_upload_hint"),
+                    "specialAssignmentToggleLabel": tr("en", "audit_special_assignment_toggle_label"),
+                    "specialAssignmentUploadTitle": tr("en", "audit_special_assignment_upload_title"),
+                    "specialAssignmentUploadHint": tr("en", "audit_special_assignment_upload_hint"),
                 }
                 if loc == "en"
                 else {}
@@ -1966,6 +2049,32 @@ def build_multi_dashboard_shell(
 </html>"""
 
 
+def build_deck_attach_toggle_html(
+    locale: str,
+    enabled_attachment_kinds: set[str] | frozenset[str] | None = None,
+) -> str:
+    """Render attachment toggle checkboxes; omit kinds disabled for the tenant company."""
+    loc = normalize_locale(locale)
+    enabled = (
+        ALL_ATTACHMENT_KINDS
+        if enabled_attachment_kinds is None
+        else frozenset(enabled_attachment_kinds)
+    )
+    parts: list[str] = []
+    for kind, cb_id, lbl_id in _ATTACHMENT_TOGGLE_SPECS:
+        if kind not in enabled:
+            continue
+        if loc != "en" and kind != "deck":
+            continue
+        parts.append(
+            '<label class="audit-obs-aging-toggle">'
+            f'<input type="checkbox" id="{cb_id}" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
+            f'<span id="{lbl_id}"></span>'
+            "</label>"
+        )
+    return "".join(parts)
+
+
 def generate_finance_report(
     df: pd.DataFrame,
     source_name: str,
@@ -1976,9 +2085,24 @@ def generate_finance_report(
     embedded_decks_by_company_path: dict[str, str] | None = None,
     attached_high_risk_deck_path: str | None = None,
     embedded_high_risk_decks_by_company_path: dict[str, str] | None = None,
+    attached_tga_violations_deck_path: str | None = None,
+    embedded_tga_violations_decks_by_company_path: dict[str, str] | None = None,
+    attached_missing_vehicle_deck_path: str | None = None,
+    embedded_missing_vehicle_decks_by_company_path: dict[str, str] | None = None,
+    attached_internal_audit_quarterly_deck_path: str | None = None,
+    embedded_internal_audit_quarterly_decks_by_company_path: dict[str, str] | None = None,
+    attached_special_assignment_deck_path: str | None = None,
+    embedded_special_assignment_decks_by_company_path: dict[str, str] | None = None,
     allow_multiple_audit_companies: bool = False,
+    enabled_attachment_kinds: set[str] | frozenset[str] | None = None,
+    company_entity=None,
 ) -> tuple[str, dict[str, Any]]:
     loc = normalize_locale(locale)
+    enabled_kinds = (
+        ALL_ATTACHMENT_KINDS
+        if enabled_attachment_kinds is None
+        else frozenset(enabled_attachment_kinds)
+    )
     read_note_codes: list[str] = list(
         getattr(df, "attrs", {}).get(ATTR_READ_NOTES, [])
     ) if hasattr(df, "attrs") else []
@@ -2136,20 +2260,57 @@ def generate_finance_report(
             "ftDefaultReason": tr(loc, "ft_unavailable_default"),
         },
     }
-    chart_payload["embedded_slide_deck"] = build_embedded_slide_deck_bundle(
-        fallback_path=attached_deck_path,
-        by_company_paths=embedded_decks_by_company_path,
-        locale=loc,
-    )
-    if normalize_locale(locale) == "en":
-        hr_embedded = build_embedded_slide_deck_bundle(
-            fallback_path=attached_high_risk_deck_path,
-            by_company_paths=embedded_high_risk_decks_by_company_path,
+    chart_payload["embedded_slide_deck"] = (
+        build_embedded_slide_deck_bundle(
+            fallback_path=attached_deck_path,
+            by_company_paths=embedded_decks_by_company_path,
             locale=loc,
         )
-        if hr_embedded:
-            chart_payload["embedded_high_risk_slide_deck"] = hr_embedded
-    logo_catalog = build_company_logo_catalog()
+        if "deck" in enabled_kinds
+        else None
+    )
+    if normalize_locale(locale) == "en":
+        if "highRisk" in enabled_kinds:
+            hr_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_high_risk_deck_path,
+                by_company_paths=embedded_high_risk_decks_by_company_path,
+                locale=loc,
+            )
+            if hr_embedded:
+                chart_payload["embedded_high_risk_slide_deck"] = hr_embedded
+        if "tgaViolations" in enabled_kinds:
+            tga_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_tga_violations_deck_path,
+                by_company_paths=embedded_tga_violations_decks_by_company_path,
+                locale=loc,
+            )
+            if tga_embedded:
+                chart_payload["embedded_tga_violations_slide_deck"] = tga_embedded
+        if "missingVehicle" in enabled_kinds:
+            mv_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_missing_vehicle_deck_path,
+                by_company_paths=embedded_missing_vehicle_decks_by_company_path,
+                locale=loc,
+            )
+            if mv_embedded:
+                chart_payload["embedded_missing_vehicle_slide_deck"] = mv_embedded
+        if "internalAuditQuarterly" in enabled_kinds:
+            iaq_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_internal_audit_quarterly_deck_path,
+                by_company_paths=embedded_internal_audit_quarterly_decks_by_company_path,
+                locale=loc,
+            )
+            if iaq_embedded:
+                chart_payload["embedded_internal_audit_quarterly_slide_deck"] = iaq_embedded
+        if "specialAssignment" in enabled_kinds:
+            sa_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_special_assignment_deck_path,
+                by_company_paths=embedded_special_assignment_decks_by_company_path,
+                locale=loc,
+            )
+            if sa_embedded:
+                chart_payload["embedded_special_assignment_slide_deck"] = sa_embedded
+    logo_catalog = build_company_logo_catalog(company_entity)
     chart_payload["brand_logo_catalog"] = logo_catalog
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2242,6 +2403,7 @@ def generate_finance_report(
     logo_display = "flex"
     logo_button_display = "inline-flex" if logo_data_uri else "none"
     logo_src_attr = html.escape(logo_data_uri)
+    deck_attach_toggle_html = build_deck_attach_toggle_html(loc, enabled_kinds)
     html_out = f"""<!DOCTYPE html>
 <html lang="{html_lang}" dir="{html_dir}">
 <head>
@@ -2427,6 +2589,9 @@ def generate_finance_report(
     body.multi-shell-embedded #brand-context-company-names {{
       display: none !important;
     }}
+    body.multi-shell-embedded .brand-context-aside--sc-only #brand-context-company-names {{
+      display: block !important;
+    }}
     .brand-context-aside.brand-context-aside--visible {{
       display: flex;
     }}
@@ -2455,6 +2620,21 @@ def generate_finance_report(
       font-size: 0.7rem;
       font-weight: 700;
       color: #0f172a;
+    }}
+    .brand-context-names .brand-context-chip--muted {{
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      margin: 0.12rem 0 0;
+      padding: 0.42rem 0.65rem;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.06);
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1.35;
+      text-align: left;
     }}
     .brand-context-names .brand-context-all {{
       font-weight: 800;
@@ -2737,13 +2917,40 @@ def generate_finance_report(
     .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-dashboard-exit {{
       display: flex !important;
       position: fixed;
-      top: max(0.55rem, env(safe-area-inset-top, 0px));
-      left: max(0.55rem, env(safe-area-inset-left, 0px));
+      top: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
       z-index: 10001;
+      box-sizing: border-box;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 0.5rem;
+      min-height: 2.85rem;
+      padding: 0.45rem 0.75rem;
+      padding-top: max(0.45rem, env(safe-area-inset-top, 0px));
+      padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+      padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+      background: rgba(15, 23, 42, 0.94);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+      box-shadow: 0 4px 18px rgba(15, 23, 42, 0.35);
     }}
     .locale-ar .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-dashboard-exit {{
-      left: auto;
-      right: max(0.55rem, env(safe-area-inset-right, 0px));
+      justify-content: flex-start;
+    }}
+    .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-dashboard-btn.nav-btn {{
+      font-weight: 700;
+      border-radius: 8px;
+      background: #2563eb;
+      border: 2px solid #1d4ed8;
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }}
+    .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-dashboard-btn.nav-btn:hover {{
+      background: #1d4ed8;
+      border-color: #1e40af;
     }}
     .audit-deck-dashboard-btn.nav-btn {{
       font-weight: 700;
@@ -2794,7 +3001,9 @@ def generate_finance_report(
       flex: 1 1 auto !important;
       min-height: 0 !important;
       padding: 0 !important;
+      padding-top: calc(2.85rem + env(safe-area-inset-top, 0px)) !important;
       overflow: hidden !important;
+      box-sizing: border-box !important;
     }}
     .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-modal-viewer {{
       min-height: 0 !important;
@@ -2844,6 +3053,11 @@ def generate_finance_report(
     .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-pptx-toolbar,
     .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-pptx-zoombar {{
       flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }}
+    .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-pptx-toolbar {{
+      padding-top: 0.35rem;
     }}
     .audit-deck-modal-panel.audit-deck-modal--fill-page .audit-deck-svg-host {{
       min-height: 0 !important;
@@ -3247,21 +3461,21 @@ def generate_finance_report(
     }}
     .audit-dashboard-toggles-checks > .audit-obs-aging-toggle,
     .audit-deck-attach-corner .audit-obs-aging-toggle {{
-      border-left: 3px solid #166534;
-      background: #0f172a;
-      border-color: #14532d;
-      color: #e2e8f0;
+      border-left: 3px solid #1e3a5f;
+      background: #0d1b2a;
+      border-color: #1e3a5f;
+      color: #ffffff;
       transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     }}
     .audit-dashboard-toggles-checks > .audit-obs-aging-toggle input,
     .audit-deck-attach-corner .audit-obs-aging-toggle input {{
-      accent-color: #166534;
+      accent-color: #3b82f6;
     }}
     .audit-dashboard-toggles-checks > .audit-obs-aging-toggle:has(input:checked),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(input:checked) {{
-      background: #052e16;
-      border-color: #166534;
-      box-shadow: 0 0 0 2px rgba(22, 101, 52, 0.28);
+      background: #0d1b2a;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.28);
     }}
     .audit-dashboard-toggles-checks > .audit-obs-aging-toggle:has(input:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(input:focus-visible) {{
@@ -3270,6 +3484,10 @@ def generate_finance_report(
     /* Audit committee report toggle: larger square blue checkbox only */
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-deck-attach-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-high-risk-cb,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-tga-violations-cb,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-missing-vehicle-cb,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-internal-audit-quarterly-cb,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-special-assignment-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-additional-notes-cb {{
       -webkit-appearance: none;
       appearance: none;
@@ -3282,7 +3500,7 @@ def generate_finance_report(
       border-radius: 0 !important;
       -webkit-border-radius: 0;
       border: 2px solid #3b82f6;
-      background: #0f172a;
+      background: #0d1b2a;
       box-sizing: border-box;
       padding: 0;
       margin: 0;
@@ -3291,6 +3509,10 @@ def generate_finance_report(
     }}
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-deck-attach-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-high-risk-cb:checked,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-tga-violations-cb:checked,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-missing-vehicle-cb:checked,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-internal-audit-quarterly-cb:checked,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-special-assignment-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-additional-notes-cb:checked {{
       border-radius: 0 !important;
       -webkit-border-radius: 0;
@@ -3299,6 +3521,10 @@ def generate_finance_report(
     }}
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-deck-attach-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-high-risk-cb:focus-visible),
+    .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-tga-violations-cb:focus-visible),
+    .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-missing-vehicle-cb:focus-visible),
+    .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-internal-audit-quarterly-cb:focus-visible),
+    .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-special-assignment-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-additional-notes-cb:focus-visible) {{
       box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45);
     }}
@@ -3335,25 +3561,15 @@ def generate_finance_report(
       overflow-x: auto;
       padding-bottom: 0.15rem;
     }}
-    .audit-obs-filter-toolbar.file-filter-toolbar > .audit-dim-filter-block:nth-child(1) {{
-      --audit-filt-accent: hsl(var(--dyn-h1), 58%, 38%);
-      --audit-filt-surface: hsla(var(--dyn-h1), 42%, 96%, 1);
-      --audit-filt-border: hsla(var(--dyn-h1), 34%, 82%, 1);
+    .audit-obs-filter-toolbar.file-filter-toolbar .audit-dim-filter-block {{
+      --audit-filt-accent: #6a1b9a;
+      --audit-filt-surface: #f3e5f5;
+      --audit-filt-border: #ce93d8;
     }}
-    .audit-obs-filter-toolbar.file-filter-toolbar > .audit-dim-filter-block:nth-child(2) {{
-      --audit-filt-accent: hsl(var(--dyn-h2), 52%, 36%);
-      --audit-filt-surface: hsla(var(--dyn-h2), 38%, 96%, 1);
-      --audit-filt-border: hsla(var(--dyn-h2), 32%, 82%, 1);
-    }}
-    .audit-obs-filter-toolbar.file-filter-toolbar > .audit-dim-filter-block:nth-child(3) {{
-      --audit-filt-accent: hsl(var(--dyn-h3), 50%, 38%);
-      --audit-filt-surface: hsla(var(--dyn-h3), 36%, 96%, 1);
-      --audit-filt-border: hsla(var(--dyn-h3), 30%, 82%, 1);
-    }}
-    .audit-obs-filter-toolbar.file-filter-toolbar > .audit-dim-filter-block:nth-child(n + 4) {{
-      --audit-filt-accent: #475569;
-      --audit-filt-surface: #f8fafc;
-      --audit-filt-border: var(--stroke);
+    .audit-obs-filter-toolbar.file-filter-toolbar .audit-dim-filter-block[data-audit-dim="d"] {{
+      --audit-filt-accent: #5d4037;
+      --audit-filt-surface: #fbe9e7;
+      --audit-filt-border: #bcaaa4;
     }}
     .audit-obs-filter-toolbar.file-filter-toolbar .audit-dim-filter-block {{
       display: flex;
@@ -3363,13 +3579,14 @@ def generate_finance_report(
       flex: 1 1 0;
       min-width: 0;
       margin: 0;
-      padding: 0.5rem 0.55rem 0.55rem;
+      padding: 0;
       border-radius: 10px;
-      background: var(--audit-filt-surface, #f8fafc);
+      background: #ffffff;
       border: 1px solid var(--audit-filt-border, var(--stroke));
       border-left: 3px solid var(--audit-filt-accent, var(--accent));
       box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
       box-sizing: border-box;
+      overflow: hidden;
     }}
     .audit-obs-filter-toolbar.file-filter-toolbar .audit-dim-filter-head {{
       display: flex;
@@ -3378,6 +3595,9 @@ def generate_finance_report(
       justify-content: space-between;
       gap: 0.35rem;
       min-width: 0;
+      padding: 0.45rem 0.55rem 0.35rem;
+      background: var(--audit-filt-surface, #f8fafc);
+      border-bottom: 1px solid var(--audit-filt-border, var(--stroke));
     }}
     .audit-obs-filter-toolbar.file-filter-toolbar .audit-dim-filter-title {{
       font-size: 0.68rem;
@@ -3417,7 +3637,7 @@ def generate_finance_report(
     }}
     .audit-obs-filter-toolbar.file-filter-toolbar .audit-dim-quick-btn:focus-visible {{
       outline: none;
-      box-shadow: 0 0 0 2px hsla(var(--dyn-h1), 65%, 55%, 0.25);
+      box-shadow: 0 0 0 2px rgba(106, 27, 154, 0.28);
     }}
     .audit-obs-filter-toolbar.file-filter-toolbar select {{
       width: 100%;
@@ -3426,9 +3646,9 @@ def generate_finance_report(
       flex: 1 1 auto;
       background: #ffffff;
       color: var(--text);
-      border: 1px solid var(--audit-filt-border, var(--stroke));
-      border-radius: 8px;
-      padding: 0.35rem 0.45rem;
+      border: none;
+      border-radius: 0;
+      padding: 0.45rem 0.55rem 0.55rem;
       font-family: inherit;
       font-size: 0.8rem;
       font-weight: 500;
@@ -3436,7 +3656,7 @@ def generate_finance_report(
     .audit-obs-filter-toolbar.file-filter-toolbar select:focus {{
       outline: none;
       border-color: var(--audit-filt-accent, var(--accent));
-      box-shadow: 0 0 0 2px hsla(var(--dyn-h1), 65%, 55%, 0.2);
+      box-shadow: 0 0 0 2px rgba(106, 27, 154, 0.18);
     }}
     .audit-obs-filter-toolbar.file-filter-toolbar select[multiple] {{
       min-height: 6.25rem;
@@ -3449,15 +3669,42 @@ def generate_finance_report(
       margin: 0;
     }}
     .brand-context-aside > #brand-company-filter-host .audit-dim-filter-block {{
-      --audit-filt-accent: #64748b;
-      --audit-filt-surface: #ffffff;
-      --audit-filt-border: rgba(15, 23, 42, 0.14);
+      --audit-filt-accent: #6a1b9a;
+      --audit-filt-surface: #f3e5f5;
+      --audit-filt-border: #ce93d8;
       gap: 0.22rem;
       padding: 0.3rem 0.38rem 0.35rem;
       border-radius: 8px;
       border: 1px solid rgba(15, 23, 42, 0.12);
       border-left: 1px solid rgba(15, 23, 42, 0.12);
       box-shadow: none;
+    }}
+    .brand-context-aside > #brand-company-filter-host .audit-dim-filter-block--brand-sc {{
+      --audit-filt-accent: #64748b;
+      --audit-filt-surface: #ffffff;
+      --audit-filt-border: rgba(15, 23, 42, 0.12);
+      gap: 0;
+      padding: 0;
+      background: #ffffff;
+      border: 1px solid rgba(15, 23, 42, 0.14);
+      border-left: 1px solid rgba(15, 23, 42, 0.14);
+      border-radius: 8px;
+      overflow: hidden;
+    }}
+    .brand-context-aside > #brand-company-filter-host .audit-dim-filter-block--brand-sc select[multiple] {{
+      min-height: 4.5rem;
+      max-height: 7.5rem;
+      padding: 0.28rem 0.4rem;
+      border: none;
+      border-radius: 0;
+      background: #ffffff;
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: #0f172a;
+    }}
+    .brand-context-aside > #brand-company-filter-host .audit-dim-filter-block--brand-sc select[multiple]:focus {{
+      border: none;
+      box-shadow: inset 0 0 0 2px rgba(15, 23, 42, 0.12);
     }}
     .brand-context-aside > #brand-company-filter-host .audit-dim-filter-head {{
       gap: 0.28rem;
@@ -3470,12 +3717,12 @@ def generate_finance_report(
       user-select: none;
     }}
     .brand-context-aside > #brand-company-filter-host .audit-dim-filter-head.audit-dim-filter-head--toggle-quick:hover .audit-dim-filter-title {{
-      color: #0f172a;
+      color: #6a1b9a;
     }}
     .brand-context-aside > #brand-company-filter-host .audit-dim-filter-title {{
       font-size: 0.58rem;
       letter-spacing: 0.03em;
-      color: #475569;
+      color: #6a1b9a;
     }}
     .brand-context-aside > #brand-company-filter-host .audit-dim-filter-quick {{
       gap: 0.15rem;
@@ -3483,12 +3730,12 @@ def generate_finance_report(
     .brand-context-aside > #brand-company-filter-host .audit-dim-quick-btn {{
       font-size: 0.5rem;
       padding: 0.06rem 0.22rem;
-      color: #334155;
-      border-color: rgba(15, 23, 42, 0.16);
+      color: #6a1b9a;
+      border-color: #ce93d8;
       background: #ffffff;
     }}
     .brand-context-aside > #brand-company-filter-host .audit-dim-quick-btn:hover {{
-      background: #f1f5f9;
+      background: #f3e5f5;
     }}
     .brand-context-aside > #brand-company-filter-host .audit-dim-quick-btn:focus-visible {{
       box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.12);
@@ -3596,14 +3843,14 @@ def generate_finance_report(
       position: relative;
       border-radius: 12px;
       overflow: hidden;
-      border: 1px solid hsla(var(--dyn-h2), 28%, 86%, 1);
-      box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+      border: 1px solid #ce93d8;
+      box-shadow: 0 2px 12px rgba(106, 27, 154, 0.08);
       display: flex;
       flex-direction: column;
       flex: 1 1 auto;
       min-height: 6.5rem;
       min-width: 0;
-      background: linear-gradient(165deg, hsla(var(--dyn-h2), 28%, 98.5%, 1) 0%, #ffffff 48%);
+      background: #ffffff;
     }}
     .audit-deck-attach-corner {{
       margin-top: auto;
@@ -3614,8 +3861,8 @@ def generate_finance_report(
       align-items: center;
       gap: 0.5rem;
       padding: 0.5rem 0.85rem 0.7rem;
-      background: hsla(var(--dyn-h3), 18%, 97%, 1);
-      border-top: 1px solid hsla(var(--dyn-h2), 24%, 90%, 1);
+      background: #ffffff;
+      border-top: 1px solid #e9d5f5;
       box-sizing: border-box;
     }}
     .audit-obs-names-bar-row {{
@@ -3628,9 +3875,9 @@ def generate_finance_report(
       box-sizing: border-box;
       padding: 0.5rem 0.95rem;
       border-radius: 10px;
-      background: hsla(var(--dyn-h1), 34%, 94%, 1);
-      border: 1px solid hsla(var(--dyn-h1), 30%, 84%, 1);
-      border-left: 3px solid hsl(var(--dyn-h1), 55%, 48%);
+      background: #f3e5f5;
+      border: 1px solid #ce93d8;
+      border-left: 3px solid #6a1b9a;
       color: var(--text);
     }}
     .audit-obs-names-bar-row .audit-obs-bar-title {{
@@ -3638,7 +3885,7 @@ def generate_finance_report(
       font-size: 0.78rem;
       letter-spacing: 0.04em;
       text-transform: uppercase;
-      color: hsl(var(--dyn-h1), 48%, 32%);
+      color: #6a1b9a;
       flex: 1;
       min-width: 0;
     }}
@@ -3655,7 +3902,7 @@ def generate_finance_report(
       height: 0.9rem;
       margin: 0;
       cursor: pointer;
-      accent-color: hsl(var(--dyn-h1), 58%, 52%);
+      accent-color: #6a1b9a;
     }}
     .audit-sr-only {{
       position: absolute;
@@ -4218,6 +4465,12 @@ def generate_finance_report(
       flex-direction: column;
       max-height: inherit;
       min-height: 0;
+      height: 100%;
+    }}
+    #audit-reviews-panel .audit-aging-body {{
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
     }}
     .audit-aging-head {{
       display: flex;
@@ -4238,6 +4491,103 @@ def generate_finance_report(
       font-size: 1rem;
       font-weight: 800;
       color: var(--text);
+    }}
+    .audit-deck-missing-backdrop {{
+      position: fixed;
+      inset: 0;
+      z-index: 260;
+      display: none;
+      background: rgba(15, 23, 42, 0.42);
+      backdrop-filter: blur(8px);
+    }}
+    .audit-deck-missing-panel {{
+      position: fixed;
+      z-index: 261;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      width: min(22rem, calc(100vw - 2.5rem));
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: linear-gradient(165deg, #ffffff 0%, #f8fafc 100%);
+      box-shadow:
+        0 24px 48px rgba(15, 23, 42, 0.16),
+        0 0 0 1px rgba(255, 255, 255, 0.65) inset;
+      overflow: hidden;
+      animation: audit-deck-missing-in 0.22s ease-out;
+    }}
+    @keyframes audit-deck-missing-in {{
+      from {{
+        opacity: 0;
+        transform: translate(-50%, calc(-50% + 10px)) scale(0.97);
+      }}
+      to {{
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }}
+    }}
+    .audit-deck-missing-inner {{
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 1.65rem 1.35rem 1.35rem;
+      gap: 0.65rem;
+    }}
+    .audit-deck-missing-icon {{
+      width: 3.4rem;
+      height: 3.4rem;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(145deg, #eff6ff 0%, #e0e7ff 100%);
+      border: 1px solid rgba(59, 130, 246, 0.22);
+      color: #2563eb;
+      margin-bottom: 0.15rem;
+    }}
+    .audit-deck-missing-icon svg {{
+      width: 1.55rem;
+      height: 1.55rem;
+      display: block;
+    }}
+    .audit-deck-missing-report {{
+      margin: 0;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #64748b;
+      line-height: 1.35;
+    }}
+    .audit-deck-missing-title {{
+      margin: 0;
+      font-size: 1.08rem;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1.3;
+    }}
+    .audit-deck-missing-msg {{
+      margin: 0 0 0.35rem;
+      font-size: 0.9rem;
+      line-height: 1.55;
+      color: #475569;
+      max-width: 18rem;
+    }}
+    .audit-deck-missing-ok {{
+      min-width: 6.5rem;
+      margin-top: 0.25rem;
+      padding: 0.55rem 1.35rem;
+      border-radius: 999px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      border-color: #1d4ed8;
+      color: #fff;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.28);
+    }}
+    .audit-deck-missing-ok:hover {{
+      filter: brightness(1.05);
     }}
     .audit-aging-close {{
       width: 2rem;
@@ -4283,8 +4633,8 @@ def generate_finance_report(
       font-family: ui-monospace, "Cascadia Code", "Consolas", system-ui, sans-serif;
       font-size: 0.92rem;
       line-height: 1.55;
-      resize: vertical;
       box-shadow: inset 0 1px 2px rgba(30, 41, 59, 0.06);
+      resize: vertical;
     }}
     .audit-reviews-notepad:focus {{
       outline: 2px solid rgba(96, 165, 250, 0.55);
@@ -5100,6 +5450,19 @@ def generate_finance_report(
     .audit-pie-card--obs .audit-pie-card-accent {{
       background: radial-gradient(circle, hsla(var(--dyn-h3), 66%, 34%, 0.26) 0%, transparent 68%);
     }}
+    .audit-pie-card--obs {{
+      overflow: visible;
+      padding-top: 0.75rem;
+    }}
+    .audit-pie-card--obs .audit-pie-title {{
+      margin-bottom: 0.3rem;
+    }}
+    .audit-pie-card--obs .audit-pie-canvas-wrap {{
+      height: 300px;
+      min-height: 280px;
+      max-height: 420px;
+      overflow: visible;
+    }}
     .audit-pie-title {{
       position: relative;
       z-index: 1;
@@ -5277,16 +5640,7 @@ def generate_finance_report(
                   </div>
                 </div>
                 <div class="audit-deck-attach-corner">
-                  <label class="audit-obs-aging-toggle">
-                    <input type="checkbox" id="audit-deck-attach-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />
-                    <span id="audit-deck-attach-label"></span>
-                  </label>
-                  {(
-                    '<label class="audit-obs-aging-toggle">'
-                    '<input type="checkbox" id="audit-high-risk-cb" aria-controls="audit-deck-modal" aria-haspopup="dialog" />'
-                    '<span id="audit-high-risk-label"></span>'
-                    '</label>'
-                  ) if loc == "en" else ""}
+                  {deck_attach_toggle_html}
                   <label class="audit-obs-aging-toggle">
                     <input type="checkbox" id="audit-additional-notes-cb" aria-controls="audit-additional-notes-inline-panel" />
                     <span id="audit-additional-notes-label"></span>
@@ -5524,6 +5878,23 @@ def generate_finance_report(
             <p class="muted" id="audit-deck-empty-hint"></p>
           </div>
         </div>
+      </div>
+    </div>
+    <div class="audit-deck-missing-backdrop" id="audit-deck-missing-backdrop" style="display:none" aria-hidden="true"></div>
+    <div class="audit-deck-missing-panel" id="audit-deck-missing-panel" role="alertdialog" aria-modal="true" aria-labelledby="audit-deck-missing-title" aria-describedby="audit-deck-missing-msg" aria-hidden="true" tabindex="-1" style="display:none">
+      <div class="audit-deck-missing-inner">
+        <div class="audit-deck-missing-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="9.5" y1="12.5" x2="14.5" y2="17.5"/>
+            <line x1="14.5" y1="12.5" x2="9.5" y2="17.5"/>
+          </svg>
+        </div>
+        <p class="audit-deck-missing-report" id="audit-deck-missing-report"></p>
+        <h3 class="audit-deck-missing-title" id="audit-deck-missing-title"></h3>
+        <p class="audit-deck-missing-msg" id="audit-deck-missing-msg"></p>
+        <button type="button" class="nav-btn audit-deck-missing-ok" id="audit-deck-missing-ok"></button>
       </div>
     </div>
   </main>
@@ -6001,12 +6372,21 @@ def generate_finance_report(
       const deckAttachLbl = document.getElementById("audit-deck-attach-label");
       const highRiskCb = document.getElementById("audit-high-risk-cb");
       const highRiskLbl = document.getElementById("audit-high-risk-label");
+      const tgaViolationsCb = document.getElementById("audit-tga-violations-cb");
+      const tgaViolationsLbl = document.getElementById("audit-tga-violations-label");
+      const missingVehicleCb = document.getElementById("audit-missing-vehicle-cb");
+      const missingVehicleLbl = document.getElementById("audit-missing-vehicle-label");
+      const internalAuditQuarterlyCb = document.getElementById("audit-internal-audit-quarterly-cb");
+      const internalAuditQuarterlyLbl = document.getElementById("audit-internal-audit-quarterly-label");
+      const specialAssignmentCb = document.getElementById("audit-special-assignment-cb");
+      const specialAssignmentLbl = document.getElementById("audit-special-assignment-label");
       const deckUploadLayer = document.getElementById("audit-deck-upload-layer");
       const deckUploadLayerTitle = document.getElementById("audit-deck-upload-layer-title");
       const deckUploadLayerHint = document.getElementById("audit-deck-upload-layer-hint");
       const deckUploadLayerBrowse = document.getElementById("audit-deck-upload-layer-browse");
       let deckPanelMode = "committee";
-      const deckFilesByMode = {{ committee: null, highRisk: null }};
+      const deckFilesByMode = {{ committee: null, highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null }};
+      const deckAttachToggles = [deckAttachCb, highRiskCb, tgaViolationsCb, missingVehicleCb, internalAuditQuarterlyCb, specialAssignmentCb];
       const deckBackdrop = document.getElementById("audit-deck-backdrop");
       const deckModal = document.getElementById("audit-deck-modal");
       const deckModalClose = document.getElementById("audit-deck-modal-close");
@@ -6028,7 +6408,7 @@ def generate_finance_report(
       let deckBlobUrls = [];
       let deckLastFile = null;
       let embeddedDeckLoadSig = null;
-      let embeddedHighRiskLoadSig = null;
+      const embeddedAltDeckLoadSig = {{ highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null }};
       let deckLastObjectUrl = null;
       let deckPptxViewer = null;
       let deckPptxSvgViewer = null;
@@ -6571,7 +6951,11 @@ def generate_finance_report(
           brandCoHost.classList.remove("brand-company-filter-host--hidden");
         }}
         const brandAsideOn = document.getElementById("brand-context-aside");
-        if (brandAsideOn) brandAsideOn.classList.add("brand-context-aside--visible");
+        if (brandAsideOn) {{
+          brandAsideOn.classList.add("brand-context-aside--visible");
+          if (hasSubcompanyFilterDim) brandAsideOn.classList.add("brand-context-aside--sc-only");
+          else brandAsideOn.classList.remove("brand-context-aside--sc-only");
+        }}
       }} else {{
         if (brandCoHost) {{
           brandCoHost.innerHTML = "";
@@ -6581,7 +6965,10 @@ def generate_finance_report(
           brandCoHost.classList.remove("brand-company-filter-host--sc-only");
         }}
         const brandAsideNoCo = document.getElementById("brand-context-aside");
-        if (brandAsideNoCo) brandAsideNoCo.classList.remove("brand-context-aside--visible");
+        if (brandAsideNoCo) {{
+          brandAsideNoCo.classList.remove("brand-context-aside--visible");
+          brandAsideNoCo.classList.remove("brand-context-aside--sc-only");
+        }}
       }}
       const ALL = AO.all_token;
       const tilesHost = document.getElementById("audit-ia-tiles");
@@ -7639,6 +8026,7 @@ def generate_finance_report(
         }}
         reviewsTextarea.addEventListener("input", function () {{
           try {{ localStorage.setItem(AUDIT_REVIEWS_LS, reviewsTextarea.value); }} catch (_ls1) {{}}
+          try {{ persistAuditUserEdits(); }} catch (_pe) {{}}
         }});
       }}
       try {{
@@ -7676,35 +8064,121 @@ def generate_finance_report(
       }}
       if (deckAttachLbl) deckAttachLbl.textContent = ui.deckAttachToggleLabel || "تقرير لجنة المراجعة";
       if (highRiskLbl) highRiskLbl.textContent = ui.highRiskToggleLabel || "High Risk Observations & Emerging Risks";
+      if (tgaViolationsLbl) tgaViolationsLbl.textContent = ui.tgaViolationsToggleLabel || "TGA Violations Report";
+      if (missingVehicleLbl) missingVehicleLbl.textContent = ui.missingVehicleToggleLabel || "Missing Vehicle Report";
+      if (internalAuditQuarterlyLbl) internalAuditQuarterlyLbl.textContent = ui.internalAuditQuarterlyToggleLabel || "Internal Audit Quarterly Report";
+      if (specialAssignmentLbl) specialAssignmentLbl.textContent = ui.specialAssignmentToggleLabel || "Special Assignment Report";
       if (deckUploadLayerTitle) {{
-        deckUploadLayerTitle.textContent = ui.highRiskUploadTitle || ui.deckUploadTitle || "Upload document";
+        deckUploadLayerTitle.textContent = ui.deckUploadTitle || "Upload document";
       }}
       if (deckUploadLayerHint) {{
-        deckUploadLayerHint.textContent = ui.highRiskUploadHint || ui.deckUploadHint || "";
+        deckUploadLayerHint.textContent = ui.deckUploadHint || "";
       }}
       if (deckUploadLayerBrowse) {{
         deckUploadLayerBrowse.textContent = ui.deckBrowse || "Browse…";
       }}
+      const DECK_MODE_META = {{
+        committee: {{
+          title: function () {{ return ui.deckAttachToggleLabel || "Audit committee report"; }},
+          hint: function () {{ return ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.deckUploadTitle || "Upload"; }},
+          uploadHint: function () {{ return ui.deckUploadHint || ""; }},
+        }},
+        highRisk: {{
+          title: function () {{ return ui.highRiskToggleLabel || "High Risk Observations & Emerging Risks"; }},
+          hint: function () {{ return ui.highRiskUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.highRiskUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.highRiskUploadHint || ui.deckUploadHint || ""; }},
+        }},
+        tgaViolations: {{
+          title: function () {{ return ui.tgaViolationsToggleLabel || "TGA Violations Report"; }},
+          hint: function () {{ return ui.tgaViolationsUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.tgaViolationsUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.tgaViolationsUploadHint || ui.deckUploadHint || ""; }},
+        }},
+        missingVehicle: {{
+          title: function () {{ return ui.missingVehicleToggleLabel || "Missing Vehicle Report"; }},
+          hint: function () {{ return ui.missingVehicleUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.missingVehicleUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.missingVehicleUploadHint || ui.deckUploadHint || ""; }},
+        }},
+        internalAuditQuarterly: {{
+          title: function () {{ return ui.internalAuditQuarterlyToggleLabel || "Internal Audit Quarterly Report"; }},
+          hint: function () {{ return ui.internalAuditQuarterlyUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.internalAuditQuarterlyUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.internalAuditQuarterlyUploadHint || ui.deckUploadHint || ""; }},
+        }},
+        specialAssignment: {{
+          title: function () {{ return ui.specialAssignmentToggleLabel || "Special Assignment Report"; }},
+          hint: function () {{ return ui.specialAssignmentUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.specialAssignmentUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.specialAssignmentUploadHint || ui.deckUploadHint || ""; }},
+        }},
+      }};
+      function deckIsAltMode(mode) {{
+        const m = mode != null ? mode : deckPanelMode;
+        return m !== "committee";
+      }}
+      function deckModeMeta(mode) {{
+        return DECK_MODE_META[mode] || DECK_MODE_META.committee;
+      }}
+      function deckEmbeddedPayloadForMode(mode) {{
+        if (mode === "highRisk") return payload.embedded_high_risk_slide_deck;
+        if (mode === "tgaViolations") return payload.embedded_tga_violations_slide_deck;
+        if (mode === "missingVehicle") return payload.embedded_missing_vehicle_slide_deck;
+        if (mode === "internalAuditQuarterly") return payload.embedded_internal_audit_quarterly_slide_deck;
+        if (mode === "specialAssignment") return payload.embedded_special_assignment_slide_deck;
+        return null;
+      }}
+      function deckUncheckOtherAttachToggles(activeCb) {{
+        for (let i = 0; i < deckAttachToggles.length; i++) {{
+          const cb = deckAttachToggles[i];
+          if (cb && cb !== activeCb) cb.checked = false;
+        }}
+      }}
+      const deckMissingBackdrop = document.getElementById("audit-deck-missing-backdrop");
+      const deckMissingPanel = document.getElementById("audit-deck-missing-panel");
+      const deckMissingReport = document.getElementById("audit-deck-missing-report");
+      const deckMissingTitle = document.getElementById("audit-deck-missing-title");
+      const deckMissingMsg = document.getElementById("audit-deck-missing-msg");
+      const deckMissingOk = document.getElementById("audit-deck-missing-ok");
+      function deckCloseNoAttachmentNotice() {{
+        if (deckMissingBackdrop) {{
+          deckMissingBackdrop.style.display = "none";
+          deckMissingBackdrop.setAttribute("aria-hidden", "true");
+        }}
+        if (deckMissingPanel) {{
+          deckMissingPanel.style.display = "none";
+          deckMissingPanel.setAttribute("aria-hidden", "true");
+        }}
+      }}
+      function deckShowNoAttachmentNotice(mode) {{
+        const meta = deckModeMeta(mode || deckPanelMode);
+        const reportName = meta.title();
+        const title = ui.deckNoAttachmentTitle || "No attachment";
+        const msg = ui.deckNoAttachment || "No attachment available for this report.";
+        if (deckMissingReport) deckMissingReport.textContent = reportName;
+        if (deckMissingTitle) deckMissingTitle.textContent = title;
+        if (deckMissingMsg) deckMissingMsg.textContent = msg;
+        if (deckMissingOk) deckMissingOk.textContent = ui.deckNoAttachmentOk || "OK";
+        if (deckMissingBackdrop) {{
+          deckMissingBackdrop.style.display = "block";
+          deckMissingBackdrop.setAttribute("aria-hidden", "false");
+        }}
+        if (deckMissingPanel) {{
+          deckMissingPanel.style.display = "block";
+          deckMissingPanel.setAttribute("aria-hidden", "false");
+          try {{ deckMissingPanel.focus(); }} catch (_mf) {{}}
+        }}
+      }}
       function deckApplyPanelChrome() {{
-        const isHighRisk = deckPanelMode === "highRisk";
-        const title = isHighRisk
-          ? (ui.highRiskToggleLabel || "High Risk Observations & Emerging Risks")
-          : (ui.deckAttachToggleLabel || "تقرير لجنة المراجعة");
-        const hint = isHighRisk
-          ? (ui.highRiskUploadHint || ui.deckUploadHint || "")
-          : (ui.deckUploadHint || "");
+        const meta = deckModeMeta(deckPanelMode);
+        const title = meta.title();
+        const hint = meta.hint();
         if (deckModalTitle) deckModalTitle.textContent = title;
         if (deckModalHint) deckModalHint.textContent = hint;
-        if (deckUploadLayerTitle) {{
-          deckUploadLayerTitle.textContent = isHighRisk
-            ? (ui.highRiskUploadTitle || ui.deckUploadTitle || "Upload document")
-            : (ui.deckUploadTitle || "Upload");
-        }}
-        if (deckUploadLayerHint) {{
-          deckUploadLayerHint.textContent = isHighRisk
-            ? (ui.highRiskUploadHint || ui.deckUploadHint || "")
-            : (ui.deckUploadHint || "");
-        }}
+        if (deckUploadLayerTitle) deckUploadLayerTitle.textContent = meta.uploadTitle();
+        if (deckUploadLayerHint) deckUploadLayerHint.textContent = meta.uploadHint();
       }}
       function deckSetUploadFirstMode(on) {{
         if (!deckModal) return;
@@ -7728,8 +8202,8 @@ def generate_finance_report(
           }});
         }});
       }}
-      function deckFinishHighRiskPresentation() {{
-        if (deckPanelMode !== "highRisk") return;
+      function deckFinishAltDeckPresentation() {{
+        if (!deckIsAltMode()) return;
         if (!deckModal || deckModal.style.display === "none" || deckModal.getAttribute("aria-hidden") === "true") return;
         deckOpenHighRiskSlideshow();
       }}
@@ -7761,7 +8235,30 @@ def generate_finance_report(
         }}
         return {{ entry: entry, sig: sig }};
       }}
-      function loadEmbeddedDeckBundleEntry(entry) {{
+      function deckEmbeddedBundleHasAttachment(ed) {{
+        if (!ed) return false;
+        const picked = pickEmbeddedDeckBundleEntry(ed);
+        return !!(picked.entry && picked.entry.data_base64);
+      }}
+      function deckModeHasAttachment(mode) {{
+        if (deckFilesByMode[mode]) return true;
+        if (mode === "committee") {{
+          return deckEmbeddedBundleHasAttachment(payload.embedded_slide_deck);
+        }}
+        return deckEmbeddedBundleHasAttachment(deckEmbeddedPayloadForMode(mode));
+      }}
+      function tryOpenDeckAttachMode(mode, cb) {{
+        if (!deckModeHasAttachment(mode)) {{
+          if (cb) cb.checked = false;
+          deckShowNoAttachmentNotice(mode);
+          return false;
+        }}
+        deckUncheckOtherAttachToggles(cb);
+        deckPanelMode = mode;
+        openDeckModal();
+        return true;
+      }}
+      function loadEmbeddedDeckBundleEntry(entry, defaultName) {{
         if (!entry || !entry.data_base64) return false;
         try {{
           const raw = atob(entry.data_base64);
@@ -7771,7 +8268,7 @@ def generate_finance_report(
           const mime =
             entry.mime || "application/vnd.openxmlformats-officedocument.presentationml.presentation";
           const blob = new Blob([u8], {{ type: mime }});
-          const name = entry.file_name || "high-risk-slides.pptx";
+          const name = entry.file_name || defaultName || "slides.pptx";
           const f = new File([blob], name, {{ type: mime }});
           void deckHandleFile(f);
           return true;
@@ -7779,16 +8276,16 @@ def generate_finance_report(
           return false;
         }}
       }}
-      function applyEmbeddedHighRiskDeck() {{
-        if (deckPanelMode !== "highRisk") return false;
-        const ed = payload.embedded_high_risk_slide_deck;
+      function applyEmbeddedDeckForMode(mode) {{
+        if (!deckIsAltMode(mode)) return false;
+        const ed = deckEmbeddedPayloadForMode(mode);
         if (!ed) return false;
         const picked = pickEmbeddedDeckBundleEntry(ed);
         const entry = picked.entry;
         const sig = picked.sig;
         if (!entry || !entry.data_base64) {{
           if (sig === "none" && ed.by_company) {{
-            embeddedHighRiskLoadSig = sig;
+            embeddedAltDeckLoadSig[mode] = sig;
             deckClearViewer();
             deckLastFile = null;
             if (deckFilename) deckFilename.style.display = "none";
@@ -7796,45 +8293,54 @@ def generate_finance_report(
           }}
           return false;
         }}
-        if (sig === embeddedHighRiskLoadSig && deckLastFile) {{
+        if (sig === embeddedAltDeckLoadSig[mode] && deckLastFile) {{
           try {{ deckResetViewerToFirstPage(); }} catch (_hrR0) {{}}
-          deckFinishHighRiskPresentation();
+          deckFinishAltDeckPresentation();
           return true;
         }}
-        embeddedHighRiskLoadSig = sig;
+        embeddedAltDeckLoadSig[mode] = sig;
         deckClearViewer();
         deckLastFile = null;
-        return loadEmbeddedDeckBundleEntry(entry);
+        const defaultName =
+          mode === "highRisk" ? "high-risk-slides.pptx"
+          : mode === "tgaViolations" ? "tga-violations-report.pptx"
+          : mode === "missingVehicle" ? "missing-vehicle-report.pptx"
+          : mode === "internalAuditQuarterly" ? "internal-audit-quarterly-report.pptx"
+          : mode === "specialAssignment" ? "special-assignment-report.pptx"
+          : "slides.pptx";
+        return loadEmbeddedDeckBundleEntry(entry, defaultName);
       }}
-      function rehydrateEmbeddedHighRiskDeckIfNeeded() {{
-        if (deckPanelMode !== "highRisk") return;
-        if (!highRiskCb || !highRiskCb.checked) return;
-        applyEmbeddedHighRiskDeck();
+      function rehydrateEmbeddedAltDeckIfNeeded() {{
+        if (!deckIsAltMode()) return;
+        const cbByMode = {{
+          highRisk: highRiskCb,
+          tgaViolations: tgaViolationsCb,
+          missingVehicle: missingVehicleCb,
+          internalAuditQuarterly: internalAuditQuarterlyCb,
+          specialAssignment: specialAssignmentCb,
+        }};
+        const cb = cbByMode[deckPanelMode];
+        if (!cb || !cb.checked) return;
+        applyEmbeddedDeckForMode(deckPanelMode);
       }}
       function deckPromptUploadIfNeeded() {{
-        if (deckPanelMode !== "highRisk") return;
-        if (applyEmbeddedHighRiskDeck()) return;
-        const stored = deckFilesByMode.highRisk;
+        if (!deckIsAltMode()) return;
+        if (applyEmbeddedDeckForMode(deckPanelMode)) return;
+        const stored = deckFilesByMode[deckPanelMode];
         if (stored) {{
           deckSetUploadFirstMode(false);
           void deckHandleFile(stored);
           return;
         }}
-        const edHr = payload.embedded_high_risk_slide_deck;
-        if (edHr && (edHr.data_base64 || edHr.by_company || edHr.fallback)) {{
-          deckSetUploadFirstMode(false);
-          return;
-        }}
-        deckSetUploadFirstMode(true);
+        deckSetUploadFirstMode(false);
         deckClearViewer();
         if (deckFilename) deckFilename.style.display = "none";
         if (deckDownloadBtn) deckDownloadBtn.style.display = "none";
         deckLastFile = null;
-        setTimeout(function () {{
-          try {{
-            if (deckFileInput) deckFileInput.click();
-          }} catch (_hrUp) {{}}
-        }}, 120);
+        if (deckEmptyHint) {{
+          deckEmptyHint.style.display = "block";
+          deckEmptyHint.textContent = ui.deckNoAttachment || "No attachment available for this report.";
+        }}
       }}
       deckApplyPanelChrome();
       if (deckFullPageLblText) deckFullPageLblText.textContent = ui.deckFullPage || "Full page";
@@ -8865,6 +9371,10 @@ def generate_finance_report(
         if (deckLastFile) deckFilesByMode[deckPanelMode] = deckLastFile;
         if (deckAttachCb) deckAttachCb.checked = false;
         if (highRiskCb) highRiskCb.checked = false;
+        if (tgaViolationsCb) tgaViolationsCb.checked = false;
+        if (missingVehicleCb) missingVehicleCb.checked = false;
+        if (internalAuditQuarterlyCb) internalAuditQuarterlyCb.checked = false;
+        if (specialAssignmentCb) specialAssignmentCb.checked = false;
         if (deckFileInput) deckFileInput.value = "";
         deckSetUploadFirstMode(false);
         deckClearViewer();
@@ -8952,7 +9462,7 @@ def generate_finance_report(
         deckBackdrop.setAttribute("aria-hidden", "false");
         deckModal.style.display = "block";
         deckModal.setAttribute("aria-hidden", "false");
-        if (deckPanelMode === "highRisk") {{
+        if (deckIsAltMode()) {{
           deckSetUploadFirstMode(false);
           deckPromptUploadIfNeeded();
         }} else {{
@@ -8980,19 +9490,22 @@ def generate_finance_report(
       function deckSyncPanel() {{
         if (!deckAttachCb) return;
         if (deckAttachCb.checked) {{
-          if (highRiskCb) highRiskCb.checked = false;
-          deckPanelMode = "committee";
-          openDeckModal();
+          tryOpenDeckAttachMode("committee", deckAttachCb);
         }} else if (deckPanelMode === "committee") deckCloseModalAndReset();
       }}
-      function highRiskDeckSyncPanel() {{
-        if (!highRiskCb) return;
-        if (highRiskCb.checked) {{
-          if (deckAttachCb) deckAttachCb.checked = false;
-          deckPanelMode = "highRisk";
-          openDeckModal();
-        }} else if (deckPanelMode === "highRisk") deckCloseModalAndReset();
+      function makeAltDeckSyncPanel(cb, mode) {{
+        return function () {{
+          if (!cb) return;
+          if (cb.checked) {{
+            tryOpenDeckAttachMode(mode, cb);
+          }} else if (deckPanelMode === mode) deckCloseModalAndReset();
+        }};
       }}
+      const highRiskDeckSyncPanel = makeAltDeckSyncPanel(highRiskCb, "highRisk");
+      const tgaViolationsDeckSyncPanel = makeAltDeckSyncPanel(tgaViolationsCb, "tgaViolations");
+      const missingVehicleDeckSyncPanel = makeAltDeckSyncPanel(missingVehicleCb, "missingVehicle");
+      const internalAuditQuarterlyDeckSyncPanel = makeAltDeckSyncPanel(internalAuditQuarterlyCb, "internalAuditQuarterly");
+      const specialAssignmentDeckSyncPanel = makeAltDeckSyncPanel(specialAssignmentCb, "specialAssignment");
       function deckShowPdf(file) {{
         if (!deckPdfFrame) return;
         deckDestroyPptxViewer();
@@ -9025,7 +9538,7 @@ def generate_finance_report(
         const mime = String(f.type || "").toLowerCase();
         if (name.endsWith(".pdf") || mime === "application/pdf") {{
           deckShowPdf(f);
-          deckFinishHighRiskPresentation();
+          deckFinishAltDeckPresentation();
           return;
         }}
         if (name.endsWith(".ppt")) {{
@@ -9042,7 +9555,7 @@ def generate_finance_report(
             deckPdfFrame.src = "about:blank";
           }}
           await deckRenderPptx(f);
-          deckFinishHighRiskPresentation();
+          deckFinishAltDeckPresentation();
           return;
         }}
         deckClearViewer();
@@ -9051,18 +9564,32 @@ def generate_finance_report(
           deckEmptyHint.textContent = ui.deckUploadHint || "";
         }}
       }}
+      function bindAltDeckToggle(cb, syncFn) {{
+        if (!cb || !syncFn) return;
+        cb.addEventListener("change", syncFn);
+        cb.addEventListener("click", function () {{
+          queueMicrotask(syncFn);
+        }});
+      }}
       if (deckAttachCb) {{
         deckAttachCb.addEventListener("change", deckSyncPanel);
         deckAttachCb.addEventListener("click", function () {{
           queueMicrotask(deckSyncPanel);
         }});
       }}
-      if (highRiskCb) {{
-        highRiskCb.addEventListener("change", highRiskDeckSyncPanel);
-        highRiskCb.addEventListener("click", function () {{
-          queueMicrotask(highRiskDeckSyncPanel);
-        }});
-      }}
+      bindAltDeckToggle(highRiskCb, highRiskDeckSyncPanel);
+      bindAltDeckToggle(tgaViolationsCb, tgaViolationsDeckSyncPanel);
+      bindAltDeckToggle(missingVehicleCb, missingVehicleDeckSyncPanel);
+      bindAltDeckToggle(internalAuditQuarterlyCb, internalAuditQuarterlyDeckSyncPanel);
+      bindAltDeckToggle(specialAssignmentCb, specialAssignmentDeckSyncPanel);
+      if (deckMissingOk) deckMissingOk.addEventListener("click", deckCloseNoAttachmentNotice);
+      if (deckMissingBackdrop) deckMissingBackdrop.addEventListener("click", deckCloseNoAttachmentNotice);
+      document.addEventListener("keydown", function (ev) {{
+        if (!ev || ev.key !== "Escape") return;
+        if (!deckMissingPanel || deckMissingPanel.style.display === "none") return;
+        ev.preventDefault();
+        deckCloseNoAttachmentNotice();
+      }});
       if (deckUploadLayerBrowse && deckFileInput) {{
         deckUploadLayerBrowse.addEventListener("click", function () {{
           try {{ deckFileInput.click(); }} catch (_ulb) {{}}
@@ -9481,8 +10008,8 @@ def generate_finance_report(
 
       function aoStatusSortKey(name, blankLabel) {{
         if (name === blankLabel) return 999;
-        const t = String(name).toLowerCase();
-        const order = ["open due", "open not due", "closed"];
+        const t = iaStatusColorKey(name);
+        const order = ["open due", "open not due", "closed", "open", "in progress"];
         const idx = order.indexOf(t);
         return idx === -1 ? 50 : idx;
       }}
@@ -9520,12 +10047,12 @@ def generate_finance_report(
         return arr;
       }})();
       function getOpenDueIaLabelSet() {{
-        const want = {{ "open due": true, "open not due": true }};
+        const want = {{ "open due": true, "open not due": true, "open": true, "in progress": true }};
         const out = [];
         for (let i = 0; i < iaBaseLabels.length; i++) {{
           const lab = iaBaseLabels[i];
           if (lab === blankLabel) continue;
-          const n = normAuditColorKey(lab);
+          const n = iaStatusColorKey(lab);
           if (want[n]) out.push(lab);
         }}
         return out;
@@ -9610,6 +10137,16 @@ def generate_finance_report(
       let auditPieRating = null;
       let auditPieObs = null;
 
+      function resizeObsPieCanvas(entryCount) {{
+        const wrap = document.querySelector(".audit-pie-card--obs .audit-pie-canvas-wrap");
+        if (!wrap) return;
+        const n = Math.max(1, Number(entryCount) || 1);
+        const h = Math.min(420, Math.max(280, 240 + Math.max(0, n - 3) * 22));
+        wrap.style.height = h + "px";
+        wrap.style.minHeight = h + "px";
+        if (auditPieObs) auditPieObs.resize();
+      }}
+
       const auditPalette = {{
         "very low": "#92D050",
         "low": "#70AD47",
@@ -9619,14 +10156,38 @@ def generate_finance_report(
         "critical": "#C00000",
         "open not due": "#FFC000",
         "open due": "#FF3300",
+        "open": "#FF3300",
+        "in progress": "#FFC000",
+        "in-progress": "#FFC000",
         "closed": "#70AD47"
       }};
       function normAuditColorKey(v) {{
         return String(v == null ? "" : v).trim().toLowerCase().replace(/\\s+/g, " ");
       }}
-      function auditColorForLabel(label, fallbackHue) {{
+      function iaStatusColorKey(label) {{
         const k = normAuditColorKey(label);
+        if (k === "open") return "open due";
+        if (k === "in progress" || k === "in-progress") return "open not due";
+        return k;
+      }}
+      function iaStatusDisplayLabel(label, bl) {{
+        if (label === bl) return label;
+        const k = normAuditColorKey(label);
+        const map = {{
+          "open due": "Open Due",
+          "open not due": "Open Not Due",
+          "closed": "Closed",
+          "open": "Open Due",
+          "in progress": "Open Not Due",
+          "in-progress": "Open Not Due",
+        }};
+        return map[k] || label;
+      }}
+      function auditColorForLabel(label, fallbackHue) {{
+        const k = iaStatusColorKey(label);
         if (Object.prototype.hasOwnProperty.call(auditPalette, k)) return auditPalette[k];
+        const nk = normAuditColorKey(label);
+        if (Object.prototype.hasOwnProperty.call(auditPalette, nk)) return auditPalette[nk];
         return h(fallbackHue, 72, 56, 0.9);
       }}
       /** Pronounced green gradient for Observation Type only (left = darkest). */
@@ -9638,17 +10199,8 @@ def generate_finance_report(
         const light = 22 + t * 52;
         return h(hue, sat, light, 0.94);
       }}
-      function obsTypeKeysForGradient(orderedKeys) {{
-        const keys = orderedKeys.slice();
-        const opI = keys.findIndex(function (k) {{ return normAuditColorKey(k) === "operation"; }});
-        if (opI > 0) {{
-          const op = keys.splice(opI, 1)[0];
-          keys.unshift(op);
-        }}
-        return keys;
-      }}
       function obsTypeGradientColor(label, orderedKeys) {{
-        const gradOrder = obsTypeKeysForGradient(orderedKeys);
+        const gradOrder = orderedKeys.slice();
         const n = gradOrder.length;
         let idx = gradOrder.indexOf(label);
         if (idx < 0) idx = Math.max(0, orderedKeys.indexOf(label));
@@ -9754,6 +10306,10 @@ def generate_finance_report(
         const mkObsBarOpts = function () {{
           return {{
             maintainAspectRatio: false,
+            layout: {{
+              autoPadding: false,
+              padding: {{ top: 8, bottom: 2, left: 4, right: 6 }},
+            }},
             plugins: {{
               legend: {{ display: false }},
               tooltip: {{
@@ -9770,18 +10326,26 @@ def generate_finance_report(
             }},
             scales: {{
               x: {{
-                grid: {{ color: "rgba(15,23,42,0.06)" }},
+                grid: {{ display: false }},
+                border: {{ display: false }},
                 ticks: {{
                   color: "#334155",
                   autoSkip: false,
                   maxRotation: 35,
-                  minRotation: 20,
+                  minRotation: 0,
+                  padding: 4,
                 }}
               }},
               y: {{
                 beginAtZero: true,
-                grid: {{ display: false }},
-                ticks: {{ color: "#334155" }}
+                grace: "12%",
+                border: {{ display: false }},
+                grid: {{ color: "rgba(15,23,42,0.06)", drawBorder: false }},
+                ticks: {{
+                  color: "#334155",
+                  padding: 4,
+                  precision: 0,
+                }}
               }}
             }}
           }};
@@ -9860,10 +10424,12 @@ def generate_finance_report(
               backgroundColor: "rgba(100, 116, 139, 0.42)",
               borderColor: "rgba(100, 116, 139, 0.75)",
               borderWidth: 1,
-              borderSkipped: false,
-              borderRadius: 6,
+              borderSkipped: "bottom",
+              borderRadius: {{ topLeft: 6, topRight: 6 }},
               barThickness: 22,
+              clip: false,
             }}];
+            resizeObsPieCanvas(1);
             chart.update("none");
             return;
           }}
@@ -9875,10 +10441,12 @@ def generate_finance_report(
             backgroundColor: entries.map(function (p) {{ return obsTypeGradientColor(p[0], obsKeyOrder); }}),
             borderColor: "rgba(15, 23, 42, 0.9)",
             borderWidth: 1.5,
-            borderSkipped: false,
-            borderRadius: 6,
+            borderSkipped: "bottom",
+            borderRadius: {{ topLeft: 6, topRight: 6 }},
             barThickness: 22,
+            clip: false,
           }}];
+          resizeObsPieCanvas(entries.length);
           chart.update("none");
         }};
         if (auditPieIa) {{
@@ -9933,7 +10501,7 @@ def generate_finance_report(
           labSp.className = "audit-rating-lbl";
           const numSp = document.createElement("span");
           numSp.className = "audit-rating-n";
-          labSp.textContent = rt.label;
+          labSp.textContent = rt.value;
           numSp.textContent = "0";
           b.appendChild(labSp);
           b.appendChild(numSp);
@@ -10283,12 +10851,13 @@ def generate_finance_report(
           return;
         }}
         if (!sel || !sel.options || sel.options.length === 0) {{
-          kicker.textContent = ui.subcompanyLabel || "Subcompany";
+          kicker.textContent = ui.brandSubcompaniesInFilterTitle || ui.subcompanyLabel || "Subcompanies";
           const spicked = Array.from(scStrip.selectedOptions || []).map(function (o) {{ return String(o.textContent || o.value || "").trim(); }}).filter(function (x) {{ return x !== ""; }});
           if (spicked.length === 0) {{
-            const t = document.createElement("span");
-            t.textContent = ui.brandNoCompanySelected || "—";
-            namesHost.appendChild(t);
+            const th = document.createElement("span");
+            th.className = "brand-context-chip brand-context-chip--muted";
+            th.textContent = ui.brandAllSubcompaniesHint || "All subcompanies (optional filter off)";
+            namesHost.appendChild(th);
             finishBrandStrip();
             return;
           }}
@@ -10439,7 +11008,7 @@ def generate_finance_report(
             if (activeIaLabels.has(pair[0])) tile.classList.add("audit-tile-active");
             const lab = document.createElement("span");
             lab.className = "st-label";
-            lab.textContent = pair[0];
+            lab.textContent = iaStatusDisplayLabel(pair[0], blankLabel);
             const val = document.createElement("span");
             val.className = "st-val";
             val.textContent = String(pair[1]);
@@ -10473,7 +11042,7 @@ def generate_finance_report(
             const baseLabel = rtDef ? rtDef.label : rv;
             const lblEl = btn.querySelector(".audit-rating-lbl");
             const numEl = btn.querySelector(".audit-rating-n");
-            if (lblEl) lblEl.textContent = baseLabel;
+            if (lblEl) lblEl.textContent = rtDef ? rtDef.value : rv;
             if (numEl) numEl.textContent = String(c);
             const rk = String(rv).toLowerCase();
             const rOn = activeRatingValues.has(rk);
@@ -10614,6 +11183,9 @@ def generate_finance_report(
           if (sa !== sb) return sa - sb;
           return String(a[0]).localeCompare(String(b[0]));
         }});
+        entriesIaPie = entriesIaPie.map(function (p) {{
+          return [iaStatusDisplayLabel(p[0], blankLabel), p[1]];
+        }});
         const rowsYearPieRaw = aoRowsForYearStrip()
           .filter(function (r) {{ return rowInIaSelection(r, blankLabel); }})
           .filter(function (r) {{ return rowMatchesRatingSelection(r); }})
@@ -10650,12 +11222,12 @@ def generate_finance_report(
         let entriesRatingPie = [];
         (AO.rating_types || []).forEach(function (rt) {{
           const cnt = rtCountsPie[rt.value] || 0;
-          if (cnt > 0) entriesRatingPie.push([rt.label, cnt]);
+          if (cnt > 0) entriesRatingPie.push([rt.value, cnt]);
         }});
         if (otherPie > 0) entriesRatingPie.push([unratedLbl, otherPie]);
         if (activeRatingValues.size > 0) {{
           entriesRatingPie = entriesRatingPie.filter(function (p) {{
-            const rt = (AO.rating_types || []).find(function (x) {{ return x.label === p[0]; }});
+            const rt = (AO.rating_types || []).find(function (x) {{ return x.value === p[0]; }});
             if (rt) return activeRatingValues.has(String(rt.value).toLowerCase());
             if (p[0] === unratedLbl) {{
               return Array.from(activeRatingValues).some(function (k) {{
@@ -10868,7 +11440,7 @@ def generate_finance_report(
           if (typeof applyEmbeddedDeckForCompanySelection === "function") applyEmbeddedDeckForCompanySelection();
         }} catch (_edeck) {{}}
         try {{
-          if (typeof rehydrateEmbeddedHighRiskDeckIfNeeded === "function") rehydrateEmbeddedHighRiskDeckIfNeeded();
+          if (typeof rehydrateEmbeddedAltDeckIfNeeded === "function") rehydrateEmbeddedAltDeckIfNeeded();
         }} catch (_edhr) {{}}
         try {{ syncBrandLogo(); }} catch (_logoCh) {{}}
       }}
@@ -10876,6 +11448,14 @@ def generate_finance_report(
         opts = opts || {{}};
         const block = document.createElement("div");
         block.className = "audit-dim-filter-block";
+        if (opts.plainBrandSubcompany) block.classList.add("audit-dim-filter-block--brand-sc");
+        if (opts.dimKey) block.setAttribute("data-audit-dim", String(opts.dimKey));
+        if (opts.hideHead) {{
+          block.appendChild(sel);
+          tbHost.appendChild(block);
+          sel.addEventListener("change", onAuditToolbarFilterChange);
+          return;
+        }}
         const head = document.createElement("div");
         head.className = "audit-dim-filter-head";
         const ttl = document.createElement("span");
@@ -10963,7 +11543,7 @@ def generate_finance_report(
           coHost,
           cDim.label || ui.companyLabel || "Company",
           companySel,
-          coReveal,
+          Object.assign({{ dimKey: cDim.key || "co" }}, coReveal || {{}}),
         );
       }}
       if (hasSubcompanyFilterDim && subcompanyIdx >= 0) {{
@@ -10992,7 +11572,9 @@ def generate_finance_report(
           brandCoHost || tb,
           scDim.label || ui.subcompanyLabel || "Subcompany",
           subSel,
-          undefined,
+          brandCoHost
+            ? {{ dimKey: scDim.key || "sco", hideHead: true, plainBrandSubcompany: true }}
+            : {{ dimKey: scDim.key || "sco" }},
         );
       }}
       if (brandCoHost) {{
@@ -11021,7 +11603,7 @@ def generate_finance_report(
           t.selected = !t.selected;
           sel.dispatchEvent(new Event("change", {{ bubbles: true }}));
         }});
-        appendAuditDimFilterBlock(tb, dim.label || "", sel);
+        appendAuditDimFilterBlock(tb, dim.label || "", sel, {{ dimKey: dim.key || "" }});
       }});
       window.__aiExcelResetAuditChoices = function () {{
         try {{ closeAuditObsDetail(); }} catch (_e0) {{}}
@@ -11600,724 +12182,6 @@ def generate_finance_report(
     return html_out, audit_payload
 
 
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Generate interactive Excel dashboard HTML")
-    p.add_argument("input_file", nargs="?")
-    p.add_argument("--output", default="ai_analysis_report.html")
-    p.add_argument("--sheet", default=None)
-    p.add_argument("--locale", default="en", help="Report language: en or ar")
-    p.add_argument(
-        "--deck",
-        default=None,
-        help="Optional .pptx / .ppt / .pdf to embed; opens from Slide deck in the report.",
-    )
-    p.add_argument("--smtp-helper", action="store_true", help=argparse.SUPPRESS)
-    p.add_argument("--smtp-host", default=_SMTP_HELPER_HOST, help=argparse.SUPPRESS)
-    p.add_argument("--smtp-port", type=int, default=_SMTP_HELPER_PORT, help=argparse.SUPPRESS)
-    return p.parse_args()
-
-
-def prompt_run_config() -> dict[str, Any] | None:
-    root = Tk()
-    _apply_window_icon(root)
-    _configure_tk_scaling(root)
-    root.geometry("900x720")
-    root.minsize(760, 560)
-    style = ttk.Style(root)
-    try:
-        style.theme_use("clam")  # Provides predictable colors for custom styles on Windows.
-    except Exception:
-        pass
-
-    def palette(mode: str) -> dict[str, str]:
-        if mode == "light":
-            return {
-                "root_bg": "#F3F4F6",
-                "card_bg": "#FFFFFF",
-                "panel_bg": "#F8FAFC",
-                "text_fg": "#0F172A",
-                "muted_fg": "#64748B",
-                "entry_bg": "#F1F5F9",
-                "entry_fg": "#0F172A",
-                "border": "#E5E7EB",
-                "accent": "#2563EB",
-                "accent_active": "#1D4ED8",
-                "danger": "#DC2626",
-            }
-        # Dark default
-        return {
-            "root_bg": "#0B1220",
-            "card_bg": "#0F172A",
-            "panel_bg": "#111C34",
-            "text_fg": "#E5E7EB",
-            "muted_fg": "#94A3B8",
-            "entry_bg": "#0B1220",
-            "entry_fg": "#E5E7EB",
-            "border": "#22314F",
-            "accent": "#3B82F6",
-            "accent_active": "#2563EB",
-            "danger": "#EF4444",
-        }
-
-    mode_var = StringVar(value="dark")
-
-    def apply_theme(mode: str) -> None:
-        p = palette(mode)
-        root.configure(bg=p["root_bg"])
-
-        # Card-like containers
-        style.configure("App.TFrame", background=p["root_bg"])
-        style.configure("Card.TFrame", background=p["card_bg"])
-        style.configure("Panel.TFrame", background=p["panel_bg"])
-
-        # Text styles
-        style.configure("Title.TLabel", background=p["card_bg"], foreground=p["text_fg"], font=("Segoe UI Semibold", 18))
-        style.configure("Subtitle.TLabel", background=p["card_bg"], foreground=p["muted_fg"], font=("Segoe UI", 10))
-        style.configure("FieldLabel.TLabel", background=p["card_bg"], foreground=p["muted_fg"], font=("Segoe UI Semibold", 10))
-        style.configure("Hint.TLabel", background=p["card_bg"], foreground=p["muted_fg"], font=("Segoe UI", 10))
-
-        # Entry/combobox
-        style.configure("App.TEntry", fieldbackground=p["entry_bg"], foreground=p["entry_fg"], background=p["entry_bg"])
-        style.configure("App.TCombobox", fieldbackground=p["entry_bg"], foreground=p["entry_fg"], background=p["entry_bg"])
-        style.map("App.TCombobox", fieldbackground=[("readonly", p["entry_bg"])])
-
-        # Buttons
-        style.configure("Accent.TButton", background=p["accent"], foreground="white", padding=(12, 6))
-        style.map(
-            "Accent.TButton",
-            background=[("active", p["accent_active"]), ("disabled", p["accent"])],
-            foreground=[("active", "white")],
-        )
-        style.configure("Ghost.TButton", background=p["panel_bg"], foreground=p["text_fg"], padding=(12, 6))
-        style.map(
-            "Ghost.TButton",
-            background=[("active", p["border"]), ("disabled", p["panel_bg"])],
-            foreground=[("active", p["text_fg"])],
-        )
-
-    # Apply initial theme
-    apply_theme(mode_var.get())
-
-    # Outer layout
-    outer = ttk.Frame(root, style="App.TFrame")
-    outer.pack(fill="both", expand=True, padx=14, pady=14)
-
-    input_var = StringVar(value="")
-    output_var = StringVar(value=str((Path.cwd() / "ai_analysis_report.html").resolve()))
-    deck_var = StringVar(value="")
-    sheet_var = StringVar(value="")
-    locale_var = StringVar(value="en")
-    submitted: dict[str, Any] = {}
-    pick_state: dict[str, list[str]] = {
-        "input_paths": [""] * AUDIT_BUNDLE_MAX_FILES,
-        "deck_paths": [""] * AUDIT_BUNDLE_MAX_FILES,
-        "high_risk_deck_paths": [""] * AUDIT_BUNDLE_MAX_FILES,
-    }
-    workbook_slot_labels: list[Any] = []
-    deck_slot_labels: list[Any] = []
-
-    shell = ttk.Frame(outer, style="Card.TFrame", padding=20)
-    shell.pack(fill="both", expand=True)
-
-    header = ttk.Frame(shell, style="Card.TFrame")
-    header.pack(fill="x")
-    title_header_lbl = ttk.Label(header, text="", style="Title.TLabel")
-    title_header_lbl.pack(side="left")
-
-    def refresh_app_title() -> None:
-        loc = normalize_locale(locale_var.get() or "en")
-        t = tr(loc, "gui_app_title")
-        root.title(t)
-        title_header_lbl.config(text=t)
-        deck_row_lbl.config(text=tr(loc, "gui_slide_deck_optional"))
-        deck_hint_lbl.config(text=tr(loc, "gui_deck_attach_hint"))
-        workbook_row_lbl.config(text=tr(loc, "gui_workbook_files_label"))
-        if loc == "en":
-            high_risk_frame.grid(row=high_risk_frame_row, column=0, columnspan=3, sticky="ew", pady=(14, 0))
-            high_risk_row_lbl.config(text=tr("en", "gui_high_risk_deck_optional"))
-            high_risk_hint_lbl.config(text=tr("en", "gui_high_risk_deck_hint"))
-            for i in range(AUDIT_BUNDLE_MAX_FILES):
-                high_risk_slot_labels[i].config(text=f"High risk deck {i + 1}")
-        else:
-            high_risk_frame.grid_remove()
-            for i in range(AUDIT_BUNDLE_MAX_FILES):
-                pick_state["high_risk_deck_paths"][i] = ""
-                high_risk_slot_vars[i].set("No file chosen")
-
-    _loc0 = normalize_locale(locale_var.get() or "en")
-    root.title(tr(_loc0, "gui_app_title"))
-    title_header_lbl.config(text=tr(_loc0, "gui_app_title"))
-    ttk.Label(header, text="Theme:", style="Subtitle.TLabel").pack(side="right", padx=(12, 6))
-    theme_combo = ttk.Combobox(
-        header,
-        textvariable=mode_var,
-        values=("dark", "light"),
-        state="readonly",
-        width=8,
-        style="App.TCombobox",
-    )
-    theme_combo.pack(side="right")
-    theme_combo.bind("<<ComboboxSelected>>", lambda _e: apply_theme(mode_var.get()))
-
-    ttk.Label(
-        shell,
-        text="Select one or more Excel files (up to 4) and output options.",
-        style="Subtitle.TLabel",
-    ).pack(anchor="w", pady=(10, 18))
-
-    form_wrap = ttk.Frame(shell, style="Card.TFrame")
-    form_wrap.pack(fill="both", expand=True)
-    form_canvas = Canvas(form_wrap, highlightthickness=0, bd=0)
-    form_canvas.pack(side="left", fill="both", expand=True)
-    form_scroll = ttk.Scrollbar(form_wrap, orient="vertical", command=form_canvas.yview)
-    form_scroll.pack(side="right", fill="y")
-    form_canvas.configure(yscrollcommand=form_scroll.set)
-    grid = ttk.Frame(form_canvas, style="Card.TFrame")
-    form_canvas_window = form_canvas.create_window((0, 0), window=grid, anchor="nw")
-
-    def _sync_form_scrollregion(_ev: Any = None) -> None:
-        form_canvas.configure(scrollregion=form_canvas.bbox("all"))
-
-    def _sync_form_canvas_width(_ev: Any = None) -> None:
-        form_canvas.itemconfigure(form_canvas_window, width=form_canvas.winfo_width())
-
-    def _on_form_mousewheel(ev: Any) -> None:
-        try:
-            form_canvas.yview_scroll(int(-1 * (ev.delta / 120)), "units")
-        except Exception:
-            pass
-
-    grid.bind("<Configure>", _sync_form_scrollregion)
-    form_canvas.bind("<Configure>", _sync_form_canvas_width)
-    form_canvas.bind("<Enter>", lambda _e: root.bind_all("<MouseWheel>", _on_form_mousewheel))
-    form_canvas.bind("<Leave>", lambda _e: root.unbind_all("<MouseWheel>"))
-    grid.columnconfigure(1, weight=1)
-
-    workbook_row_lbl = ttk.Label(grid, text=tr(_loc0, "gui_workbook_files_label"), style="FieldLabel.TLabel")
-    workbook_row_lbl.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
-
-    input_slot_vars = [StringVar(value="No file chosen") for _ in range(AUDIT_BUNDLE_MAX_FILES)]
-    deck_slot_vars = [StringVar(value="No file chosen") for _ in range(AUDIT_BUNDLE_MAX_FILES)]
-
-    def _normalize_slot_path(path_value: str) -> str:
-        p = str(path_value or "").strip().strip('"')
-        return p
-
-    def _first_input_path() -> str:
-        for p in pick_state["input_paths"]:
-            p2 = _normalize_slot_path(p)
-            if p2:
-                return p2
-        return ""
-
-    def _sync_output_from_first_input() -> None:
-        first = _first_input_path()
-        if not first:
-            return
-        src = Path(first)
-        output_var.set(str((src.parent / f"{src.stem}_analysis_report.html").resolve()))
-
-    def choose_input_slot(slot_idx: int) -> None:
-        selected = filedialog.askopenfilename(
-            parent=root,
-            title=f"Select Excel workbook {slot_idx + 1}",
-            filetypes=[
-                ("Excel files", "*.xlsx *.xls *.xlsm"),
-                ("All files", "*.*"),
-            ],
-        )
-        if not selected:
-            return
-        pick_state["input_paths"][slot_idx] = selected
-        input_slot_vars[slot_idx].set(Path(selected).name)
-        if slot_idx == 0 or not _first_input_path():
-            _sync_output_from_first_input()
-
-    row = 1
-    for i in range(AUDIT_BUNDLE_MAX_FILES):
-        req = "required" if i == 0 else "optional"
-        slot_lbl = ttk.Label(grid, text=f"Excel workbook {i + 1} ({req})", style="FieldLabel.TLabel")
-        slot_lbl.grid(row=row, column=0, columnspan=3, sticky="w", pady=(0 if i == 0 else 8, 6))
-        workbook_slot_labels.append(slot_lbl)
-        row += 1
-        ttk.Entry(grid, textvariable=input_slot_vars[i], style="App.TEntry", state="readonly").grid(
-            row=row, column=0, columnspan=2, sticky="ew", padx=(0, 8)
-        )
-        ttk.Button(
-            grid,
-            text="Browse...",
-            command=lambda idx=i: choose_input_slot(idx),
-            style="Ghost.TButton",
-        ).grid(row=row, column=2, sticky="nsew")
-        row += 1
-
-    ttk.Label(grid, text="Output HTML file", style="FieldLabel.TLabel").grid(row=row, column=0, sticky="w", pady=(14, 6))
-    output_entry = ttk.Entry(grid, textvariable=output_var, style="App.TEntry")
-    output_entry.grid(row=row + 1, column=0, columnspan=2, sticky="ew", padx=(0, 8))
-
-    def choose_output() -> None:
-        selected = filedialog.asksaveasfilename(
-            parent=root,
-            title="Select output HTML file",
-            defaultextension=".html",
-            filetypes=[("HTML files", "*.html"), ("All files", "*.*")],
-            initialfile=Path(output_var.get()).name or "ai_analysis_report.html",
-        )
-        if selected:
-            output_var.set(selected)
-
-    ttk.Button(grid, text="Save as...", command=choose_output, style="Ghost.TButton").grid(
-        row=row + 1, column=2, sticky="nsew"
-    )
-    row += 2
-
-    def choose_deck_slot(slot_idx: int) -> None:
-        selected = filedialog.askopenfilename(
-            parent=root,
-            title=f"Select slide deck {slot_idx + 1}",
-            filetypes=[
-                ("Presentations", "*.pptx *.ppt"),
-                ("PDF", "*.pdf"),
-                ("All files", "*.*"),
-            ],
-        )
-        if not selected:
-            return
-        pick_state["deck_paths"][slot_idx] = selected
-        deck_slot_vars[slot_idx].set(Path(selected).name)
-
-    deck_row_lbl = ttk.Label(grid, text="", style="FieldLabel.TLabel")
-    deck_row_lbl.grid(row=row, column=0, columnspan=3, sticky="w", pady=(14, 6))
-    row += 1
-    deck_group_hint_lbl = ttk.Label(
-        grid,
-        text="One deck applies to all companies, or choose one deck per workbook row (same order).",
-        style="Hint.TLabel",
-        wraplength=620,
-        justify="left",
-    )
-    deck_group_hint_lbl.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 6))
-    row += 1
-    for i in range(AUDIT_BUNDLE_MAX_FILES):
-        slot_lbl = ttk.Label(grid, text=f"Slide deck {i + 1}", style="FieldLabel.TLabel")
-        slot_lbl.grid(row=row, column=0, columnspan=3, sticky="w", pady=(0 if i == 0 else 8, 6))
-        deck_slot_labels.append(slot_lbl)
-        row += 1
-        ttk.Entry(grid, textvariable=deck_slot_vars[i], style="App.TEntry", state="readonly").grid(
-            row=row, column=0, columnspan=2, sticky="ew", padx=(0, 8)
-        )
-        ttk.Button(
-            grid,
-            text="Browse...",
-            command=lambda idx=i: choose_deck_slot(idx),
-            style="Ghost.TButton",
-        ).grid(row=row, column=2, sticky="nsew")
-        row += 1
-    deck_hint_lbl = ttk.Label(grid, text="", style="Hint.TLabel", wraplength=620, justify="left")
-    deck_hint_lbl.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(6, 0))
-    row += 1
-
-    high_risk_frame_row = row
-    high_risk_frame = ttk.Frame(grid, style="Card.TFrame")
-    high_risk_row_lbl = ttk.Label(high_risk_frame, text="", style="FieldLabel.TLabel")
-    high_risk_row_lbl.pack(anchor="w", pady=(0, 6))
-    high_risk_hint_lbl = ttk.Label(
-        high_risk_frame,
-        text="",
-        style="Hint.TLabel",
-        wraplength=620,
-        justify="left",
-    )
-    high_risk_hint_lbl.pack(anchor="w", pady=(0, 8))
-    high_risk_slot_vars = [StringVar(value="No file chosen") for _ in range(AUDIT_BUNDLE_MAX_FILES)]
-    high_risk_slot_labels: list[Any] = []
-
-    def choose_high_risk_slot(slot_idx: int) -> None:
-        selected = filedialog.askopenfilename(
-            parent=root,
-            title=f"Select high risk deck {slot_idx + 1}",
-            filetypes=[
-                ("Presentations", "*.pptx *.ppt"),
-                ("PDF", "*.pdf"),
-                ("All files", "*.*"),
-            ],
-        )
-        if not selected:
-            return
-        pick_state["high_risk_deck_paths"][slot_idx] = selected
-        high_risk_slot_vars[slot_idx].set(Path(selected).name)
-
-    def choose_high_risk_multi() -> None:
-        selected = filedialog.askopenfilenames(
-            parent=root,
-            title="Select high risk decks (up to 4)",
-            filetypes=[
-                ("Presentations", "*.pptx *.ppt"),
-                ("PDF", "*.pdf"),
-                ("All files", "*.*"),
-            ],
-        )
-        if not selected:
-            return
-        for i, p in enumerate(list(selected)[:AUDIT_BUNDLE_MAX_FILES]):
-            pick_state["high_risk_deck_paths"][i] = p
-            high_risk_slot_vars[i].set(Path(p).name)
-
-    hr_slot_grid = ttk.Frame(high_risk_frame, style="Card.TFrame")
-    hr_slot_grid.pack(fill="x")
-    hr_slot_grid.columnconfigure(1, weight=1)
-    for i in range(AUDIT_BUNDLE_MAX_FILES):
-        slot_lbl = ttk.Label(hr_slot_grid, text=f"High risk deck {i + 1}", style="FieldLabel.TLabel")
-        slot_lbl.grid(row=i * 2, column=0, columnspan=3, sticky="w", pady=(0 if i == 0 else 8, 6))
-        high_risk_slot_labels.append(slot_lbl)
-        ttk.Entry(hr_slot_grid, textvariable=high_risk_slot_vars[i], style="App.TEntry", state="readonly").grid(
-            row=i * 2 + 1, column=0, columnspan=2, sticky="ew", padx=(0, 8)
-        )
-        ttk.Button(
-            hr_slot_grid,
-            text="Browse...",
-            command=lambda idx=i: choose_high_risk_slot(idx),
-            style="Ghost.TButton",
-        ).grid(row=i * 2 + 1, column=2, sticky="nsew")
-    ttk.Button(
-        high_risk_frame,
-        text="Browse multiple…",
-        command=choose_high_risk_multi,
-        style="Ghost.TButton",
-    ).pack(anchor="w", pady=(10, 0))
-
-    refresh_app_title()
-
-    ttk.Label(grid, text="Sheet (optional)", style="FieldLabel.TLabel").grid(row=row, column=0, sticky="w", pady=(14, 6))
-    ttk.Entry(grid, textvariable=sheet_var, style="App.TEntry").grid(row=row + 1, column=0, sticky="ew", padx=(0, 8))
-
-    ttk.Label(grid, text="Locale", style="FieldLabel.TLabel").grid(row=row, column=1, sticky="w", pady=(14, 6))
-    locale_combo = ttk.Combobox(grid, textvariable=locale_var, values=("en", "ar"), state="readonly", width=10, style="App.TCombobox")
-    locale_combo.grid(row=row + 1, column=1, sticky="ew")
-    locale_combo.bind("<<ComboboxSelected>>", lambda _e: refresh_app_title())
-
-    status_var = StringVar(value="Choose file(s) to start.")
-    ttk.Label(shell, textvariable=status_var, style="Hint.TLabel").pack(anchor="w", pady=(14, 8))
-
-    actions = ttk.Frame(shell, style="Card.TFrame")
-    actions.pack(fill="x")
-
-    def submit() -> None:
-        paths = [_normalize_slot_path(p) for p in pick_state["input_paths"] if _normalize_slot_path(p)]
-        out_file = output_var.get().strip().strip('"')
-        deck_list = [_normalize_slot_path(p) for p in pick_state["deck_paths"] if _normalize_slot_path(p)]
-        hr_list = (
-            [_normalize_slot_path(p) for p in pick_state["high_risk_deck_paths"] if _normalize_slot_path(p)]
-            if normalize_locale(locale_var.get() or "en") == "en"
-            else []
-        )
-        loc = normalize_locale(locale_var.get() or "en")
-        if not paths:
-            status_var.set("Please select at least one Excel file.")
-            return
-        for p in paths:
-            if not Path(p).exists():
-                status_var.set("One of the selected Excel files was not found.")
-                return
-        if not out_file:
-            status_var.set("Please choose an output file.")
-            return
-        nd, nf = len(deck_list), len(paths)
-        if nd > 1 and nd != nf:
-            status_var.set(tr(loc, "web_err_deck_count"))
-            return
-        nhr = len(hr_list)
-        if nhr > 1 and nhr != nf:
-            status_var.set(tr(loc, "web_err_deck_count"))
-            return
-        for dp in deck_list + hr_list:
-            if not Path(dp).exists():
-                status_var.set("One of the selected slide deck files was not found.")
-                return
-            dlow = str(dp).lower()
-            if not (dlow.endswith(".pptx") or dlow.endswith(".ppt") or dlow.endswith(".pdf")):
-                status_var.set("Slide deck must be a .pptx, .ppt, or .pdf file.")
-                return
-        submitted.update(
-            {
-                "input_paths": paths[:],
-                "deck_paths": deck_list[:],
-                "high_risk_deck_paths": hr_list[:],
-                "output": out_file,
-                "sheet": sheet_var.get().strip() or None,
-                "locale": locale_var.get().strip() or "en",
-            }
-        )
-        root.destroy()
-
-    ttk.Button(actions, text="Cancel", style="Ghost.TButton", command=root.destroy).pack(side="right")
-    ttk.Button(actions, text="Generate Report", style="Accent.TButton", command=submit).pack(side="right", padx=(0, 8))
-
-    input_slot_vars[0].set(input_slot_vars[0].get())
-    root.mainloop()
-    return submitted or None
-
-
-def show_error_dialog(message: str, *, locale: str = "en") -> None:
-    root = Tk()
-    _apply_window_icon(root)
-    _configure_tk_scaling(root)
-    root.withdraw()
-    root.update()
-    try:
-        title = tr(normalize_locale(locale), "gui_app_title")
-        messagebox.showerror(title, message)
-    finally:
-        root.destroy()
-
-
-def show_info_dialog(message: str, *, locale: str = "en") -> None:
-    root = Tk()
-    _apply_window_icon(root)
-    _configure_tk_scaling(root)
-    root.withdraw()
-    root.update()
-    try:
-        title = tr(normalize_locale(locale), "gui_app_title")
-        messagebox.showinfo(title, message)
-    finally:
-        root.destroy()
-
-
-def _enable_high_dpi_mode() -> None:
-    """Best-effort DPI awareness for crisp Tk UI on Windows high-DPI displays."""
-    if os.name != "nt":
-        return
-    try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Per-monitor aware
-        return
-    except Exception:
-        pass
-    try:
-        ctypes.windll.user32.SetProcessDPIAware()
-    except Exception:
-        pass
-
-
-def _looks_like_corrupt_input_error(exc: Exception) -> bool:
-    text = str(exc).lower()
-    tokens = (
-        "badzipfile",
-        "file is not a zip file",
-        "excel file format cannot be determined",
-        "corrupt",
-        "truncated",
-        "cannot read",
-    )
-    return any(t in text for t in tokens)
-
-
-def _missing_core_columns_message(df: pd.DataFrame, locale: str) -> str | None:
-    """Return a clear dashboard-facing message when required columns are missing."""
-    loc = normalize_locale(locale)
-    normalized_headers = [_norm_audit_header(c) for c in df.columns]
-    audit_like = any(
-        ("audit" in h) or ("observation" in h) or ("ia status" in h)
-        for h in normalized_headers
-    )
-    if not audit_like:
-        profile = build_detected_profile(df)
-        detected = detected_for_engine(profile)
-        schema_errors, _ = validate_schema_finance(df, loc, detected=detected)
-        if schema_errors:
-            return f"{tr(loc, 'err_schema_prefix')}{' | '.join(schema_errors)}"
-        return None
-    mapped = resolve_audit_observation_columns(df)
-    if mapped:
-        return None
-    required_groups = [
-        "Audit Year",
-        "Department",
-        "Audit Cycle / Department",
-        "IA Status",
-        "Observation Name",
-    ]
-    cols_preview = ", ".join(str(c) for c in df.columns[:20])
-    return (
-        f"{tr(loc, 'err_schema_prefix')}Missing required audit columns.\n"
-        f"Expected examples: {', '.join(required_groups)}\n"
-        f"Detected columns: {cols_preview or '(none)'}"
-    )
-
-
-def _is_audit_like_dataset(df: pd.DataFrame) -> bool:
-    normalized_headers = [_norm_audit_header(c) for c in df.columns]
-    return any(
-        ("audit" in h) or ("observation" in h) or ("ia status" in h)
-        for h in normalized_headers
-    )
-
-
-def prompt_audit_column_mapping(df: pd.DataFrame) -> dict[str, str] | None:
-    """Let users manually map required audit columns when auto-detection fails."""
-    root = Tk()
-    _apply_window_icon(root)
-    _configure_tk_scaling(root)
-    root.title("Map Audit Columns")
-    root.geometry("740x420")
-    root.minsize(700, 390)
-
-    style = ttk.Style(root)
-    try:
-        style.theme_use("clam")
-    except Exception:
-        pass
-    style.configure("Map.TFrame", background="#0F172A")
-    style.configure("MapCard.TFrame", background="#111827")
-    style.configure("MapTitle.TLabel", background="#111827", foreground="#E5E7EB", font=("Segoe UI Semibold", 14))
-    style.configure("MapHint.TLabel", background="#111827", foreground="#94A3B8", font=("Segoe UI", 10))
-    style.configure("MapField.TLabel", background="#111827", foreground="#CBD5E1", font=("Segoe UI Semibold", 10))
-
-    container = ttk.Frame(root, style="Map.TFrame", padding=16)
-    container.pack(fill="both", expand=True)
-    card = ttk.Frame(container, style="MapCard.TFrame", padding=16)
-    card.pack(fill="both", expand=True)
-
-    ttk.Label(card, text="Manual Audit Column Mapping", style="MapTitle.TLabel").pack(anchor="w")
-    ttk.Label(
-        card,
-        text="Auto-detection could not match required columns. Please map them below.",
-        style="MapHint.TLabel",
-    ).pack(anchor="w", pady=(4, 14))
-
-    grid = ttk.Frame(card, style="MapCard.TFrame")
-    grid.pack(fill="both", expand=True)
-    grid.columnconfigure(1, weight=1)
-
-    options = [str(c) for c in df.columns]
-    required_fields: list[tuple[str, str]] = [
-        ("audit_year", "Audit Year"),
-        ("department", "Department"),
-        ("audit_cycle", "Audit Cycle / Department"),
-        ("ia_status", "IA Status"),
-        ("observation_name", "Observation Name"),
-    ]
-    vars_by_key: dict[str, StringVar] = {}
-    result: dict[str, str] = {}
-    status_var = StringVar(value="")
-
-    for i, (key, label) in enumerate(required_fields):
-        ttk.Label(grid, text=label, style="MapField.TLabel").grid(row=i, column=0, sticky="w", pady=(0, 8), padx=(0, 10))
-        v = StringVar(value="")
-        vars_by_key[key] = v
-        cb = ttk.Combobox(grid, textvariable=v, values=options, state="readonly")
-        cb.grid(row=i, column=1, sticky="ew", pady=(0, 8))
-
-    ttk.Label(card, textvariable=status_var, style="MapHint.TLabel").pack(anchor="w", pady=(4, 10))
-    actions = ttk.Frame(card, style="MapCard.TFrame")
-    actions.pack(fill="x")
-
-    def submit() -> None:
-        selected = {k: v.get().strip() for k, v in vars_by_key.items()}
-        if any(not val for val in selected.values()):
-            status_var.set("Please map all required fields.")
-            return
-        vals = list(selected.values())
-        if len(set(vals)) != len(vals):
-            status_var.set("Each required field must map to a different column.")
-            return
-        result.update(selected)
-        root.destroy()
-
-    ttk.Button(actions, text="Cancel", command=root.destroy).pack(side="right")
-    ttk.Button(actions, text="Apply Mapping", command=submit).pack(side="right", padx=(0, 8))
-
-    root.mainloop()
-    return result or None
-
-
-def apply_manual_audit_mapping(df: pd.DataFrame, mapping: dict[str, str]) -> pd.DataFrame:
-    """Rename mapped columns to canonical audit names expected by detector."""
-    canonical = {
-        "audit_year": "Audit Year",
-        "department": "Department",
-        "audit_cycle": "Audit Cycle / Department",
-        "ia_status": "IA Status",
-        "observation_name": "Observation Name",
-    }
-    rename_map: dict[str, str] = {}
-    for key, selected in mapping.items():
-        canon = canonical.get(key)
-        if not canon:
-            continue
-        if selected in df.columns and selected != canon:
-            rename_map[selected] = canon
-    if not rename_map:
-        return df
-    return df.rename(columns=rename_map)
-
-
-def _smtp_config_candidate_paths() -> list[Path]:
-    """Locations tried in order; first readable smtp_config.json wins."""
-    raw: list[Path] = []
-    # Only real config files — never smtp_config.example.json (template only).
-    names = ("smtp_config.json",)
-    env = os.environ.get("AI_EXCEL_SMTP_CONFIG", "").strip()
-    if env:
-        raw.append(Path(env).expanduser())
-    try:
-        cwd = Path.cwd().resolve()
-        for nm in names:
-            raw.append(cwd / nm)
-    except Exception:
-        pass
-    try:
-        argv0 = Path(sys.argv[0]).resolve()
-        if argv0.suffix.lower() in (".py", ".pyw"):
-            for nm in names:
-                raw.append(argv0.parent / nm)
-    except Exception:
-        pass
-    try:
-        wm = sys.modules.get("web_app")
-        if wm is not None:
-            wf = getattr(wm, "__file__", None)
-            if wf:
-                wdir = Path(wf).resolve().parent
-                for nm in names:
-                    raw.append(wdir / nm)
-    except Exception:
-        pass
-    try:
-        if getattr(sys, "frozen", False):
-            exedir = Path(sys.executable).resolve().parent
-            for nm in names:
-                raw.append(exedir / nm)
-        else:
-            sdir = Path(__file__).resolve().parent
-            for nm in names:
-                raw.append(sdir / nm)
-    except Exception:
-        pass
-    if sys.platform == "win32":
-        lad = os.environ.get("LOCALAPPDATA", "").strip()
-        if lad:
-            ldir = Path(lad) / "ai_excel_dashboard"
-            for nm in names:
-                raw.append(ldir / nm)
-    else:
-        cdir = Path.home() / ".config" / "ai_excel_dashboard"
-        for nm in names:
-            raw.append(cdir / nm)
-    seen: set[Path] = set()
-    paths: list[Path] = []
-    for p in raw:
-        try:
-            k = p.resolve()
-        except Exception:
-            k = p
-        if k in seen:
-            continue
-        seen.add(k)
-        paths.append(k)
-    return paths
-
-
 def _smtp_env_pick(*keys: str) -> str:
     for k in keys:
         v = os.environ.get(k, "").strip()
@@ -12327,7 +12191,7 @@ def _smtp_env_pick(*keys: str) -> str:
 
 
 def _smtp_config_from_env() -> dict[str, Any] | None:
-    """SMTP from CMD/session env (no JSON file). Tried before smtp_config.json paths."""
+    """SMTP from .env (via load_dotenv) or OS/session environment variables."""
     host = _smtp_env_pick("EXCEL_ARABIC_SMTP_HOST", "AI_EXCEL_SMTP_HOST")
     if not host:
         return None
@@ -12374,52 +12238,14 @@ def _smtp_config_from_env() -> dict[str, Any] | None:
 
 
 def load_smtp_config() -> dict[str, Any] | None:
-    env_cfg = _smtp_config_from_env()
-    if env_cfg is not None:
-        return env_cfg
-    for p in _smtp_config_candidate_paths():
-        try:
-            if not p.is_file():
-                continue
-            raw = json.loads(p.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                cfg = dict(raw)
-                pw = cfg.get("password")
-                if isinstance(pw, str):
-                    cfg["password"] = pw.replace(" ", "").strip()
-                return cfg
-        except Exception:
-            continue
-    return None
-
-
-def ensure_smtp_example_file(base_dir: str | Path) -> None:
-    """Drop a shareable SMTP template next to app/report outputs."""
+    """Load SMTP settings from project .env / environment variables only."""
     try:
-        root = Path(base_dir).resolve()
-        root.mkdir(parents=True, exist_ok=True)
-        p = root / "smtp_config.example.json"
-        if p.exists():
-            return
-        p.write_text(
-            json.dumps(
-                {
-                    "host": "smtp.gmail.com",
-                    "port": 587,
-                    "use_tls": True,
-                    "username": "your@gmail.com",
-                    "password": "your-app-password",
-                    "from": "your@gmail.com",
-                    "from_name": "ادارة المراجعة",
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        from dotenv import load_dotenv
+
+        load_dotenv(Path(__file__).resolve().parent / ".env")
     except Exception:
         pass
+    return _smtp_config_from_env()
 
 
 _OBS_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
@@ -12574,484 +12400,10 @@ def parse_audit_plan_pptx_bytes(
     return rows_out, None
 
 
-def create_mail_dashboard_server(
-    html_holder: dict[str, str],
-) -> tuple[ThreadingHTTPServer, str]:
-    def read_html_bytes() -> bytes:
-        return html_holder["html"].encode("utf-8")
-
-    class DashMailHandler(BaseHTTPRequestHandler):
-        _path_send = "/api/send-obs-email"
-        _path_plan = "/api/parse-audit-plan-pptx"
-        _max_plan_body = 72 * 1024 * 1024
-
-        def do_GET(self) -> None:
-            path = self.path.split("?", 1)[0]
-            if path not in ("/", "/index.html"):
-                self.send_error(404)
-                return
-            data = read_html_bytes()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(data)
-
-        def do_OPTIONS(self) -> None:
-            path = self.path.split("?", 1)[0]
-            if path not in (self._path_send, self._path_plan):
-                self.send_error(404)
-                return
-            self.send_response(204)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.end_headers()
-
-        def _json(self, code: int, obj: dict[str, Any]) -> None:
-            raw = json.dumps(obj, ensure_ascii=False).encode("utf-8")
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(raw)
-
-        def do_POST(self) -> None:
-            path = self.path.split("?", 1)[0]
-            if path == self._path_plan:
-                try:
-                    n = int(self.headers.get("Content-Length", "0"))
-                except ValueError:
-                    n = 0
-                n = min(max(n, 0), self._max_plan_body)
-                raw = self.rfile.read(n) if n > 0 else b"{}"
-                try:
-                    body = json.loads(raw.decode("utf-8"))
-                except Exception:
-                    self._json(400, {"ok": False, "error": "bad_json", "rows": []})
-                    return
-                if not isinstance(body, dict):
-                    self._json(400, {"ok": False, "error": "bad_json", "rows": []})
-                    return
-                b64 = str(body.get("pptx_b64", "")).strip()
-                if not b64:
-                    self._json(400, {"ok": False, "error": "missing_pptx_b64", "rows": []})
-                    return
-                try:
-                    raw_pptx = base64.b64decode(b64, validate=False)
-                except Exception:
-                    self._json(400, {"ok": False, "error": "bad_b64", "rows": []})
-                    return
-                rows, err = parse_audit_plan_pptx_bytes(raw_pptx)
-                if err:
-                    self._json(400, {"ok": False, "error": err, "rows": []})
-                    return
-                self._json(200, {"ok": True, "rows": rows})
-                return
-            if path != self._path_send:
-                self.send_error(404)
-                return
-            try:
-                n = int(self.headers.get("Content-Length", "0"))
-            except ValueError:
-                n = 0
-            raw = self.rfile.read(n) if n > 0 else b"{}"
-            try:
-                body = json.loads(raw.decode("utf-8"))
-            except Exception:
-                self._json(400, {"ok": False, "error": "bad_json"})
-                return
-            if not isinstance(body, dict):
-                self._json(400, {"ok": False, "error": "bad_json"})
-                return
-            to_addr = str(body.get("to", "")).strip()
-            observation = str(body.get("observation", "")).strip()
-            if not _valid_obs_email(to_addr):
-                self._json(400, {"ok": False, "error": "bad_email"})
-                return
-            if not observation or len(observation) > 8000:
-                self._json(400, {"ok": False, "error": "bad_observation"})
-                return
-            cfg = load_smtp_config()
-            if not cfg:
-                self._json(503, {"ok": False, "error": "smtp_not_configured"})
-                return
-            try:
-                send_audit_observation_email_smtp(
-                    cfg, to_addr=to_addr, observation=observation
-                )
-            except Exception as exc:
-                self._json(500, {"ok": False, "error": str(exc)[:500]})
-                return
-            self._json(200, {"ok": True})
-
-        def log_message(self, _format: str, *_args: Any) -> None:
-            return
-
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), DashMailHandler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    host, port = srv.server_address
-    return srv, f"http://{host}:{port}"
-
-
-def run_smtp_helper_server(host: str = _SMTP_HELPER_HOST, port: int = _SMTP_HELPER_PORT) -> None:
-    """Standalone SMTP helper API for offline HTML and EXE usage."""
-
-    class SmtpHelperHandler(BaseHTTPRequestHandler):
-        def _send_json(self, code: int, obj: dict[str, Any]) -> None:
-            raw = json.dumps(obj, ensure_ascii=False).encode("utf-8")
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS, GET")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.end_headers()
-            self.wfile.write(raw)
-
-        def do_OPTIONS(self) -> None:
-            if self.path.split("?", 1)[0] != "/api/send-obs-email":
-                self.send_error(404)
-                return
-            self.send_response(204)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS, GET")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.end_headers()
-
-        def do_GET(self) -> None:
-            if self.path.split("?", 1)[0] != "/health":
-                self.send_error(404)
-                return
-            self._send_json(200, {"ok": True})
-
-        def do_POST(self) -> None:
-            if self.path.split("?", 1)[0] != "/api/send-obs-email":
-                self.send_error(404)
-                return
-            try:
-                n = int(self.headers.get("Content-Length", "0"))
-            except ValueError:
-                n = 0
-            raw = self.rfile.read(n) if n > 0 else b"{}"
-            try:
-                body = json.loads(raw.decode("utf-8"))
-            except Exception:
-                self._send_json(400, {"ok": False, "error": "bad_json"})
-                return
-            if not isinstance(body, dict):
-                self._send_json(400, {"ok": False, "error": "bad_json"})
-                return
-            to_addr = str(body.get("to", "")).strip()
-            observation = str(body.get("observation", "")).strip()
-            if not _valid_obs_email(to_addr):
-                self._send_json(400, {"ok": False, "error": "bad_email"})
-                return
-            if not observation or len(observation) > 8000:
-                self._send_json(400, {"ok": False, "error": "bad_observation"})
-                return
-            cfg = load_smtp_config()
-            if not cfg:
-                self._send_json(503, {"ok": False, "error": "smtp_not_configured"})
-                return
-            try:
-                send_audit_observation_email_smtp(
-                    cfg, to_addr=to_addr, observation=observation
-                )
-            except Exception as exc:
-                self._send_json(500, {"ok": False, "error": str(exc)[:500]})
-                return
-            self._send_json(200, {"ok": True})
-
-        def log_message(self, _format: str, *_args: Any) -> None:
-            return
-
-    srv = ThreadingHTTPServer((host, int(port)), SmtpHelperHandler)
-    try:
-        srv.serve_forever()
-    finally:
-        try:
-            srv.server_close()
-        except Exception:
-            pass
-
-
-def _smtp_helper_is_running(
-    host: str = _SMTP_HELPER_HOST, port: int = _SMTP_HELPER_PORT
-) -> bool:
-    url = f"http://{host}:{int(port)}/health"
-    try:
-        with urllib.request.urlopen(url, timeout=0.7) as resp:
-            if not (200 <= int(getattr(resp, "status", 0)) < 300):
-                return False
-            raw = resp.read()
-            try:
-                obj = json.loads(raw.decode("utf-8"))
-                return bool(isinstance(obj, dict) and obj.get("ok") is True)
-            except Exception:
-                return False
-    except Exception:
-        return False
-
-
-def ensure_smtp_helper_running(
-    host: str = _SMTP_HELPER_HOST, port: int = _SMTP_HELPER_PORT
-) -> bool:
-    if _smtp_helper_is_running(host, port):
-        return True
-    try:
-        if getattr(sys, "frozen", False):
-            cmd = [sys.executable, "--smtp-helper", "--smtp-port", str(int(port))]
-        else:
-            cmd = [
-                sys.executable,
-                str(Path(__file__).resolve()),
-                "--smtp-helper",
-                "--smtp-port",
-                str(int(port)),
-            ]
-        kwargs: dict[str, Any] = {
-            "stdout": subprocess.DEVNULL,
-            "stderr": subprocess.DEVNULL,
-            "stdin": subprocess.DEVNULL,
-            "close_fds": True,
-            "cwd": str(Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent),
-        }
-        if os.name == "nt":
-            kwargs["creationflags"] = (
-                subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-            )
-        subprocess.Popen(cmd, **kwargs)
-        for _ in range(20):
-            if _smtp_helper_is_running(host, port):
-                return True
-            time.sleep(0.15)
-    except Exception:
-        return False
-    return False
-
-
-def open_report_in_browser(report_path: str) -> None:
-    try:
-        s = str(report_path).strip()
-        low = s.lower()
-        if low.startswith("http://") or low.startswith("https://"):
-            webbrowser.open_new_tab(s)
-            return
-        webbrowser.open_new_tab(Path(s).resolve().as_uri())
-    except Exception:
-        # Avoid interrupting successful report generation if browser launch fails.
-        pass
-
-
-def main() -> None:
-    args = parse_args()
-    if bool(getattr(args, "smtp_helper", False)):
-        run_smtp_helper_server(
-            host=str(getattr(args, "smtp_host", _SMTP_HELPER_HOST)),
-            port=int(getattr(args, "smtp_port", _SMTP_HELPER_PORT)),
-        )
-        return
-    input_file = args.input_file
-    ui_mode = len(sys.argv) == 1
-    smtp_helper_ok = False
-    if ui_mode:
-        _enable_high_dpi_mode()
-        smtp_helper_ok = ensure_smtp_helper_running()
-    input_paths: list[str] = []
-    deck_paths: list[str] = []
-    high_risk_deck_paths: list[str] = []
-    if not input_file and ui_mode:
-        run_cfg = prompt_run_config()
-        if not run_cfg:
-            return
-        input_paths = list(run_cfg.get("input_paths") or [])
-        if not input_paths:
-            return
-        args.output = str(run_cfg["output"])
-        args.sheet = run_cfg["sheet"]
-        args.locale = str(run_cfg["locale"])
-        deck_paths = list(run_cfg.get("deck_paths") or [])
-        high_risk_deck_paths = list(run_cfg.get("high_risk_deck_paths") or [])
-    else:
-        if not input_file:
-            raise SystemExit("Missing required argument: input_file")
-        input_paths = [input_file]
-        deck_arg = getattr(args, "deck", None)
-        if isinstance(deck_arg, str) and deck_arg.strip():
-            deck_paths = [deck_arg.strip()]
-    for p in input_paths:
-        if not os.path.exists(p):
-            if ui_mode:
-                show_error_dialog(f"File not found:\n{p}", locale=args.locale)
-            raise FileNotFoundError(p)
-    nd, nf = len(deck_paths), len(input_paths)
-    if nd > 1 and nd != nf:
-        msg = tr(normalize_locale(args.locale), "web_err_deck_count")
-        if ui_mode:
-            show_error_dialog(msg, locale=args.locale)
-            return
-        raise ValueError(msg)
-    nhr = len(high_risk_deck_paths)
-    if nhr > 1 and nhr != nf:
-        msg = tr(normalize_locale(args.locale), "web_err_deck_count")
-        if ui_mode:
-            show_error_dialog(msg, locale=args.locale)
-            return
-        raise ValueError(msg)
-    dfs: list[pd.DataFrame] = []
-    for p in input_paths:
-        try:
-            df = read_input_file(p, args.sheet, locale=args.locale)
-        except Exception as exc:
-            if ui_mode:
-                if _looks_like_corrupt_input_error(exc):
-                    show_error_dialog(
-                        "The selected file appears to be corrupted or unsupported.\n"
-                        "Please choose a valid Excel file (.xlsx/.xls/.xlsm).",
-                        locale=args.locale,
-                    )
-                else:
-                    show_error_dialog(f"Could not read the selected file:\n{exc}", locale=args.locale)
-                return
-            raise
-        if isinstance(df, dict):
-            first = next(iter(df.keys()))
-            df = df[first]
-        dfs.append(df)
-    if ui_mode:
-        missing_cols_msg = _missing_core_columns_message(dfs[0], args.locale)
-        if missing_cols_msg:
-            show_error_dialog(
-                "Error: Missing required columns in the uploaded file. "
-                "Please check your Excel structure and try again.",
-                locale=args.locale,
-            )
-            return
-    pages_m: list[tuple[str, str]] | None = None
-    try:
-        if nf == 1:
-            deck_single = resolve_attached_deck_for_workbook_index(deck_paths, 0, 1)
-            hr_single = resolve_attached_deck_for_workbook_index(high_risk_deck_paths, 0, 1)
-            html_out, _ = generate_finance_report(
-                dfs[0],
-                source_name=os.path.basename(input_paths[0]),
-                sheet_name=args.sheet,
-                locale=args.locale,
-                attached_deck_path=deck_single,
-                attached_high_risk_deck_path=hr_single,
-            )
-        else:
-            pages_m = []
-            for i in range(nf):
-                stem = (
-                    re.sub(r"[^\w\-.]+", "_", Path(input_paths[i]).stem, flags=re.UNICODE).strip(
-                        "._"
-                    )
-                    or f"file{i + 1}"
-                )
-                tab_title = workbook_dashboard_tab_title(dfs[i], stem)
-                dp = resolve_attached_deck_for_workbook_index(deck_paths, i, nf)
-                hr_dp = resolve_attached_deck_for_workbook_index(high_risk_deck_paths, i, nf)
-                html_i, _ = generate_finance_report(
-                    dfs[i],
-                    source_name=os.path.basename(input_paths[i]),
-                    sheet_name=args.sheet,
-                    locale=args.locale,
-                    attached_deck_path=dp,
-                    attached_high_risk_deck_path=hr_dp,
-                    allow_multiple_audit_companies=False,
-                )
-                pages_m.append((tab_title, html_i))
-            html_out = build_multi_dashboard_shell(pages_m, locale=args.locale)
-    except FileNotFoundError as exc:
-        if ui_mode:
-            show_error_dialog(f"Slide deck file not found:\n{exc}", locale=args.locale)
-            return
-        raise
-    except ValueError as exc:
-        if ui_mode:
-            show_error_dialog(str(exc), locale=args.locale)
-            return
-        raise
-    html_for_disk = html_out
-    mail_srv: ThreadingHTTPServer | None = None
-    browse_target = ""
-    if ui_mode:
-        html_holder: dict[str, str] = {"html": html_out}
-        try:
-            mail_srv, browse_target = create_mail_dashboard_server(html_holder)
-            api_url = browse_target + "/api/send-obs-email"
-            plan_url = browse_target + "/api/parse-audit-plan-pptx"
-            inject_mail = f"window.__AI_EXCEL_MAIL_API__={json.dumps(api_url)};"
-            inject_plan = f"window.__AI_EXCEL_PLAN_PARSE_URL__={json.dumps(plan_url)};"
-
-            def _inject_live_apis(fragment: str) -> str:
-                return fragment.replace(_MAIL_API_MARKER, inject_mail).replace(
-                    _PLAN_PARSE_API_MARKER, inject_plan
-                )
-
-            if nf == 1:
-                html_holder["html"] = _inject_live_apis(html_out)
-            elif pages_m is not None:
-                pages_live = [(t, _inject_live_apis(h)) for t, h in pages_m]
-                html_holder["html"] = build_multi_dashboard_shell(
-                    pages_live,
-                    locale=args.locale,
-                    mail_api_script=inject_mail + " " + inject_plan,
-                )
-            else:
-                html_holder["html"] = _inject_live_apis(html_out)
-        except Exception as exc:
-            mail_srv = None
-            browse_target = ""
-            show_error_dialog(
-                f"Could not start the local mail helper (automatic Send email).\n{exc}\n"
-                f"You can still use the saved report; Send email will open your desktop mail app.",
-                locale=args.locale,
-            )
-    with open(args.output, "w", encoding="utf-8") as f:
-        f.write(html_for_disk)
-    generated_path = os.path.abspath(args.output)
-    ensure_smtp_example_file(Path(generated_path).parent)
-    try:
-        if getattr(sys, "frozen", False):
-            ensure_smtp_example_file(Path(sys.executable).resolve().parent)
-    except Exception:
-        pass
-    print(f"Generated: {generated_path}")
-    if ui_mode and browse_target:
-        open_report_in_browser(browse_target + "/")
-    else:
-        open_report_in_browser(generated_path)
-    if ui_mode:
-        loc = normalize_locale(args.locale)
-        done_msg = f"{tr(loc, 'report_created_path')}\n{generated_path}"
-        if not smtp_helper_ok:
-            done_msg += (
-                f"\n\nAutomatic email helper on port {_SMTP_HELPER_PORT} did not start. "
-                "Send email may open your desktop mail app instead."
-            )
-        show_info_dialog(done_msg, locale=args.locale)
-        if mail_srv is not None:
-            try:
-                mail_srv.shutdown()
-            except Exception:
-                pass
-            try:
-                mail_srv.server_close()
-            except Exception:
-                pass
-
-
 if __name__ == "__main__":
-    import os
     import subprocess
-    import sys
 
-    print(
-        "Desktop runtime is deprecated in the Django migration. "
-        "Starting Django server instead."
-    )
+    print("Use Django: python manage.py runserver 127.0.0.1:8000")
     env = os.environ.copy()
     env.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
     subprocess.run(

@@ -1,3 +1,4 @@
+"""REST endpoints for observation email and audit-plan PPTX parsing."""
 from __future__ import annotations
 
 import base64

@@ -1,0 +1,311 @@
+# Arabic translations for Audit Dashboard.
+msgid ""
+msgstr ""
+"Project-Id-Version: Audit Dashboard\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 && n%100<=99 ? 4 : 5;\n"
+
+msgid "Settings"
+msgstr "الإعدادات"
+
+msgid "Basic information"
+msgstr "المعلومات الأساسية"
+
+msgid "Report data"
+msgstr "بيانات التقرير"
+
+msgid "Dates"
+msgstr "التواريخ"
+
+msgid "Excel Audit"
+msgstr "تدقيق Excel"
+
+msgid "Raw file data (JSON)"
+msgstr "بيانات الملف (JSON)"
+
+msgid "Upload session"
+msgstr "جلسة رفع"
+
+msgid "Upload sessions"
+msgstr "جلسات الرفع"
+
+msgid "Audit observation"
+msgstr "ملاحظة تدقيق"
+
+msgid "Audit observations"
+msgstr "ملاحظات التدقيق"
+
+msgid "Company logo"
+msgstr "شعار شركة"
+
+msgid "Company logos"
+msgstr "شعارات الشركات"
+
+msgid "Report artifact"
+msgstr "نتيجة تقرير"
+
+msgid "Report artifacts"
+msgstr "نتائج التقارير"
+
+msgid "Type code"
+msgstr "رمز النوع (كود)"
+
+msgid "Internal slug without spaces, e.g. ai"
+msgstr "قيمة داخلية بدون مسافات، مثل: ai"
+
+msgid "Type name"
+msgstr "اسم النوع"
+
+msgid "Display name shown to users"
+msgstr "الاسم الذي يظهر للمستخدمين"
+
+msgid "Description"
+msgstr "وصف"
+
+msgid "Bootstrap icon"
+msgstr "أيقونة Bootstrap"
+
+msgid "Example: bi-bar-chart-line-fill"
+msgstr "مثال: bi-bar-chart-line-fill"
+
+msgid "Active"
+msgstr "نشط"
+
+msgid "Sort order"
+msgstr "ترتيب العرض"
+
+msgid "Dashboard template type"
+msgstr "نوع نموذج لوحة التحكم"
+
+msgid "Dashboard template types"
+msgstr "أنواع نماذج لوحات التحكم"
+
+msgid "Bar chart"
+msgstr "مخطط أعمدة"
+
+msgid "Pie chart"
+msgstr "مخطط دائري"
+
+msgid "Line / growth chart"
+msgstr "مخطط خطي / نمو"
+
+msgid "Data table"
+msgstr "جدول بيانات"
+
+msgid "Data analysis"
+msgstr "تحليل بيانات"
+
+msgid "Spreadsheet"
+msgstr "جداول بيانات"
+
+msgid "Finance / accounting"
+msgstr "مالي / محاسبي"
+
+msgid "Organization / companies"
+msgstr "مؤسسي / شركات"
+
+msgid "AI analytical dashboard"
+msgstr "لوحة تحليلية ذكية (AI Dashboard)"
+
+msgid "Dashboard name"
+msgstr "اسم لوحة التحكم"
+
+msgid "Dashboard icon"
+msgstr "رمز اللوحة"
+
+msgid "Template type"
+msgstr "نوع النموذج"
+
+msgid "Report ID"
+msgstr "معرف التقرير"
+
+msgid "Cached HTML file"
+msgstr "ملف HTML المخزن مؤقتاً"
+
+msgid "Source files"
+msgstr "الملفات المصدر"
+
+msgid "Created by"
+msgstr "أنشأ بواسطة"
+
+msgid "Created at"
+msgstr "تاريخ الإنشاء"
+
+msgid "Dashboard"
+msgstr "لوحة تحكم"
+
+msgid "Dashboards"
+msgstr "لوحات التحكم"
+
+msgid "Can upload files and create dashboards"
+msgstr "يمكنه رفع الملفات وإنشاء لوحات التحكم"
+
+msgid "Can view dashboards"
+msgstr "يمكنه عرض لوحات التحكم"
+
+msgid "Skip to main content"
+msgstr "تخطي إلى المحتوى الرئيسي"
+
+msgid "Sidebar"
+msgstr "القائمة الجانبية"
+
+msgid "Breadcrumbs"
+msgstr "مسار التنقل"
+
+msgid "Home"
+msgstr "الرئيسية"
+
+msgid "Audit Dashboard"
+msgstr "لوحة التدقيق"
+
+msgid "Admin Panel"
+msgstr "لوحة الإدارة"
+
+msgid "Log out"
+msgstr "تسجيل الخروج"
+
+msgid "Main Site"
+msgstr "الموقع الرئيسي"
+
+msgid "Change password"
+msgstr "تغيير كلمة المرور"
+
+msgid "Recent actions"
+msgstr "أحدث الإجراءات"
+
+msgid "My actions"
+msgstr "إجراءاتي"
+
+msgid "None available"
+msgstr "لا يوجد"
+
+msgid "Added:"
+msgstr "أُضيف:"
+
+msgid "Changed:"
+msgstr "عُدّل:"
+
+msgid "Deleted:"
+msgstr "حُذف:"
+
+msgid "Unknown content"
+msgstr "محتوى غير معروف"
+
+# ── User admin (accounts_app + audit_app) ──────────────────────────────
+
+msgid "Job title"
+msgstr "المسمى الوظيفي"
+
+msgid "The user's job title or position."
+msgstr "المسمى الوظيفي أو المنصب الخاص بالمستخدم."
+
+msgid "Admin"
+msgstr "مدير"
+
+msgid "Designates whether this user has admin access to the administration site."
+msgstr "يحدد ما إذا كان المستخدم يملك صلاحية الوصول إلى لوحة الإدارة."
+
+msgid "Personal info"
+msgstr "المعلومات الشخصية"
+
+msgid "Permissions"
+msgstr "الصلاحيات"
+
+msgid "Important dates"
+msgstr "تواريخ مهمة"
+
+msgid "Password"
+msgstr "كلمة المرور"
+
+msgid "Password confirmation"
+msgstr "تأكيد كلمة المرور"
+
+msgid "Reset password"
+msgstr "إعادة تعيين كلمة المرور"
+
+msgid "User profile"
+msgstr "ملف المستخدم"
+
+msgid "User profiles"
+msgstr "ملفات المستخدمين"
+
+msgid "User"
+msgstr "المستخدم"
+
+msgid "Deleted"
+msgstr "محذوف"
+
+msgid "Deleted at"
+msgstr "تاريخ الحذف"
+
+msgid "Soft-deleted users remain in the database but cannot sign in."
+msgstr "المستخدمون المحذوفون يبقون في قاعدة البيانات لكن لا يمكنهم تسجيل الدخول."
+
+msgid "No job title"
+msgstr "بدون مسمى وظيفي"
+
+msgid "Deletion status"
+msgstr "حالة الحذف"
+
+msgid "Active users"
+msgstr "المستخدمون النشطون"
+
+msgid "Deleted users"
+msgstr "المستخدمون المحذوفون"
+
+msgid "Restore selected users"
+msgstr "استعادة المستخدمين المحددين"
+
+msgid "Restore user"
+msgstr "استعادة المستخدم"
+
+msgid "This user is soft-deleted and cannot sign in."
+msgstr "هذا المستخدم محذوف ولا يمكنه تسجيل الدخول."
+
+msgid "Remove user"
+msgstr "إزالة المستخدم"
+
+msgid "Email address is required."
+msgstr "البريد الإلكتروني مطلوب."
+
+msgid "Enter a valid email address."
+msgstr "أدخل بريدًا إلكترونيًا صالحًا."
+
+msgid "Password changed successfully."
+msgstr "تم تغيير كلمة المرور بنجاح."
+
+msgid "First name"
+msgstr "الاسم الأول"
+
+msgid "Last name"
+msgstr "اسم العائلة"
+
+msgid "Email address"
+msgstr "البريد الإلكتروني"
+
+msgid "Username"
+msgstr "اسم المستخدم"
+
+msgid "Staff status"
+msgstr "حالة الطاقم"
+
+msgid "Superuser status"
+msgstr "صلاحيات المدير العام"
+
+msgid "Groups"
+msgstr "المجموعات"
+
+msgid "User permissions"
+msgstr "صلاحيات المستخدم"
+
+msgid "Last login"
+msgstr "آخر تسجيل دخول"
+
+msgid "Date joined"
+msgstr "تاريخ الانضمام"
+
+msgid "History"
+msgstr "تاريخ"
