@@ -1,0 +1,96 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block bodyclass %}{{ block.super }} admin-cl-v2 admin-cl-v2-form{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/admin_changelist_v2.css' %}">
+<link rel="stylesheet" href="{% static 'css/admin_change_form_v2.css' %}">
+{% endblock %}
+
+{% block content_title %}{% endblock %}
+{% block content_subtitle %}{% endblock %}
+
+{% block breadcrumbs %}
+{% if not is_popup %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; <span class="breadcrumb-app-label">{{ opts.app_config.verbose_name }}</span>
+  &rsaquo; {% if has_view_permission %}<a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>{% else %}{{ opts.verbose_name_plural|capfirst }}{% endif %}
+  &rsaquo; <span class="current">{% if add %}{% translate "Add New" %}{% elif cl_v2_page_title %}{{ cl_v2_page_title }}{% elif original %}{{ original|truncatewords:"18" }}{% else %}{{ title }}{% endif %}</span>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block object-tools %}{% endblock %}
+
+{% block content %}
+<div id="content-main" class="admin-cl-v2 admin-cl-v2-form">
+  <header class="admin-cl-v2__header">
+    <div class="admin-cl-v2__header-row">
+      <h1 class="admin-cl-v2__title">
+        {% if cl_v2_page_title %}{{ cl_v2_page_title }}{% elif add %}{% translate "Add New" %}{% elif title %}{{ title }}{% else %}{{ opts.verbose_name_plural|capfirst }}{% endif %}
+      </h1>
+      {% if change and not is_popup %}
+      <div class="admin-cl-v2__header-actions">
+        <ul class="object-tools admin-cl-v2__object-tools admin-cl-v2-form__object-tools">
+          {% change_form_object_tools %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+    {% if cl_v2_subtitle %}
+    <p class="admin-cl-v2__subtitle">{{ cl_v2_subtitle }}</p>
+    {% endif %}
+  </header>
+
+  <section class="admin-cl-v2-form__panel">
+    <form {% if has_file_field %}enctype="multipart/form-data" {% endif %}{% if form_url %}action="{{ form_url }}" {% endif %}method="post" id="{{ opts.model_name }}_form" novalidate>{% csrf_token %}{% block form_top %}{% endblock %}
+    <div>
+    {% if is_popup %}<input type="hidden" name="{{ is_popup_var }}" value="1">{% endif %}
+    {% if to_field %}<input type="hidden" name="{{ to_field_var }}" value="{{ to_field }}">{% endif %}
+    {% if save_on_top %}{% block submit_buttons_top %}{% submit_row %}{% endblock %}{% endif %}
+    {% if errors %}
+        <p class="errornote">
+        {% blocktranslate count counter=errors|length %}Please correct the error below.{% plural %}Please correct the errors below.{% endblocktranslate %}
+        </p>
+        {{ adminform.form.non_field_errors }}
+    {% endif %}
+
+    {% block field_sets %}
+    {% for fieldset in adminform %}
+      {% include "admin/includes/fieldset.html" with heading_level=2 prefix="fieldset" id_prefix=0 id_suffix=forloop.counter0 %}
+    {% endfor %}
+    {% endblock %}
+
+    {% block after_field_sets %}{% endblock %}
+
+    {% block inline_field_sets %}
+    {% for inline_admin_formset in inline_admin_formsets %}
+        {% include inline_admin_formset.opts.template %}
+    {% endfor %}
+    {% endblock %}
+
+    {% block after_related_objects %}{% endblock %}
+
+    {% block submit_buttons_bottom %}{% submit_row %}{% endblock %}
+
+    {% block admin_change_form_document_ready %}
+        <script id="django-admin-form-add-constants"
+                src="{% static 'admin/js/change_form.js' %}"
+                {% if adminform and add %}
+                    data-model-name="{{ opts.model_name }}"
+                {% endif %}
+                async>
+        </script>
+    {% endblock %}
+
+    {% prepopulated_fields_js %}
+
+    </div>
+    </form>
+  </section>
+  <script src="{% static 'js/admin_change_form_v2.js' %}" defer></script>
+</div>
+{% endblock %}

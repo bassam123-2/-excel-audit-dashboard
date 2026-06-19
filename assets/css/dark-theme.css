@@ -386,6 +386,33 @@ html[data-theme="dark"] ul.messagelist li.error {
     color: #fca5a5 !important;
 }
 
+html[data-theme="dark"] .admin-messages-wrap .messagelist li.success .admin-message-close {
+    border-inline-start-color: rgba(110, 231, 183, 0.18);
+}
+
+html[data-theme="dark"] .admin-messages-wrap .messagelist li.success .admin-message-close:hover,
+html[data-theme="dark"] .admin-messages-wrap .messagelist li.success .admin-message-close:focus-visible {
+    background: rgba(16, 185, 129, 0.12);
+}
+
+html[data-theme="dark"] .admin-messages-wrap .messagelist li.warning .admin-message-close {
+    border-inline-start-color: rgba(252, 211, 77, 0.18);
+}
+
+html[data-theme="dark"] .admin-messages-wrap .messagelist li.warning .admin-message-close:hover,
+html[data-theme="dark"] .admin-messages-wrap .messagelist li.warning .admin-message-close:focus-visible {
+    background: rgba(245, 158, 11, 0.12);
+}
+
+html[data-theme="dark"] .admin-messages-wrap .messagelist li.error .admin-message-close {
+    border-inline-start-color: rgba(252, 165, 165, 0.18);
+}
+
+html[data-theme="dark"] .admin-messages-wrap .messagelist li.error .admin-message-close:hover,
+html[data-theme="dark"] .admin-messages-wrap .messagelist li.error .admin-message-close:focus-visible {
+    background: rgba(239, 68, 68, 0.12);
+}
+
 html[data-theme="dark"] .add-credentials-section .password-reset-fieldset {
     border-color: var(--border) !important;
 }
@@ -473,6 +500,86 @@ html[data-theme="dark"] .cooldown-hint {
 
 html[data-theme="dark"] #changelist-search label {
     color: var(--text) !important;
+}
+
+html[data-theme="dark"] .form-check-input:focus {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+html[data-theme="dark"] #admin-main-wrap input[type="checkbox"] {
+    --admin-switch-off: #475569;
+    --admin-switch-on: var(--accent, #3b82f6);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.28) !important;
+}
+
+html[data-theme="dark"] #admin-main-wrap input[type="checkbox"]:hover:not(:disabled) {
+    box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.28),
+        0 0 0 2px rgba(96, 165, 250, 0.18) !important;
+}
+
+html[data-theme="dark"] #admin-main-wrap input[type="checkbox"]:checked,
+html[data-theme="dark"] #admin-main-wrap input[type="checkbox"]:indeterminate {
+    background-color: var(--admin-switch-on) !important;
+}
+
+html[data-theme="dark"] #admin-main-wrap input[type="checkbox"]:checked {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' viewBox='0 0 10 10'%3E%3Cpath stroke='%233b82f6' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.85' d='M2 5.1l2 2 4-4.2'/%3E%3C/svg%3E"),
+        radial-gradient(
+            circle at center,
+            #ffffff 0 58%,
+            rgba(15, 23, 42, 0.12) 59% 62%,
+            transparent 63%
+        ) !important;
+}
+
+html[data-theme="dark"] #admin-main-wrap input[type="checkbox"]:indeterminate {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' viewBox='0 0 10 10'%3E%3Cpath stroke='%233b82f6' stroke-linecap='round' stroke-width='1.85' d='M2.5 5h5'/%3E%3C/svg%3E"),
+        radial-gradient(
+            circle at center,
+            #ffffff 0 58%,
+            rgba(15, 23, 42, 0.12) 59% 62%,
+            transparent 63%
+        ) !important;
+}
+
+html[data-theme="dark"] #admin-main-wrap input[type="checkbox"]:focus-visible {
+    box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.28),
+        0 0 0 3px rgba(59, 130, 246, 0.28) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2 input[type="checkbox"],
+html[data-theme="dark"] #content-start .admin-cl-v2-form input[type="checkbox"] {
+    --admin-switch-on: #5b8def;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2 input[type="checkbox"]:checked,
+html[data-theme="dark"] #content-start .admin-cl-v2-form input[type="checkbox"]:checked {
+    background-color: #5b8def !important;
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' viewBox='0 0 10 10'%3E%3Cpath stroke='%235b8def' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.85' d='M2 5.1l2 2 4-4.2'/%3E%3C/svg%3E"),
+        radial-gradient(
+            circle at center,
+            #ffffff 0 58%,
+            rgba(15, 23, 42, 0.12) 59% 62%,
+            transparent 63%
+        ) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2 input[type="checkbox"]:indeterminate,
+html[data-theme="dark"] #content-start .admin-cl-v2-form input[type="checkbox"]:indeterminate {
+    background-color: #5b8def !important;
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' viewBox='0 0 10 10'%3E%3Cpath stroke='%235b8def' stroke-linecap='round' stroke-width='1.85' d='M2.5 5h5'/%3E%3C/svg%3E"),
+        radial-gradient(
+            circle at center,
+            #ffffff 0 58%,
+            rgba(15, 23, 42, 0.12) 59% 62%,
+            transparent 63%
+        ) !important;
 }
 
 html[data-theme="dark"] .vCheckboxLabel,

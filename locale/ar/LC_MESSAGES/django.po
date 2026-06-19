@@ -268,6 +268,40 @@ msgstr "هذا المستخدم محذوف ولا يمكنه تسجيل الدخ
 msgid "Remove user"
 msgstr "إزالة المستخدم"
 
+msgid ""
+"Are you sure you want to remove the user <span class=\"admin-delete-modal__username\" "
+"data-admin-delete-username>%(username)s</span>?"
+msgstr ""
+"هل أنت متأكد من إزالة المستخدم <span class=\"admin-delete-modal__username\" "
+"data-admin-delete-username>%(username)s</span>؟"
+
+msgid "The account will be deactivated and hidden from the user list, but the record will remain in the database."
+msgstr "سيتم إلغاء تفعيل الحساب وإخفاؤه من قائمة المستخدمين، لكن السجل سيبقى في قاعدة البيانات."
+
+msgid "You can view and restore deleted users from the user list using the \"Deleted users\" filter."
+msgstr "يمكنك عرض المستخدمين المحذوفين واستعادتهم من قائمة المستخدمين باستخدام فلتر \"المستخدمون المحذوفون\"."
+
+msgid "Cancel"
+msgstr "إلغاء"
+
+msgid "Yes, remove user"
+msgstr "نعم، إزالة المستخدم"
+
+msgid "Close"
+msgstr "إغلاق"
+
+msgid ""
+"Are you sure you want to remove the user \"%(escaped_object)s\"?\n"
+"The account will be deactivated and hidden from the user list, but the record will remain in the database.\n"
+"You can view and restore deleted users from the user list using the \"Deleted users\" filter."
+msgstr ""
+"هل أنت متأكد من إزالة المستخدم \"%(escaped_object)s\"؟\n"
+"سيتم إلغاء تفعيل الحساب وإخفاؤه من قائمة المستخدمين، لكن السجل سيبقى في قاعدة البيانات.\n"
+"يمكنك عرض المستخدمين المحذوفين واستعادتهم من قائمة المستخدمين باستخدام فلتر \"المستخدمون المحذوفون\"."
+
+msgid "No, take me back"
+msgstr "لا، العودة للخلف"
+
 msgid "Email address is required."
 msgstr "البريد الإلكتروني مطلوب."
 

@@ -16,6 +16,22 @@ def sync_workflow_email_dispatch(settings):
 
 
 @pytest.fixture
+def admin_client(db):
+    user = User.objects.create_superuser(
+        "myadmin",
+        "myadmin@test.com",
+        "Test@1234!",
+        first_name="Admin",
+        last_name="User",
+    )
+    user.profile.job_title = "Administrator"
+    user.profile.save(update_fields=["job_title"])
+    client = Client()
+    client.force_login(user)
+    return client
+
+
+@pytest.fixture
 def api_client():
     return Client()
 

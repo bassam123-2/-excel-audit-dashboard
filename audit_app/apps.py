@@ -10,6 +10,10 @@ class AuditAppConfig(AppConfig):
     verbose_name = _("Excel Audit")
 
     def ready(self) -> None:
+        from audit_app.admin_site import patch_admin_site_app_index
+
+        patch_admin_site_app_index()
+
         from django.db.models.signals import post_delete, post_save
         from django.dispatch import receiver
 

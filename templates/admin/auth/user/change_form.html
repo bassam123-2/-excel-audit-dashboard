@@ -1,4 +1,4 @@
-{% extends "admin/change_form.html" %}
+{% extends "admin/change_form_v2.html" %}
 {% load i18n admin_urls admin_modify static %}
 
 {% block extrahead %}
@@ -8,20 +8,8 @@
 {% else %}
 <script>document.documentElement.setAttribute("data-pw-username", "");</script>
 {% endif %}
-{% endblock %}
-
-{% block content_subtitle %}{% endblock %}
-
-{% block object-tools %}
-{% if change and not is_popup %}
-<div class="change-form-header-row">
-    {% if original %}<h2 class="change-form-object-title">{{ original }}</h2>{% endif %}
-    <ul class="object-tools change-form-object-tools">
-        {% block object-tools-items %}
-            {% change_form_object_tools %}
-        {% endblock %}
-    </ul>
-</div>
+{% if change and has_delete_permission and original and not user_is_soft_deleted %}
+<link rel="stylesheet" href="{% static 'css/admin_user_delete_modal.css' %}">
 {% endif %}
 {% endblock %}
 
@@ -51,6 +39,10 @@
 
 {% block extrabody %}
 {{ block.super }}
+{% if change and has_delete_permission and original and not user_is_soft_deleted %}
+{% include "admin/auth/user/delete_modal.html" %}
+<script src="{% static 'js/admin_user_delete_modal.js' %}" defer></script>
+{% endif %}
 {% if not change %}
 <script src="{% static 'js/password_rules.js' %}"></script>
 <script>

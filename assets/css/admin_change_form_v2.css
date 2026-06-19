@@ -1,0 +1,793 @@
+/*
+ * Admin change-form v2 — scoped to #content-start .admin-cl-v2-form
+ * Matches changelist v2 visual language without table/filters/stats.
+ */
+
+#content-start:has(.admin-cl-v2-form) {
+    background:
+        radial-gradient(circle at 100% 0%, rgba(36, 74, 152, 0.06), transparent 40%),
+        radial-gradient(circle at 0% 100%, rgba(227, 32, 45, 0.04), transparent 35%),
+        var(--bg, #f0f4f9) !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    padding-bottom: 2rem !important;
+}
+
+#content-start .admin-cl-v2-form {
+    --cl-v2-brand: #244a98;
+    --cl-v2-brand-soft: #eef2fa;
+    --cl-v2-brand-glow: rgba(36, 74, 152, 0.35);
+    --cl-v2-accent: #e3202d;
+    --cl-v2-accent-soft: #fdf0f1;
+    --cl-v2-success: #0d9668;
+    --cl-v2-success-soft: #ecfdf5;
+    --cl-v2-surface: #ffffff;
+    --cl-v2-border: #e4e9f2;
+    --cl-v2-muted: #64748b;
+    --cl-v2-text: #1e293b;
+    --cl-v2-secondary: #f4f6fb;
+    --cl-v2-radius-xl: 1.5rem;
+    --cl-v2-radius-lg: 1rem;
+    --cl-v2-shadow-soft: 0 1px 2px rgba(36, 74, 152, 0.04), 0 1px 3px rgba(36, 74, 152, 0.06);
+    --cl-v2-shadow-card: 0 4px 12px -2px rgba(36, 74, 152, 0.08), 0 2px 6px -2px rgba(36, 74, 152, 0.05);
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+#content-start .admin-cl-v2-form .admin-cl-v2__header {
+    margin-bottom: 1.75rem;
+}
+
+#content-start .admin-cl-v2-form .admin-cl-v2__title {
+    flex: 1 1 auto;
+    max-width: none;
+}
+
+#content-start .admin-cl-v2-form .admin-cl-v2__header-actions {
+    flex: 0 0 auto;
+    max-width: none;
+    width: auto;
+}
+
+#content-start .admin-cl-v2-form__object-tools li a {
+    background: var(--cl-v2-secondary) !important;
+    color: var(--cl-v2-brand) !important;
+    box-shadow: var(--cl-v2-shadow-soft) !important;
+    border: 1px solid var(--cl-v2-border) !important;
+}
+
+#content-start .admin-cl-v2-form__object-tools li a::before {
+    content: "\F4E5";
+    font-family: "bootstrap-icons";
+    font-size: 0.95rem;
+}
+
+#content-start .admin-cl-v2-form__object-tools li a.historylink::before {
+    content: "\F4E5";
+}
+
+#content-start .admin-cl-v2-form__object-tools li a:hover {
+    background: var(--cl-v2-brand-soft) !important;
+    transform: translateY(-1px);
+}
+
+#content-start .admin-cl-v2-form__panel {
+    background: var(--cl-v2-surface);
+    border: 1px solid var(--cl-v2-border);
+    border-radius: var(--cl-v2-radius-xl);
+    box-shadow: var(--cl-v2-shadow-card);
+    padding: 1.5rem 1.75rem;
+}
+
+#content-start .admin-cl-v2-form__panel form > div {
+    min-width: 0;
+}
+
+#content-start .admin-cl-v2-form__panel fieldset.module {
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 0 1.25rem !important;
+    background: transparent !important;
+}
+
+#content-start .admin-cl-v2-form__panel fieldset.module h2,
+#content-start .admin-cl-v2-form__panel fieldset.module .fieldset-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 1rem !important;
+    font-weight: 800 !important;
+    color: var(--cl-v2-text) !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    border: none !important;
+    border-bottom: none !important;
+    padding: 0 0 0.85rem !important;
+    margin: 0 0 1rem !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#content-start .admin-cl-v2-form__panel fieldset.module h2::before,
+#content-start .admin-cl-v2-form__panel fieldset.module .fieldset-heading::before {
+    content: "\F42E";
+    font-family: "bootstrap-icons";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.15rem;
+    height: 2.15rem;
+    border-radius: 0.75rem;
+    background: var(--cl-v2-brand-soft);
+    color: var(--cl-v2-brand);
+    font-size: 1rem;
+    font-weight: 400;
+    flex-shrink: 0;
+}
+
+#content-start .admin-cl-v2-form__panel .description {
+    margin: 0 0 1.15rem !important;
+    padding: 0.85rem 1rem;
+    border-radius: var(--cl-v2-radius-lg);
+    background: var(--cl-v2-secondary);
+    border: 1px solid var(--cl-v2-border);
+    color: var(--cl-v2-muted);
+    font-size: 0.88rem;
+    line-height: 1.55;
+}
+
+#content-start .admin-cl-v2-form__panel .form-row {
+    padding: 0.65rem 0 !important;
+}
+
+#content-start .admin-cl-v2-form__panel .form-row label {
+    font-weight: 600 !important;
+    color: var(--cl-v2-text) !important;
+    font-size: 0.88rem !important;
+}
+
+#content-start .admin-cl-v2-form__panel input[type="text"],
+#content-start .admin-cl-v2-form__panel input[type="email"],
+#content-start .admin-cl-v2-form__panel input[type="number"],
+#content-start .admin-cl-v2-form__panel input[type="password"],
+#content-start .admin-cl-v2-form__panel select,
+#content-start .admin-cl-v2-form__panel textarea {
+    max-width: 20rem;
+    width: 100%;
+    box-sizing: border-box !important;
+    border: 1px solid var(--cl-v2-border) !important;
+    border-radius: 0.75rem !important;
+    padding: 0.65rem 0.85rem !important;
+    font-size: 0.9rem !important;
+    line-height: 1.4 !important;
+    background: var(--cl-v2-surface) !important;
+    color: var(--cl-v2-text) !important;
+    box-shadow: var(--cl-v2-shadow-soft);
+}
+
+#content-start .admin-cl-v2-form__panel select {
+    min-height: 2.75rem !important;
+    padding-block: 0.65rem !important;
+    padding-inline: 0.85rem 2.35rem !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23244a98' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 0.85rem center !important;
+    background-size: 0.95rem !important;
+}
+
+html[dir="rtl"] #content-start .admin-cl-v2-form__panel select {
+    background-position: left 0.85rem center !important;
+}
+
+#content-start .admin-cl-v2-form__panel .flex-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    width: 100%;
+    max-width: 20rem;
+}
+
+#content-start .admin-cl-v2-form__panel .flex-container > select,
+#content-start .admin-cl-v2-form__panel .flex-container > input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+#content-start .admin-cl-v2-form__panel .flex-container > textarea {
+    width: 100%;
+    max-width: 100%;
+}
+
+#content-start .admin-cl-v2-form__panel .checkbox-row,
+#content-start .admin-cl-v2-form__panel .flex-container.checkbox-row {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 0.65rem !important;
+    width: auto !important;
+    max-width: none !important;
+    min-height: 1.85rem;
+    padding: 0.15rem 0;
+}
+
+#content-start .admin-cl-v2-form__panel .checkbox-row label,
+#content-start .admin-cl-v2-form__panel .flex-container.checkbox-row label {
+    margin: 0 !important;
+    font-weight: 600 !important;
+    color: var(--cl-v2-text) !important;
+    cursor: pointer !important;
+}
+
+#content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 20rem;
+    min-height: 7.5rem;
+    padding: 1.15rem 1rem;
+    border: 2px dashed var(--cl-v2-border);
+    border-radius: var(--cl-v2-radius-lg);
+    background: var(--cl-v2-secondary);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+#content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone:hover,
+#content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone.is-dragover {
+    border-color: var(--cl-v2-brand);
+    background: var(--cl-v2-brand-soft);
+    box-shadow: 0 0 0 3px rgba(36, 74, 152, 0.08);
+}
+
+#content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone.is-filled {
+    border-color: var(--cl-v2-success);
+    background: var(--cl-v2-success-soft);
+}
+
+#content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    cursor: pointer;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+#content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone__body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    pointer-events: none;
+}
+
+#content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    background: var(--cl-v2-surface);
+    color: var(--cl-v2-brand);
+    font-size: 1.15rem;
+    box-shadow: var(--cl-v2-shadow-soft);
+}
+
+#content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone__text {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--cl-v2-text);
+    line-height: 1.4;
+}
+
+#content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone__hint {
+    font-size: 0.78rem;
+    color: var(--cl-v2-muted);
+    line-height: 1.45;
+}
+
+#content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone__selected {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    max-width: 100%;
+    margin-top: 0.15rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 999px;
+    background: var(--cl-v2-surface);
+    color: var(--cl-v2-success);
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.3;
+    word-break: break-all;
+}
+
+#content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone__selected::before {
+    content: "\F26B";
+    font-family: "bootstrap-icons";
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+#content-start .admin-cl-v2-form__panel p.file-upload {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem 1rem;
+    width: 100%;
+    max-width: 20rem;
+    margin: 0.85rem 0 0 !important;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--cl-v2-border);
+    border-radius: var(--cl-v2-radius-lg);
+    background: var(--cl-v2-secondary);
+    font-size: 0.84rem;
+    line-height: 1.45;
+    color: var(--cl-v2-muted);
+}
+
+#content-start .admin-cl-v2-form__panel p.file-upload a {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--cl-v2-brand) !important;
+    font-weight: 600;
+    text-decoration: none;
+    word-break: break-all;
+}
+
+#content-start .admin-cl-v2-form__panel p.file-upload a:hover {
+    text-decoration: underline;
+}
+
+#content-start .admin-cl-v2-form__panel p.file-upload .clearable-file-input {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex: 0 0 auto;
+    margin-inline-start: 0.25rem;
+    padding-inline-start: 1rem;
+    border-inline-start: 1px solid var(--cl-v2-border);
+    color: var(--cl-v2-text);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#content-start .admin-cl-v2-form__panel p.file-upload .clearable-file-input label {
+    margin: 0 !important;
+    font-weight: 600 !important;
+    color: var(--cl-v2-accent, #e3202d) !important;
+    cursor: pointer;
+}
+
+#content-start .admin-cl-v2-form__panel p.file-upload .clearable-file-input input[type="checkbox"] {
+    --admin-switch-w: 2.15rem;
+    --admin-switch-h: 1.2rem;
+    --admin-switch-knob: 0.92rem;
+    --admin-switch-pad: 0.14rem;
+}
+
+#content-start .admin-cl-v2-form__panel input:focus,
+#content-start .admin-cl-v2-form__panel select:focus,
+#content-start .admin-cl-v2-form__panel textarea:focus {
+    outline: none !important;
+    border-color: var(--cl-v2-brand) !important;
+    box-shadow: 0 0 0 3px rgba(36, 74, 152, 0.12) !important;
+}
+
+#content-start .admin-cl-v2-form__panel .help,
+#content-start .admin-cl-v2-form__panel .helptext {
+    color: var(--cl-v2-muted) !important;
+    font-size: 0.82rem !important;
+    line-height: 1.5;
+    margin-top: 0.35rem !important;
+}
+
+#content-start .admin-cl-v2-form__panel .submit-row {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center !important;
+    justify-content: flex-start;
+    gap: 0.65rem;
+    margin: 1.35rem 0.65rem 0.35rem !important;
+    padding: 0.95rem 1.15rem !important;
+    border: none !important;
+    border-top: 1px solid var(--cl-v2-border) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    min-height: 3.25rem;
+}
+
+#content-start .admin-cl-v2-form__panel .submit-row input[type="submit"],
+#content-start .admin-cl-v2-form__panel .submit-row a.deletelink,
+#content-start .admin-cl-v2-form__panel .submit-row a.closelink {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    min-height: 2.15rem !important;
+    line-height: 1.2 !important;
+}
+
+#content-start .admin-cl-v2-form__panel .submit-row input[type="submit"] {
+    border-radius: 999px !important;
+    padding: 0.7rem 1.35rem !important;
+    font-size: 0.84rem !important;
+    font-weight: 600 !important;
+    border: none !important;
+    cursor: pointer;
+}
+
+#content-start .admin-cl-v2-form__panel .submit-row a.deletelink {
+    margin-inline-start: auto !important;
+    padding: 0.55rem 1.15rem !important;
+    border-radius: 999px !important;
+    font-size: 0.84rem !important;
+    font-weight: 600 !important;
+    background: #fef2f2 !important;
+    color: #dc2626 !important;
+    border: 1px solid #fecaca !important;
+    box-shadow: var(--cl-v2-shadow-soft);
+}
+
+#content-start .admin-cl-v2-form__panel .submit-row a.deletelink:hover,
+#content-start .admin-cl-v2-form__panel .submit-row a.deletelink:focus {
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+    border-color: #fca5a5 !important;
+}
+
+#content-start .admin-cl-v2-form__panel .submit-row input.default,
+#content-start .admin-cl-v2-form__panel .submit-row input[name="_save"] {
+    background: var(--cl-v2-brand) !important;
+    color: #fff !important;
+    box-shadow: none !important;
+}
+
+#content-start .admin-cl-v2-form__panel .submit-row input.default:hover,
+#content-start .admin-cl-v2-form__panel .submit-row input[name="_save"]:hover {
+    background: #1f3f82 !important;
+}
+
+#content-start .admin-cl-v2-form__panel .submit-row input[name="_continue"],
+#content-start .admin-cl-v2-form__panel .submit-row input[name="_addanother"] {
+    background: var(--cl-v2-secondary) !important;
+    color: var(--cl-v2-brand) !important;
+    border: 1px solid var(--cl-v2-border) !important;
+    box-shadow: none !important;
+}
+
+#content-start .admin-cl-v2-form__panel .errornote {
+    border-radius: var(--cl-v2-radius-lg);
+    margin-bottom: 1rem;
+}
+
+#content-start .admin-cl-v2-form__panel .inline-group {
+    border: 1px solid var(--cl-v2-border) !important;
+    border-radius: var(--cl-v2-radius-lg) !important;
+    box-shadow: var(--cl-v2-shadow-soft) !important;
+    margin: 1.25rem 0 !important;
+    overflow: hidden;
+}
+
+#content-start .admin-cl-v2-form__panel .inline-group h2,
+#content-start .admin-cl-v2-form__panel .inline-group .inline-heading {
+    font-size: 0.95rem !important;
+    font-weight: 800 !important;
+    color: var(--cl-v2-text) !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    border: none !important;
+    border-bottom: none !important;
+    padding: 1rem 1.15rem 0.75rem !important;
+    margin: 0 !important;
+    background: transparent !important;
+}
+
+#content-start .admin-cl-v2-form__panel .inline-group .tabular {
+    overflow-x: auto;
+}
+
+#content-start .admin-cl-v2-form__panel .inline-group table {
+    border: none !important;
+}
+
+#content-start .admin-cl-v2-form__panel .inline-group thead th {
+    background: var(--cl-v2-secondary) !important;
+    color: var(--cl-v2-muted) !important;
+    font-size: 0.72rem !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid var(--cl-v2-border) !important;
+}
+
+#content-start .admin-cl-v2-form__panel .inline-group tbody td {
+    border-bottom: 1px solid var(--cl-v2-border) !important;
+    vertical-align: middle !important;
+}
+
+#content-start .admin-cl-v2-form__panel .password-reset-fieldset,
+#content-start .admin-cl-v2-form__panel .add-credentials-section {
+    margin-top: 1rem;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+    width: 100%;
+    max-width: 20rem;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-wrap input[type="password"],
+#content-start .admin-cl-v2-form__panel .pw-generate-wrap input[type="text"] {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .button {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: 2.15rem;
+    padding: 0.4rem 0.95rem !important;
+    border-radius: 999px !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    font-family: inherit !important;
+    line-height: 1.2 !important;
+    cursor: pointer;
+    text-decoration: none !important;
+    background-image: none !important;
+    box-shadow: var(--cl-v2-shadow-soft);
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .button:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .button:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-gen-btn {
+    background: var(--cl-v2-brand) !important;
+    color: #fff !important;
+    border: none !important;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-gen-btn:hover:not(:disabled) {
+    background: #1f3f82 !important;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-gen-btn::before {
+    content: "\F44F";
+    font-family: "bootstrap-icons";
+    font-size: 0.88rem;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-toggle-btn,
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-copy-btn {
+    background: var(--cl-v2-secondary) !important;
+    color: var(--cl-v2-brand) !important;
+    border: 1px solid var(--cl-v2-border) !important;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-toggle-btn:hover:not(:disabled),
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-copy-btn:hover:not(:disabled) {
+    background: var(--cl-v2-brand-soft) !important;
+    border-color: rgba(36, 74, 152, 0.22) !important;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-toggle-btn::before {
+    content: "\F341";
+    font-family: "bootstrap-icons";
+    font-size: 0.88rem;
+}
+
+#content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-copy-btn::before {
+    content: "\F290";
+    font-family: "bootstrap-icons";
+    font-size: 0.88rem;
+}
+
+#content-start .admin-cl-v2-form__panel .password-reset-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+#content-start .admin-cl-v2-form__panel .password-reset-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: 2.15rem;
+    padding: 0.45rem 1.1rem !important;
+    border-radius: 999px !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    background: var(--cl-v2-brand) !important;
+    color: #fff !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+#content-start .admin-cl-v2-form__panel .password-reset-btn:hover {
+    background: #1f3f82 !important;
+}
+
+#content-start .admin-cl-v2-form__panel .password-reset-btn::before {
+    content: "\F295";
+    font-family: "bootstrap-icons";
+    font-size: 0.88rem;
+}
+
+@media (max-width: 767px) {
+    #content-start .admin-cl-v2-form__panel {
+        padding: 1.15rem 1rem;
+    }
+
+    #content-start .admin-cl-v2-form__panel input[type="text"],
+    #content-start .admin-cl-v2-form__panel input[type="number"],
+    #content-start .admin-cl-v2-form__panel select {
+        max-width: 100%;
+        width: 100%;
+    }
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form {
+    --cl-v2-brand: #5b8def;
+    --cl-v2-brand-soft: rgba(59, 130, 246, 0.15);
+    --cl-v2-secondary: rgba(255, 255, 255, 0.05);
+    --cl-v2-surface: var(--surface, #1e293b);
+    --cl-v2-border: var(--border, #334155);
+    --cl-v2-muted: var(--muted, #94a3b8);
+    --cl-v2-text: var(--text, #e2e8f0);
+    --cl-v2-input-bg: var(--input-bg, #0f172a);
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel {
+    background: var(--surface, #1e293b);
+    border-color: var(--border, #334155);
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel fieldset.module h2,
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel fieldset.module .fieldset-heading {
+    color: var(--text, #f1f5f9) !important;
+    border: none !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .description {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--border, #334155);
+    color: var(--muted, #94a3b8);
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel input[type="text"],
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel input[type="email"],
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel input[type="url"],
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel input[type="number"],
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel input[type="date"],
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel input[type="datetime-local"],
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel input[type="password"],
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .vTextField,
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .vURLField,
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .vIntegerField,
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel select,
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel textarea {
+    background-color: var(--cl-v2-input-bg) !important;
+    border-color: var(--cl-v2-border) !important;
+    color: var(--cl-v2-text) !important;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel input:focus,
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel select:focus,
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel textarea:focus {
+    border-color: var(--cl-v2-brand) !important;
+    box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.22) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel input::placeholder,
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel textarea::placeholder {
+    color: var(--cl-v2-muted) !important;
+    opacity: 0.85;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .form-row label {
+    color: var(--cl-v2-text) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .inline-group thead th {
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: var(--cl-v2-muted) !important;
+    border-bottom-color: var(--cl-v2-border) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%235b8def' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708'/%3E%3C/svg%3E") !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone:hover,
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone.is-dragover {
+    box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.16);
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone__icon {
+    background: rgba(255, 255, 255, 0.06);
+    color: #93c5fd;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .admin-cl-v2-file-zone__selected {
+    background: rgba(255, 255, 255, 0.06);
+    color: #6ee7b7;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel p.file-upload {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--cl-v2-border);
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel p.file-upload .clearable-file-input {
+    border-inline-start-color: var(--cl-v2-border);
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel p.file-upload .clearable-file-input label {
+    color: #fca5a5 !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__object-tools li a {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: var(--border, #334155) !important;
+    color: #93c5fd !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-toggle-btn,
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-copy-btn {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: var(--border, #334155) !important;
+    color: #93c5fd !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-toggle-btn:hover:not(:disabled),
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .pw-generate-actions .pw-copy-btn:hover:not(:disabled) {
+    background: rgba(36, 74, 152, 0.22) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .submit-row a.deletelink {
+    background: rgba(239, 68, 68, 0.12) !important;
+    color: #fca5a5 !important;
+    border-color: rgba(248, 113, 113, 0.35) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .submit-row a.deletelink:hover,
+html[data-theme="dark"] #content-start .admin-cl-v2-form__panel .submit-row a.deletelink:focus {
+    background: rgba(239, 68, 68, 0.2) !important;
+    color: #fecaca !important;
+}

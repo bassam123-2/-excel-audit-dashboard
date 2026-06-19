@@ -10,22 +10,6 @@ from audit_app.admin_forms import AdminUserChangeForm, MandatoryPasswordAdminCre
 from tests.factories import make_user
 
 
-@pytest.fixture
-def admin_client(db):
-    user = User.objects.create_superuser(
-        "myadmin",
-        "myadmin@test.com",
-        "Test@1234!",
-        first_name="Admin",
-        last_name="User",
-    )
-    user.profile.job_title = "Administrator"
-    user.profile.save(update_fields=["job_title"])
-    client = Client()
-    client.force_login(user)
-    return client
-
-
 def _membership_formset_fields(*, total: str = "0") -> dict[str, str]:
     return {
         "company_memberships-TOTAL_FORMS": total,
@@ -280,3 +264,137 @@ def test_admin_set_password_succeeds(admin_client, btc_company):
     assert user.check_password("NewComplex1!")
     user.profile.refresh_from_db()
     assert user.profile.must_change_password_on_login is True
+
+
+@pytest.mark.django_db
+def test_admin_user_changelist_renders_v2_layout(admin_client):
+    response = admin_client.get(reverse("admin:auth_user_changelist"), follow=True)
+    assert response.status_code == 200
+    assert "deleted=active" in response.request["PATH_INFO"] + "?" + response.request.get("QUERY_STRING", "")
+    html = response.content.decode()
+    assert "admin-cl-v2__header-row" in html
+    assert "admin-cl-v2__badge" not in html
+    assert "admin-cl-v2__stats" in html
+    assert "admin-cl-v2__quick-actions" in html
+    assert "Enable email 2FA for selected users" in html
+    assert 'data-cl-v2-quick-action="enable_two_factor_selected"' in html
+    assert 'data-cl-v2-quick-action="enable_two_factor_all"' not in html
+    assert "admin-cl-v2__table-panel" in html
+    assert "admin-cl-v2__filters-panel" in html
+    assert "admin_changelist_v2.css" in html
+    assert "admin_changelist_v2.js" in html
+
+
+@pytest.mark.django_db
+def test_admin_user_changelist_stats_match_filtered_results(admin_client):
+    make_user("stats_alpha", email="stats_alpha@example.com")
+    make_user("stats_beta", email="stats_beta@example.com")
+    url = reverse("admin:auth_user_changelist")
+    response = admin_client.get(f"{url}?deleted=active&q=stats_alpha", follow=True)
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert 'class="admin-cl-v2__stat-value">1</p>' in html or ">1<" in html
+
+
+@pytest.mark.django_db
+def test_admin_user_changelist_deleted_all_includes_soft_deleted(admin_client):
+    active = make_user("active_list_user", email="active_list@example.com")
+    deleted = make_user("deleted_list_user", email="deleted_list@example.com")
+    deleted.profile.is_deleted = True
+    deleted.profile.save(update_fields=["is_deleted"])
+    deleted.is_active = False
+    deleted.save(update_fields=["is_active"])
+
+    url = reverse("admin:auth_user_changelist")
+    response = admin_client.get(f"{url}?deleted=all", follow=True)
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert active.username in html
+    assert deleted.username in html
+
+
+@pytest.mark.django_db
+def test_admin_user_quick_action_enable_password_expiry_selected(admin_client):
+    user = make_user("expiry_selected_user", email="expiry_selected@example.com")
+    url = reverse("admin:auth_user_changelist") + "?deleted=active"
+    response = admin_client.post(
+        url,
+        {
+            "action": "enable_password_expiry_selected",
+            "_selected_action": [str(user.pk)],
+            "index": "0",
+        },
+        follow=True,
+    )
+    assert response.status_code == 200
+    assert "password expiry enabled" in response.content.decode().lower()
+    user.profile.refresh_from_db()
+    assert user.profile.password_expiry_enabled is True
+
+
+@pytest.mark.django_db
+def test_admin_user_quick_actions_selected_buttons_present(admin_client):
+    changelist = reverse("admin:auth_user_changelist") + "?deleted=active"
+    response = admin_client.get(changelist, follow=True)
+    html = response.content.decode()
+    assert 'data-cl-v2-quick-action="enable_two_factor_selected"' in html
+    assert 'data-requires-selection="1"' in html
+    for action_name in (
+        "enable_two_factor_selected",
+        "disable_two_factor_selected",
+        "enable_password_expiry_selected",
+        "disable_password_expiry_selected",
+    ):
+        assert f'data-cl-v2-quick-action="{action_name}"' in html
+
+
+@pytest.mark.django_db
+def test_admin_user_delete_modal_on_change_form(admin_client):
+    user = make_user("delete_modal_user", email="delete_modal@example.com")
+    response = admin_client.get(reverse("admin:auth_user_change", args=[user.pk]))
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "admin-user-delete-modal" in html
+    assert "admin_user_delete_modal.js" in html
+    assert "admin_user_delete_modal.css" in html
+    assert "Yes, remove user" in html or "نعم، إزالة المستخدم" in html
+
+
+@pytest.mark.django_db
+def test_admin_delete_modal_renders_in_arabic(admin_client):
+    user = make_user("delete_modal_ar", email="delete_modal_ar@example.com")
+    admin_user = User.objects.get(username="myadmin")
+    admin_user.profile.preferred_language = "ar"
+    admin_user.profile.save(update_fields=["preferred_language"])
+    response = admin_client.get(reverse("admin:auth_user_change", args=[user.pk]))
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "هل أنت متأكد من إزالة المستخدم" in html
+    assert "نعم، إزالة المستخدم" in html
+    assert "إلغاء" in html
+    assert "سيتم إلغاء تفعيل الحساب" in html
+
+
+@pytest.mark.django_db
+def test_admin_change_soft_deleted_user_omits_delete_modal(admin_client):
+    user = make_user("deleted_modal_user", email="deleted_modal@example.com")
+    user.profile.is_deleted = True
+    user.profile.save(update_fields=["is_deleted"])
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+    response = admin_client.get(reverse("admin:auth_user_change", args=[user.pk]))
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "admin-user-delete-modal" not in html
+
+
+@pytest.mark.django_db
+def test_admin_soft_delete_user_via_post(admin_client):
+    user = make_user("soft_delete_target", email="softdel@example.com")
+    delete_url = reverse("admin:auth_user_delete", args=[user.pk])
+    response = admin_client.post(delete_url, {"post": "yes"})
+    assert response.status_code == 302
+    user.refresh_from_db()
+    user.profile.refresh_from_db()
+    assert user.profile.is_deleted is True
+    assert user.is_active is False
