@@ -134,7 +134,11 @@ def _uses_v2(company: Company | None) -> bool:
 
 def _base_dashboards_qs(company: Company | None) -> QuerySet[Dashboard]:
     qs = (
-        Dashboard.objects.filter(is_deleted=False, company__is_active=True)
+        Dashboard.objects.filter(
+            is_deleted=False,
+            company__is_active=True,
+            company__is_deleted=False,
+        )
         .filter(company__company_kind=COMPANY_KIND_MAIN)
         .select_related(
             "created_by",
@@ -164,7 +168,8 @@ def _visibility_q(user, company: Company | None) -> Q:
         q |= Q(status=DashboardStatus.PUBLISHED)
 
     if has_upload_perm(user, company) and not has_view_perm(user, company):
-        q |= Q(status=DashboardStatus.PUBLISHED)
+        if not has_view_own_only_perm(user, company):
+            q |= Q(status=DashboardStatus.PUBLISHED)
 
     q |= Q(
         status=DashboardStatus.IN_WORKFLOW,
@@ -182,7 +187,7 @@ def user_can_see_dashboard(user, dashboard: Dashboard, company: Company | None =
     ):
         return False
     if dashboard.is_deleted:
-        return has_delete_perm(user)
+        return False
 
     active = company or dashboard.company
 
@@ -329,18 +334,8 @@ def available_dashboard_filters(
 
 
 def deleted_dashboards_queryset_for_user(user, company: Company | None = None) -> QuerySet[Dashboard]:
-    if not has_delete_perm(user):
-        return Dashboard.objects.none()
-    qs = (
-        Dashboard.objects.filter(is_deleted=True, company__is_active=True)
-        .select_related("created_by", "upload_session", "reviewed_by", "deleted_by", "company")
-        .order_by("-deleted_at", "-created_at")
-    )
-    if company is not None:
-        qs = qs.filter(company=company)
-    elif not user.is_superuser:
-        return Dashboard.objects.none()
-    return qs
+    """Deleted dashboards are visible only in Django admin (deleted filter)."""
+    return Dashboard.objects.none()
 
 
 def get_dashboard_for_review(user, pk: int, company: Company | None = None) -> Dashboard | None:
@@ -392,8 +387,7 @@ def load_dashboard_cross_company(
     except Dashboard.DoesNotExist:
         return None
     if dashboard.is_deleted:
-        if not allow_deleted or not has_delete_perm(user):
-            return None
+        return None
     elif not user_can_see_dashboard(user, dashboard, company=dashboard.company):
         return None
     tenant = resolve_tenant_company(dashboard.company) if dashboard.company_id else None
@@ -431,7 +425,9 @@ def dashboard_url_belongs_to_company(path: str, company: Company | None) -> bool
         return True
     pk = int(match.group(1))
     company_id = (
-        Dashboard.objects.filter(pk=pk).values_list("company_id", flat=True).first()
+        Dashboard.objects.filter(pk=pk, is_deleted=False)
+        .values_list("company_id", flat=True)
+        .first()
     )
     if company_id is None:
         return True
@@ -458,15 +454,7 @@ def get_dashboard_for_user(
     except Dashboard.DoesNotExist:
         return None
     if dashboard.is_deleted:
-        if not allow_deleted or not has_delete_perm(user):
-            return None
-        if (
-            company is not None
-            and dashboard.company_id
-            and dashboard.company_id != company.id
-        ):
-            return None
-        return dashboard
+        return None
     if not user_can_see_dashboard(user, dashboard, company=company or dashboard.company):
         return None
     if (

@@ -184,3 +184,39 @@ class UserProfile(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user.username} — {self.job_title or _('No job title')}"
+
+
+PASSWORD_SET_TOKEN_TTL_HOURS = 72
+
+
+class PasswordSetToken(models.Model):
+    """One-time link for new/reset users to set their password without email plaintext."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="password_set_tokens",
+        verbose_name=_("User"),
+    )
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = _("Password set token")
+        verbose_name_plural = _("Password set tokens")
+        indexes = [
+            models.Index(fields=["user", "used_at"]),
+            models.Index(fields=["expires_at"]),
+        ]
+
+    def __str__(self) -> str:
+        status = _("used") if self.used_at else _("active")
+        return f"{self.user.username} — {status}"
+
+    @property
+    def is_valid(self) -> bool:
+        if self.used_at is not None:
+            return False
+        return timezone.now() < self.expires_at

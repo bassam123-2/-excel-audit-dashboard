@@ -74,7 +74,17 @@
 
     {% block after_related_objects %}{% endblock %}
 
-    {% block submit_buttons_bottom %}{% submit_row %}{% endblock %}
+    {% block submit_buttons_bottom %}
+    {% if record_is_soft_deleted and can_restore_record %}
+    <div class="submit-row">
+      <p class="deletelink-box soft-deleted-notice">
+        {% translate "This record is soft-deleted and hidden from the application." %}
+      </p>
+      <input type="submit" value="{% translate 'Restore record' %}" class="default" name="_restore">
+    </div>
+    {% endif %}
+    {% submit_row %}
+    {% endblock %}
 
     {% block admin_change_form_document_ready %}
         <script id="django-admin-form-add-constants"

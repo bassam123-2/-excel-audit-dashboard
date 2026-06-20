@@ -10,7 +10,7 @@ from audit_app.models import COMPANY_KIND_MAIN, COMPANY_KIND_SUBSIDIARY, Company
 
 @pytest.mark.django_db
 def test_admin_company_changelist_renders_v2_layout(admin_client):
-    response = admin_client.get(reverse("admin:audit_app_company_changelist"))
+    response = admin_client.get(reverse("admin:audit_app_company_changelist"), follow=True)
     assert response.status_code == 200
     html = response.content.decode()
     assert "admin-cl-v2__header-row" in html
@@ -35,7 +35,7 @@ def test_admin_company_changelist_stats_match_filtered_results(admin_client, btc
     )
 
     url = reverse("admin:audit_app_company_changelist")
-    response = admin_client.get(f"{url}?q=filterco")
+    response = admin_client.get(f"{url}?q=filterco", follow=True)
     assert response.status_code == 200
     html = response.content.decode()
     assert 'class="admin-cl-v2__stat-value">1</p>' in html
@@ -52,8 +52,20 @@ def test_admin_company_changelist_active_filter_updates_stats(admin_client, btc_
     )
 
     url = reverse("admin:audit_app_company_changelist")
-    response = admin_client.get(f"{url}?is_active__exact=0")
+    response = admin_client.get(f"{url}?is_active__exact=0", follow=True)
     assert response.status_code == 200
     html = response.content.decode()
     assert "inactiveco" in html.lower()
     assert 'class="admin-cl-v2__stat-value">1</p>' in html
+
+
+@pytest.mark.django_db
+def test_admin_company_soft_delete_via_post(admin_client, btc_company):
+    delete_url = reverse("admin:audit_app_company_delete", args=[btc_company.pk])
+    response = admin_client.post(delete_url, {"post": "yes"})
+    assert response.status_code == 302
+    btc_company.refresh_from_db()
+    assert btc_company.is_deleted is True
+    assert btc_company.is_active is False
+    assert btc_company.deleted_at is not None
+    assert Company.objects.filter(pk=btc_company.pk).exists()

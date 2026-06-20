@@ -22,6 +22,7 @@ from django.views.decorators.debug import sensitive_post_parameters
 
 from accounts_app.models import UserProfile
 
+from .admin_soft_delete import SoftDeleteAdminMixin
 from .admin_changelist_v2 import (
     AdminClV2Mixin,
     cl_v2_count_where,
@@ -193,6 +194,16 @@ class CompanyMembershipInline(admin.TabularInline):
         "can_review",
         "can_delete_drafts",
     )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(is_deleted=False)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "company":
+            from audit_app.company_access import active_main_companies
+
+            kwargs["queryset"] = active_main_companies().order_by("code")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
@@ -458,10 +469,15 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
         return JsonResponse({"password": generate_compliant_password()})
 
     def _send_credentials_email(self, request, user, raw_password: str) -> bool:
+        del raw_password  # password is never sent by email; user sets it via one-time link
         from ai_excel_dashboard import load_smtp_config
 
         from accounts_app.services.credentials_email import send_credentials_email_smtp
-        from accounts_app.services.email_branding import resolve_logo_url
+        from accounts_app.services.email_branding import resolve_logo_src_for_email
+        from accounts_app.services.password_set_token import (
+            build_set_password_url,
+            create_password_set_token,
+        )
 
         email = (user.email or "").strip()
         if not email:
@@ -480,18 +496,39 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
             )
             return False
         try:
+            token = create_password_set_token(user)
+            set_password_url = build_set_password_url(
+                token,
+                base_url=request.build_absolute_uri("/"),
+            )
             send_credentials_email_smtp(
                 cfg,
                 to_addr=email,
                 username=user.username,
-                password=raw_password,
-                login_url=request.build_absolute_uri(reverse("login")),
-                logo_url=resolve_logo_url(
+                set_password_url=set_password_url,
+                logo_url=resolve_logo_src_for_email(
                     base_url=request.build_absolute_uri("/"),
                     cfg=cfg,
                 ),
             )
             return True
+        except ValueError as exc:
+            if str(exc) == "insecure_email_base_url":
+                self.message_user(
+                    request,
+                    _(
+                        "Cannot send credentials email: configure PUBLIC_SITE_URL "
+                        "with HTTPS for production links."
+                    ),
+                    messages.WARNING,
+                )
+            else:
+                self.message_user(
+                    request,
+                    _("Failed to send credentials email."),
+                    messages.WARNING,
+                )
+            return False
         except Exception:
             self.message_user(
                 request,
@@ -506,6 +543,8 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
         if not change and isinstance(form, MandatoryPasswordAdminCreationForm):
             send_credentials = bool(form.cleaned_data.get("send_credentials_email"))
             raw_password = form.cleaned_data.get("password1") or ""
+        if change and self._is_soft_deleted(obj):
+            obj.is_active = False
         super().save_model(request, obj, form, change)
         if not change:
             profile, _created = UserProfile.objects.get_or_create(user=obj)
@@ -637,6 +676,11 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
             return False
         return super().has_delete_permission(request, obj)
 
+    def has_restore_permission(self, request, obj=None) -> bool:
+        if self._is_protected(obj):
+            return False
+        return request.user.has_perm("auth.delete_user") or request.user.is_superuser
+
     def get_readonly_fields(self, request, obj=None):
         rf = list(super().get_readonly_fields(request, obj))
         if not request.user.is_superuser:
@@ -645,6 +689,8 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
             rf += ["two_factor_enabled", "password_expiry_enabled"]
             if obj is None or obj.is_superuser:
                 rf += ["receive_workflow_emails"]
+        if obj is not None and self._is_soft_deleted(obj):
+            rf.append("is_active")
         return rf
 
     def _can_manage_user_security(self, request) -> bool:
@@ -851,9 +897,12 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
 
     @admin.action(description=_("Restore selected users"))
     def restore_users(self, request, queryset):
+        if not self.has_restore_permission(request):
+            self.message_user(request, _("Permission denied."), messages.ERROR)
+            return
         restored = 0
-        for user in queryset:
-            if self._is_protected(user):
+        for user in queryset.select_related("profile"):
+            if self._is_protected(user) or not self._is_soft_deleted(user):
                 continue
             self._restore_user(user)
             restored += 1
@@ -864,6 +913,12 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
                 % {"count": restored},
                 messages.SUCCESS,
             )
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not self.has_restore_permission(request):
+            actions.pop("restore_users", None)
+        return actions
 
     def delete_model(self, request, obj):
         self._soft_delete_user(obj)
@@ -926,8 +981,10 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
         )
 
     def response_change(self, request, obj):
-        if "_restore" in request.POST and self.has_change_permission(request, obj):
-            if not self._is_protected(obj):
+        if "_restore" in request.POST:
+            if not self.has_restore_permission(request, obj):
+                raise PermissionDenied
+            if not self._is_protected(obj) and self._is_soft_deleted(obj):
                 self._restore_user(obj)
                 self.message_user(
                     request,
@@ -956,6 +1013,10 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
                 "user_is_soft_deleted",
                 self._is_soft_deleted(obj),
             )
+            context.setdefault(
+                "can_restore_user",
+                self._is_soft_deleted(obj) and self.has_restore_permission(request, obj),
+            )
         return super().render_change_form(
             request, context, add=add, change=change, form_url=form_url, obj=obj
         )
@@ -965,6 +1026,9 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
         obj = self.get_object(request, unquote(object_id))
         if obj is not None:
             extra_context["user_is_soft_deleted"] = self._is_soft_deleted(obj)
+            extra_context["can_restore_user"] = (
+                self._is_soft_deleted(obj) and self.has_restore_permission(request, obj)
+            )
             extra_context.setdefault(
                 "password_form",
                 MandatoryPasswordAdminChangeForm(obj),
@@ -974,6 +1038,9 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
 
 class ProtectedGroupAdmin(AdminClV2Mixin, BaseGroupAdmin):
     """Hide legacy dashboard permissions — use Company memberships instead."""
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
     cl_v2_subtitle = _("Manage permission groups and assign capabilities to users.")
 
@@ -1041,7 +1108,8 @@ class ActiveCompanyFkMixin:
 
 
 @admin.register(Company)
-class CompanyAdmin(AdminClV2Mixin, admin.ModelAdmin):
+class CompanyAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
+    soft_delete_deactivate_active_field = "is_active"
     form = CompanyAdminForm
     cl_v2_subtitle = _(
         "Browse and manage all companies (active and inactive) from one place."
@@ -1146,7 +1214,7 @@ class CompanyAdmin(AdminClV2Mixin, admin.ModelAdmin):
     def get_search_results(self, request, queryset, search_term):
         """Changelist search includes inactive companies; autocomplete keeps active only."""
         if "/autocomplete/" in request.path:
-            queryset = queryset.filter(is_active=True)
+            queryset = queryset.filter(is_active=True, is_deleted=False)
             if (
                 request.GET.get("app_label") == "audit_app"
                 and request.GET.get("model_name") == "workflowtemplate"
@@ -1171,7 +1239,7 @@ class CompanyAdmin(AdminClV2Mixin, admin.ModelAdmin):
 
 
 @admin.register(CompanyMembership)
-class CompanyMembershipAdmin(AdminClV2Mixin, ActiveCompanyFkMixin, admin.ModelAdmin):
+class CompanyMembershipAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, ActiveCompanyFkMixin, admin.ModelAdmin):
     cl_v2_subtitle = _(
         "Manage user access, upload rights, and review permissions per company."
     )
@@ -1240,7 +1308,7 @@ CompanyMembershipAdmin.list_display = (
 
 
 @admin.register(UploadSession)
-class UploadSessionAdmin(AdminClV2Mixin, admin.ModelAdmin):
+class UploadSessionAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
     cl_v2_subtitle = _("Browse Excel upload sessions and imported source files.")
     list_display = ("id", "source_name", "mode", "locale", "uploaded_at")
     search_fields = ("source_name", "sheet_name", "content_sha256")
@@ -1276,7 +1344,7 @@ class UploadSessionAdmin(AdminClV2Mixin, admin.ModelAdmin):
 
 
 @admin.register(ObservationRecord)
-class ObservationRecordAdmin(AdminClV2Mixin, admin.ModelAdmin):
+class ObservationRecordAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
     cl_v2_subtitle = _("Browse audit observations extracted from uploaded Excel files.")
     list_display = ("id", "upload_session", "audit_year", "company", "subcompany")
     search_fields = ("audit_year", "observation_name", "company", "subcompany")
@@ -1312,7 +1380,7 @@ class ObservationRecordAdmin(AdminClV2Mixin, admin.ModelAdmin):
 # Legacy filesystem logo table — superseded by Company.logo (kept for data migration only).
 # admin.site.unregister(CompanyLogo) — not registered
 @admin.register(ReportArtifact)
-class ReportArtifactAdmin(AdminClV2Mixin, admin.ModelAdmin):
+class ReportArtifactAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
     cl_v2_subtitle = _("Browse generated report artifacts linked to upload sessions.")
     list_display = ("id", "report_id", "report_version", "rows", "columns", "created_at")
     search_fields = ("report_id", "report_version")
@@ -1346,7 +1414,8 @@ class ReportArtifactAdmin(AdminClV2Mixin, admin.ModelAdmin):
 
 
 @admin.register(DashboardTemplateType)
-class DashboardTemplateTypeAdmin(AdminClV2Mixin, admin.ModelAdmin):
+class DashboardTemplateTypeAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
+    soft_delete_deactivate_active_field = "is_active"
     cl_v2_subtitle = _("Manage dashboard template types shown when creating dashboards.")
     list_display = ("code", "name", "icon", "active_status_display", "sort_order")
     list_display_links = ("code",)
@@ -1401,7 +1470,7 @@ class DashboardRejectionLogInline(admin.TabularInline):
 
 
 @admin.register(DashboardRejectionLog)
-class DashboardRejectionLogAdmin(AdminClV2Mixin, admin.ModelAdmin):
+class DashboardRejectionLogAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
     cl_v2_subtitle = _("Review dashboard rejection history and reasons.")
     list_display = ("id", "dashboard", "rejected_by", "created_at")
     search_fields = ("reason", "dashboard__name", "rejected_by__username")
@@ -1436,7 +1505,7 @@ class DashboardRejectionLogAdmin(AdminClV2Mixin, admin.ModelAdmin):
 
 
 @admin.register(Dashboard)
-class DashboardAdmin(AdminClV2Mixin, ActiveCompanyFkMixin, admin.ModelAdmin):
+class DashboardAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, ActiveCompanyFkMixin, admin.ModelAdmin):
     cl_v2_subtitle = _(
         "Browse dashboards across companies, statuses, and workflow states."
     )
@@ -1444,13 +1513,12 @@ class DashboardAdmin(AdminClV2Mixin, ActiveCompanyFkMixin, admin.ModelAdmin):
         "id", "name", "company", "status", "soft_deleted_display", "icon", "template_type", "created_by", "created_at",
     )
     search_fields = ("name", "report_id", "description")
-    list_filter = ("company", "is_deleted", "status", "template_type", "icon", "created_at", "created_by")
+    list_filter = ("company", "status", "template_type", "icon", "created_at", "created_by")
     readonly_fields = (
         "report_id", "html_file", "source_files", "created_at", "upload_session",
         "published_at", "deleted_at", "deleted_by",
     )
     inlines = [DashboardRejectionLogInline]
-    actions = ["restore_dashboards"]
     fieldsets = (
         (_("Basic information"), {"fields": ("name", "description", "icon", "template_type", "company", "created_by")}),
         (_("Workflow"), {"fields": ("status", "submitted_at", "published_at", "reviewed_by")}),
@@ -1501,15 +1569,28 @@ class DashboardAdmin(AdminClV2Mixin, ActiveCompanyFkMixin, admin.ModelAdmin):
             no_label=_("Yes"),
         )
 
-    @admin.action(description=_("Restore selected dashboards"))
-    def restore_dashboards(self, request, queryset):
+    def perform_soft_delete(self, request, obj):
+        from reports_app.dashboard_workflow import soft_delete_dashboard
+
+        soft_delete_dashboard(obj, request.user)
+
+    def perform_restore(self, request, obj):
         from reports_app.dashboard_workflow import restore_dashboard
 
-        count = 0
+        restore_dashboard(obj)
+
+    @admin.action(description=_("Restore selected dashboards"))
+    def restore_dashboards(self, request, queryset):
+        restored = 0
         for dashboard in queryset.filter(is_deleted=True):
-            restore_dashboard(dashboard)
-            count += 1
-        self.message_user(request, _("Restored %(count)d dashboard(s).") % {"count": count})
+            self.perform_restore(request, dashboard)
+            restored += 1
+        if restored:
+            self.message_user(
+                request,
+                _("Restored %(count)d dashboard(s).") % {"count": restored},
+                messages.SUCCESS,
+            )
 
 
 class WorkflowTemplateStepInline(admin.TabularInline):
@@ -1584,7 +1665,7 @@ class WorkflowTemplateActiveFilter(admin.SimpleListFilter):
 
 
 @admin.register(WorkflowTemplate)
-class WorkflowTemplateAdmin(AdminClV2Mixin, admin.ModelAdmin):
+class WorkflowTemplateAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
     cl_v2_subtitle = _(
         "Configure per-company acknowledgment chains before dashboards are published."
     )
@@ -1875,7 +1956,7 @@ class WorkflowTemplateAdmin(AdminClV2Mixin, admin.ModelAdmin):
 
 
 @admin.register(DashboardWorkflowInstance)
-class DashboardWorkflowInstanceAdmin(AdminClV2Mixin, admin.ModelAdmin):
+class DashboardWorkflowInstanceAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
     cl_v2_subtitle = _("Track in-progress and completed dashboard workflow runs.")
     list_display = (
         "dashboard",
@@ -1920,7 +2001,7 @@ class DashboardWorkflowInstanceAdmin(AdminClV2Mixin, admin.ModelAdmin):
 
 
 @admin.register(DashboardWorkflowStepLog)
-class DashboardWorkflowStepLogAdmin(AdminClV2Mixin, admin.ModelAdmin):
+class DashboardWorkflowStepLogAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
     cl_v2_subtitle = _("Audit trail of workflow step acknowledgments.")
     list_display = ("instance", "step_order", "assignee", "acknowledged_by", "acknowledged_at")
     readonly_fields = ("acknowledged_at",)

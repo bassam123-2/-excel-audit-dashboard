@@ -354,10 +354,22 @@ def test_admin_user_delete_modal_on_change_form(admin_client):
     response = admin_client.get(reverse("admin:auth_user_change", args=[user.pk]))
     assert response.status_code == 200
     html = response.content.decode()
-    assert "admin-user-delete-modal" in html
-    assert "admin_user_delete_modal.js" in html
-    assert "admin_user_delete_modal.css" in html
+    assert "admin-delete-modal" in html
+    assert "admin_delete_modal.js" in html
+    assert "admin_delete_modal.css" in html
     assert "Yes, remove user" in html or "نعم، إزالة المستخدم" in html
+
+
+@pytest.mark.django_db
+def test_admin_delete_modal_on_company_change_form(admin_client, btc_company):
+    response = admin_client.get(
+        reverse("admin:audit_app_company_change", args=[btc_company.pk])
+    )
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "admin-delete-modal" in html
+    assert "admin_delete_modal.js" in html
+    assert "Delete confirmation" in html or "تأكيد الحذف" in html
 
 
 @pytest.mark.django_db
@@ -373,10 +385,12 @@ def test_admin_delete_modal_renders_in_arabic(admin_client):
     assert "نعم، إزالة المستخدم" in html
     assert "إلغاء" in html
     assert "سيتم إلغاء تفعيل الحساب" in html
+    assert "المستخدمون المحذوفون" in html
+    assert "\\u005C" not in html
 
 
 @pytest.mark.django_db
-def test_admin_change_soft_deleted_user_omits_delete_modal(admin_client):
+def test_admin_change_soft_deleted_user_has_no_delete_link(admin_client):
     user = make_user("deleted_modal_user", email="deleted_modal@example.com")
     user.profile.is_deleted = True
     user.profile.save(update_fields=["is_deleted"])
@@ -385,7 +399,7 @@ def test_admin_change_soft_deleted_user_omits_delete_modal(admin_client):
     response = admin_client.get(reverse("admin:auth_user_change", args=[user.pk]))
     assert response.status_code == 200
     html = response.content.decode()
-    assert "admin-user-delete-modal" not in html
+    assert 'class="deletelink"' not in html
 
 
 @pytest.mark.django_db

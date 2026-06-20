@@ -10,10 +10,11 @@ from django.contrib.auth.models import User
 from accounts_app.services.email_branding import (
     bilingual_footer_plain,
     build_branded_email_html,
+    format_bilingual_subject,
     render_bilingual_block,
     render_bilingual_plain,
     render_cta_button,
-    resolve_logo_url,
+    resolve_logo_src_for_email,
     send_branded_email_smtp,
 )
 from accounts_app.services.email_dispatch import dispatch_in_background
@@ -30,8 +31,10 @@ SUBMIT_KIND_LABELS = {
 
 def build_auth_link(base_url: str, target_path: str) -> str:
     """Absolute URL to the workflow target page (auth redirect handled by the app)."""
+    from accounts_app.services.email_branding import require_secure_email_base_url
+
     safe_path = target_path if target_path.startswith("/") else f"/{target_path}"
-    return f"{base_url.rstrip('/')}{safe_path}"
+    return f"{require_secure_email_base_url(base_url)}{safe_path}"
 
 
 def _user_display(user: User | None) -> str:
@@ -82,6 +85,7 @@ def _reviewer_users(company: Company, *, exclude_user_id: int | None = None) -> 
     membership_qs = CompanyMembership.objects.filter(
         company=company,
         can_review=True,
+        is_deleted=False,
     ).select_related("user")
     if exclude_user_id:
         membership_qs = membership_qs.exclude(user_id=exclude_user_id)
@@ -109,6 +113,7 @@ def _viewer_users(
     membership_qs = CompanyMembership.objects.filter(
         company=company,
         can_view=True,
+        is_deleted=False,
     ).select_related("user")
     if exclude_user_id:
         membership_qs = membership_qs.exclude(user_id=exclude_user_id)
@@ -143,7 +148,10 @@ def _load_smtp_cfg():
 
 
 def _refresh_dashboard(dashboard_id: int) -> Dashboard:
-    return Dashboard.objects.select_related("created_by", "company").get(pk=dashboard_id)
+    return Dashboard.objects.select_related("created_by", "company").get(
+        pk=dashboard_id,
+        is_deleted=False,
+    )
 
 
 def notify_reviewers_pending(
@@ -230,12 +238,15 @@ def _send_reviewers_pending(dashboard_id: int, base_url: str, submit_kind: str) 
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
-    subject = "طلب مراجعة لوحة Dashboard Pending Review"
+    subject = format_bilingual_subject(
+        text_ar="طلب مراجعة لوحة تحكم",
+        text_en="Dashboard Pending Review",
+    )
     html = build_branded_email_html(
         header_ar="طلب مراجعة لوحة تحكم",
         header_en="Dashboard Pending Review",
         body_html=body_html,
-        logo_url=resolve_logo_url(base_url=base_url, cfg=cfg),
+        logo_url=resolve_logo_src_for_email(base_url=base_url, cfg=cfg),
     )
     _send_many(cfg, recipients=recipients, subject=subject, plain=plain, html=html)
 
@@ -322,12 +333,15 @@ def _send_creator_rejected(
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
-    subject = "رفض لوحة تحكم Dashboard Rejected"
+    subject = format_bilingual_subject(
+        text_ar="تم رفض لوحة التحكم",
+        text_en="Dashboard Rejected",
+    )
     html = build_branded_email_html(
         header_ar="تم رفض لوحة التحكم",
         header_en="Dashboard Rejected",
         body_html=body_html,
-        logo_url=resolve_logo_url(base_url=base_url, cfg=cfg),
+        logo_url=resolve_logo_src_for_email(base_url=base_url, cfg=cfg),
     )
     try:
         send_branded_email_smtp(cfg, to_addr=recipient, subject=subject, plain=plain, html=html)
@@ -419,12 +433,15 @@ def _send_viewers_published(dashboard_id: int, base_url: str, reviewer_id: int) 
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
-    subject = "اعتماد لوحة تحكم Dashboard Published"
+    subject = format_bilingual_subject(
+        text_ar="تم اعتماد لوحة تحكم",
+        text_en="Dashboard Published",
+    )
     html = build_branded_email_html(
         header_ar="تم اعتماد لوحة تحكم",
         header_en="Dashboard Published",
         body_html=body_html,
-        logo_url=resolve_logo_url(base_url=base_url, cfg=cfg),
+        logo_url=resolve_logo_src_for_email(base_url=base_url, cfg=cfg),
     )
     _send_many(cfg, recipients=recipients, subject=subject, plain=plain, html=html)
 
@@ -502,12 +519,15 @@ def _send_workflow_assignee(dashboard_id: int, base_url: str, assignee_id: int) 
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
-    subject = "اطلاع مطلوب Dashboard Acknowledgment"
+    subject = format_bilingual_subject(
+        text_ar="لوحة بانتظار اطلاعك",
+        text_en="Dashboard Acknowledgment Required",
+    )
     html = build_branded_email_html(
         header_ar="لوحة بانتظار اطلاعك",
         header_en="Dashboard Awaiting Acknowledgment",
         body_html=body_html,
-        logo_url=resolve_logo_url(base_url=base_url, cfg=cfg),
+        logo_url=resolve_logo_src_for_email(base_url=base_url, cfg=cfg),
     )
     try:
         send_branded_email_smtp(cfg, to_addr=recipient, subject=subject, plain=plain, html=html)
@@ -587,12 +607,15 @@ def _send_creator_published(
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
-    subject = "تم نشر لوحتك Dashboard Published"
+    subject = format_bilingual_subject(
+        text_ar="تم نشر لوحتك",
+        text_en="Your Dashboard Was Published",
+    )
     html = build_branded_email_html(
         header_ar="تم نشر لوحتك",
         header_en="Your Dashboard Was Published",
         body_html=body_html,
-        logo_url=resolve_logo_url(base_url=base_url, cfg=cfg),
+        logo_url=resolve_logo_src_for_email(base_url=base_url, cfg=cfg),
     )
     try:
         send_branded_email_smtp(cfg, to_addr=recipient, subject=subject, plain=plain, html=html)

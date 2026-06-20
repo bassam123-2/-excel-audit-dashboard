@@ -58,6 +58,8 @@ class ActiveCompanyMiddleware:
         return self.get_response(request)
 
     def _is_exempt(self, path: str) -> bool:
+        if path.startswith("/set-password/"):
+            return True
         if path in self.EXEMPT_PATHS:
             return True
         return any(path.startswith(prefix) for prefix in self.EXEMPT_PREFIXES)
@@ -86,11 +88,14 @@ class PasswordExpiryMiddleware:
         return self.get_response(request)
 
     def _is_exempt(self, path: str) -> bool:
+        if path.startswith("/set-password/"):
+            return True
         if path in self.EXEMPT_PATHS:
             return True
         if path.startswith("/profile"):
             return True
         return any(path.startswith(prefix) for prefix in self.EXEMPT_PREFIXES)
+
 
     def _must_change_password(self, user) -> bool:
         profile, _ = UserProfile.objects.get_or_create(user=user)
@@ -131,6 +136,8 @@ class IdleSessionMiddleware:
         return self.get_response(request)
 
     def _is_exempt(self, path: str) -> bool:
+        if path.startswith("/set-password/"):
+            return True
         if path in ActiveCompanyMiddleware.EXEMPT_PATHS:
             return True
         if path.startswith("/profile"):

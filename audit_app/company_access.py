@@ -17,7 +17,7 @@ SESSION_ACTIVE_COMPANY_KEY = "active_company_id"
 
 
 def active_company_queryset() -> QuerySet[Company]:
-    return Company.objects.filter(is_active=True)
+    return Company.objects.filter(is_active=True, is_deleted=False)
 
 
 def active_main_companies() -> QuerySet[Company]:
@@ -35,13 +35,13 @@ def active_subsidiaries_of(parent: Company) -> QuerySet[Company]:
 
 
 def company_is_effectively_active(company: Company | None) -> bool:
-    if company is None or not company.is_active:
+    if company is None or not company.is_active or company.is_deleted:
         return False
     if company.parent_id is None:
         return True
     parent = company.parent
     while parent is not None:
-        if not parent.is_active:
+        if not parent.is_active or parent.is_deleted:
             return False
         parent = parent.parent
     return True
@@ -120,7 +120,11 @@ def user_membership(user, company: Company | None) -> CompanyMembership | None:
             can_delete_drafts=True,
         )
     try:
-        return CompanyMembership.objects.get(user=user, company=company)
+        return CompanyMembership.objects.get(
+            user=user,
+            company=company,
+            is_deleted=False,
+        )
     except CompanyMembership.DoesNotExist:
         return None
 
@@ -161,7 +165,11 @@ def set_active_company(request, company_id: int) -> bool:
     if company is None or not company_is_effectively_active(company):
         return False
     if not request.user.is_superuser:
-        if not CompanyMembership.objects.filter(user=request.user, company=company).exists():
+        if not CompanyMembership.objects.filter(
+            user=request.user,
+            company=company,
+            is_deleted=False,
+        ).exists():
             return False
     request.session[SESSION_ACTIVE_COMPANY_KEY] = company.pk
     return True

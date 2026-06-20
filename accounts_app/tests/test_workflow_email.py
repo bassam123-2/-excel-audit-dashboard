@@ -17,7 +17,8 @@ from tests.factories import make_dashboard, make_membership, make_user
 
 
 @pytest.mark.unit
-def test_build_auth_link_points_to_target():
+def test_build_auth_link_points_to_target(monkeypatch):
+    monkeypatch.delenv("PUBLIC_SITE_URL", raising=False)
     link = build_auth_link("https://example.com/", "/dashboards/42/")
     assert link == "https://example.com/dashboards/42/"
 

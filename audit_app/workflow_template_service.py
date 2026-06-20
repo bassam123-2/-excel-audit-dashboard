@@ -24,12 +24,16 @@ def next_workflow_version(company: Company) -> int:
 
 
 def company_has_workflow(company: Company) -> bool:
-    return WorkflowTemplate.objects.filter(company=company).exists()
+    return WorkflowTemplate.objects.filter(company=company, is_deleted=False).exists()
 
 
 def get_active_workflow_template(company: Company) -> WorkflowTemplate | None:
     return (
-        WorkflowTemplate.objects.filter(company=company, is_active=True)
+        WorkflowTemplate.objects.filter(
+            company=company,
+            is_active=True,
+            is_deleted=False,
+        )
         .order_by("-version")
         .first()
     )

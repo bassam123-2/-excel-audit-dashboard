@@ -19,18 +19,19 @@ def test_otp_email_bilingual_html_branding():
     assert BRAND_RED in html
     assert f'src="{logo_url}"' in html
     assert "cid:company_logo" not in html
-    assert "Abdullatif Alissa Group Holding Co." in html
+    assert 'alt="Audit Dashboard"' in html
     assert 'dir="rtl"' in html
     assert 'dir="ltr"' in html
 
 
 @pytest.mark.unit
-def test_otp_email_subject_no_company_suffix():
+def test_otp_email_subject_branded_with_code():
     content = build_otp_email_content(code="123456", locale="ar")
     subject = content["subject"]
-    assert "—" not in subject
-    assert "Audit Dashboard" not in subject
-    assert subject == "رمز التحقق Your OTP Code"
+    assert subject.startswith("[Audit Dashboard]")
+    assert "123456" in subject
+    assert "رمز التحقق" in subject
+    assert "OTP Code" in subject
 
 
 @pytest.mark.unit
@@ -58,7 +59,9 @@ def test_company_logo_file_exists():
 
 
 @pytest.mark.unit
-def test_resolve_logo_url_from_base_url():
+def test_resolve_logo_url_from_base_url(monkeypatch):
+    monkeypatch.delenv("EMAIL_LOGO_URL", raising=False)
+    monkeypatch.delenv("PUBLIC_SITE_URL", raising=False)
     url = resolve_logo_url(base_url="https://dashboard.example.com/")
     assert url is not None
     assert url.startswith("https://dashboard.example.com/static/logos/")

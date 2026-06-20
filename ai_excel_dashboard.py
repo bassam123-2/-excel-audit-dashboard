@@ -12258,46 +12258,29 @@ def _valid_obs_email(addr: str) -> bool:
 def send_audit_observation_email_smtp(
     cfg: dict[str, Any], *, to_addr: str, observation: str
 ) -> None:
+    from accounts_app.services.email_branding import (
+        format_bilingual_subject,
+        send_plain_email_smtp,
+    )
+
     observation = observation.strip()
     if not observation or len(observation) > 8000:
         raise ValueError("invalid_observation")
     to_addr = to_addr.strip()
     if not _valid_obs_email(to_addr):
         raise ValueError("invalid_recipient")
-    host = str(cfg.get("host", "")).strip()
-    from_addr = str(cfg.get("from", "")).strip()
-    if not host or not from_addr:
-        raise ValueError("smtp_incomplete_config")
-    port = int(cfg.get("port", 587))
-    use_tls = bool(cfg.get("use_tls", True))
-    user = str(cfg.get("username") or cfg.get("user") or from_addr).strip()
-    password = str(cfg.get("password", ""))
-    subject = f"ملاحظة تدقيق: {observation}"
+
+    subject = format_bilingual_subject(
+        text_ar="ملاحظة تدقيق",
+        text_en="Audit Observation",
+    )
     body = (
         "السلام عليكم،\n\n"
         "نود إبلاغكم بخصوص الملاحظة التالية:\n"
         f"{observation}\n\n"
         "مع التحية،"
     )
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = Header(subject, "utf-8")
-    from_name = str(
-        cfg.get("from_name") or cfg.get("sender_name") or "ادارة المراجعة"
-    ).strip()
-    if from_name:
-        msg["From"] = formataddr((str(Header(from_name, "utf-8")), from_addr))
-    else:
-        msg["From"] = from_addr
-    msg["To"] = to_addr
-    ctx = ssl.create_default_context()
-    with smtplib.SMTP(host, port, timeout=60) as smtp:
-        smtp.ehlo()
-        if use_tls:
-            smtp.starttls(context=ctx)
-            smtp.ehlo()
-        if password:
-            smtp.login(user, password)
-        smtp.sendmail(from_addr, [to_addr], msg.as_string())
+    send_plain_email_smtp(cfg, to_addr=to_addr, subject=subject, plain=body)
 
 
 def parse_audit_plan_pptx_bytes(

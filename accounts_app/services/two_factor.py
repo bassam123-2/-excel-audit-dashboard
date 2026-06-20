@@ -113,7 +113,7 @@ def send_otp_email_smtp(
 def initiate_two_factor(user, locale: str, *, base_url: str | None = None, is_resend: bool = False) -> None:
     from ai_excel_dashboard import load_smtp_config
 
-    from accounts_app.services.email_branding import resolve_logo_url
+    from accounts_app.services.email_branding import resolve_logo_src_for_email
 
     if is_resend:
         remaining = get_resend_cooldown_remaining(user.pk)
@@ -127,6 +127,6 @@ def initiate_two_factor(user, locale: str, *, base_url: str | None = None, is_re
     if not cfg:
         raise ValueError("smtp_not_configured")
     code = generate_and_store_otp(user.pk)
-    logo_url = resolve_logo_url(base_url=base_url, cfg=cfg)
+    logo_url = resolve_logo_src_for_email(base_url=base_url, cfg=cfg)
     send_otp_email_smtp(cfg, to_addr=email, code=code, locale=locale, logo_url=logo_url)
     record_otp_sent(user.pk)

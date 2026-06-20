@@ -9,7 +9,7 @@ import shutil
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
@@ -38,7 +38,6 @@ from .dashboard_workflow import (
     can_user_submit,
     dashboard_workflow_progress,
     dashboards_queryset_for_user,
-    deleted_dashboards_queryset_for_user,
     filter_dashboards_queryset,
     get_dashboard_for_review,
     get_dashboard_for_user,
@@ -49,7 +48,6 @@ from .dashboard_workflow import (
     has_view_perm,
     load_dashboard_cross_company,
     reject_dashboard,
-    restore_dashboard,
     soft_delete_dashboard,
     submit_dashboard,
 )
@@ -108,6 +106,20 @@ def _wants_json(request) -> bool:
         return True
     accept = request.headers.get("Accept", "")
     return "application/json" in accept
+
+
+def render_page_not_found(request):
+    """Styled 404 page (works in DEBUG mode; avoids Django technical 404)."""
+    return render(request, "404.html", status=404)
+
+
+def render_embed_not_found(request):
+    """Minimal 404 for dashboard iframe embed."""
+    return render(request, "reports_app/embed_not_found.html", status=404)
+
+
+def page_not_found_view(request, exception=None):
+    return render_page_not_found(request)
 
 
 def _clear_dashboard_html_cache(dashboard: Dashboard) -> None:
@@ -211,7 +223,10 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
     lang = normalize_locale(request.session.get("ui_lang", "en"))
     return {
         "icon_choices": ICON_CHOICES,
-        "template_types": DashboardTemplateType.objects.filter(is_active=True),
+        "template_types": DashboardTemplateType.objects.filter(
+            is_active=True,
+            is_deleted=False,
+        ),
         "resubmit_dashboard": resubmit_dashboard,
         "is_edit_mode": resubmit_dashboard is not None,
         "attachment_slots": build_attachment_form_slots(
@@ -385,15 +400,10 @@ def dashboard_list(request):
         messages.error(request, get_ui(lang)["alert_no_view_perm"])
         return redirect("profile")
 
-    show_trash = request.GET.get("trash") == "1" and _has_delete_perm(request.user)
-    if show_trash:
-        dashboards = deleted_dashboards_queryset_for_user(
-            request.user, _active_company(request)
-        )
-    else:
-        dashboards = dashboards_queryset_for_user(
-            request.user, _active_company(request)
-        )
+    show_trash = False
+    dashboards = dashboards_queryset_for_user(
+        request.user, _active_company(request)
+    )
     company = _active_company(request)
     filter_key = request.GET.get("filter", "").strip()
     if not filter_key and request.session.get("dashboard_list_filter"):
@@ -422,11 +432,6 @@ def dashboard_list(request):
     }
     undo_deleted_pk = None
     undo_deleted_name = ""
-    if _has_delete_perm(request.user) and not show_trash:
-        raw_deleted = request.GET.get("deleted", "").strip()
-        if raw_deleted.isdigit():
-            undo_deleted_pk = int(raw_deleted)
-            undo_deleted_name = request.GET.get("deleted_name", "").strip()
     return render(
         request,
         "reports_app/dashboard_list.html",
@@ -452,13 +457,9 @@ def dashboard_detail(request, pk: int):
         messages.error(request, get_ui(lang)["alert_no_view_perm"])
         return redirect("profile")
 
-    dashboard = _resolve_dashboard_request(
-        request,
-        pk,
-        allow_deleted=_has_delete_perm(request.user),
-    )
+    dashboard = _resolve_dashboard_request(request, pk)
     if not dashboard:
-        raise Http404
+        return render_page_not_found(request)
     rejection_logs = dashboard.rejection_logs.select_related("rejected_by").all()
     company = _active_company(request)
     workflow_instance = getattr(dashboard, "workflow_instance", None)
@@ -485,7 +486,6 @@ def dashboard_detail(request, pk: int):
                 if workflow_instance
                 else []
             ),
-            "is_deleted_view": dashboard.is_deleted,
         },
     )
 
@@ -498,7 +498,9 @@ def dashboard_delete(request, pk: int):
 
     dashboard = _resolve_dashboard_request(request, pk)
     if not dashboard or dashboard.is_deleted:
-        raise Http404
+        if _wants_json(request):
+            return JsonResponse({"error": "not_found"}, status=404)
+        return render_page_not_found(request)
 
     company = _active_company(request)
     if not can_user_delete_dashboard(request.user, dashboard, company):
@@ -511,12 +513,6 @@ def dashboard_delete(request, pk: int):
     if _wants_json(request):
         return JsonResponse({"ok": True, "pk": pk, "name": name})
 
-    if _has_delete_perm(request.user):
-        from urllib.parse import quote
-
-        url = reverse("dashboard_list") + f"?deleted={pk}&deleted_name={quote(name)}"
-        return redirect(url)
-
     messages.success(request, ui["dl_delete_success"] + f" ({name})")
     return redirect("dashboard_list")
 
@@ -524,20 +520,7 @@ def dashboard_delete(request, pk: int):
 @login_required
 @require_http_methods(["POST"])
 def dashboard_restore(request, pk: int):
-    lang = request.session.get("ui_lang", "en")
-    ui = get_ui(lang)
-
-    if not _has_delete_perm(request.user):
-        messages.error(request, ui["alert_no_delete_perm"])
-        return redirect("dashboard_list")
-
-    dashboard = _resolve_dashboard_request(request, pk, allow_deleted=True)
-    if not dashboard or not dashboard.is_deleted:
-        raise Http404
-    name = dashboard.name
-    restore_dashboard(dashboard)
-    messages.success(request, ui["dl_restore_success"] + f" ({name})")
-    return redirect("dashboard_list")
+    return render_page_not_found(request)
 
 
 @login_required
@@ -557,13 +540,9 @@ def dashboard_serve(request, pk: int):
     if not _has_view_perm(request.user, request):
         return HttpResponse("403 Forbidden", status=403)
 
-    dashboard = _resolve_dashboard_request(
-        request,
-        pk,
-        allow_deleted=_has_delete_perm(request.user),
-    )
+    dashboard = _resolve_dashboard_request(request, pk)
     if not dashboard:
-        return HttpResponse("404 Not Found", status=404)
+        return render_embed_not_found(request)
     lang = report_locale_for_dashboard(dashboard, request)
     force_regen = request.GET.get("nocache") == "1"
 

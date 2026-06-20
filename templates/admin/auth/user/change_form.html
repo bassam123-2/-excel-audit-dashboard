@@ -8,9 +8,6 @@
 {% else %}
 <script>document.documentElement.setAttribute("data-pw-username", "");</script>
 {% endif %}
-{% if change and has_delete_permission and original and not user_is_soft_deleted %}
-<link rel="stylesheet" href="{% static 'css/admin_user_delete_modal.css' %}">
-{% endif %}
 {% endblock %}
 
 {% block field_sets %}
@@ -26,12 +23,18 @@
 {% endblock %}
 
 {% block submit_buttons_bottom %}
-{% if user_is_soft_deleted %}
+{% if user_is_soft_deleted and can_restore_user %}
 <div class="submit-row">
     <p class="deletelink-box soft-deleted-notice">
         {% translate "This user is soft-deleted and cannot sign in." %}
     </p>
     <input type="submit" value="{% translate 'Restore user' %}" class="default" name="_restore">
+</div>
+{% elif user_is_soft_deleted %}
+<div class="submit-row">
+    <p class="deletelink-box soft-deleted-notice">
+        {% translate "This user is soft-deleted and cannot sign in." %}
+    </p>
 </div>
 {% endif %}
 {{ block.super }}
@@ -39,10 +42,6 @@
 
 {% block extrabody %}
 {{ block.super }}
-{% if change and has_delete_permission and original and not user_is_soft_deleted %}
-{% include "admin/auth/user/delete_modal.html" %}
-<script src="{% static 'js/admin_user_delete_modal.js' %}" defer></script>
-{% endif %}
 {% if not change %}
 <script src="{% static 'js/password_rules.js' %}"></script>
 <script>

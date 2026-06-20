@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from django.contrib import admin
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, QuerySet, Sum
 from django.http import Http404, HttpResponseRedirect
@@ -63,6 +64,16 @@ class AdminChangelistV2Mixin:
     CL_V2_QUICK_ACTIONS: tuple[str, ...] = ()
     CL_V2_QUICK_ACTION_ICONS: dict[str, str] = {}
     cl_v2_default_filter_params: dict[str, str] = {}
+
+    @admin.display(description=_("ID"), ordering="id")
+    def id_display(self, obj):
+        return obj.pk
+
+    def get_list_display(self, request):
+        list_display = super().get_list_display(request)
+        if "id" not in list_display:
+            return list_display
+        return tuple("id_display" if name == "id" else name for name in list_display)
 
     def get_cl_v2_subtitle(self, request) -> str:
         return self.cl_v2_subtitle

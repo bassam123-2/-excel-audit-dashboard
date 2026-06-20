@@ -8,17 +8,17 @@ from django.urls import reverse
 ADMIN_V2_CHANGE_LISTS = (
     ("admin:auth_group_changelist", {}),
     ("admin:auth_user_changelist", {"deleted": "active"}),
-    ("admin:audit_app_company_changelist", {}),
-    ("admin:audit_app_companymembership_changelist", {}),
-    ("admin:audit_app_observationrecord_changelist", {}),
-    ("admin:audit_app_dashboardrejectionlog_changelist", {}),
-    ("admin:audit_app_dashboardtemplatetype_changelist", {}),
-    ("admin:audit_app_dashboardworkflowinstance_changelist", {}),
-    ("admin:audit_app_dashboard_changelist", {}),
-    ("admin:audit_app_reportartifact_changelist", {}),
-    ("admin:audit_app_uploadsession_changelist", {}),
-    ("admin:audit_app_dashboardworkflowsteplog_changelist", {}),
-    ("admin:audit_app_workflowtemplate_changelist", {}),
+    ("admin:audit_app_company_changelist", {"deleted": "active"}),
+    ("admin:audit_app_companymembership_changelist", {"deleted": "active"}),
+    ("admin:audit_app_observationrecord_changelist", {"deleted": "active"}),
+    ("admin:audit_app_dashboardrejectionlog_changelist", {"deleted": "active"}),
+    ("admin:audit_app_dashboardtemplatetype_changelist", {"deleted": "active"}),
+    ("admin:audit_app_dashboardworkflowinstance_changelist", {"deleted": "active"}),
+    ("admin:audit_app_dashboard_changelist", {"deleted": "active"}),
+    ("admin:audit_app_reportartifact_changelist", {"deleted": "active"}),
+    ("admin:audit_app_uploadsession_changelist", {"deleted": "active"}),
+    ("admin:audit_app_dashboardworkflowsteplog_changelist", {"deleted": "active"}),
+    ("admin:audit_app_workflowtemplate_changelist", {"deleted": "active"}),
 )
 
 

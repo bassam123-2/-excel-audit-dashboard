@@ -6,6 +6,7 @@ __pycache__/
 .env
 config/
 .cursor/
+scripts/deploy.sh
 
 # Generated / local runtime
 audit_logs/*.json
