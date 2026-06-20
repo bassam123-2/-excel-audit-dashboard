@@ -26,10 +26,12 @@ def test_login_template_loading_state():
 
 
 @pytest.mark.unit
-def test_dashboard_list_undo_toast_markup():
+def test_dashboard_list_delete_form_without_undo_toast():
+    """Deleted dashboards restore via admin only — no undo toast on the list page."""
     html = (
         Path(__file__).resolve().parents[1] / "templates/reports_app/dashboard_list.html"
     ).read_text(encoding="utf-8")
-    assert "undo-toast" in html
     assert "js-super-delete-form" in html
-    assert "dl_undo_btn" in html or "btn-undo" in html
+    assert "undo-toast" not in html
+    assert "dashboard_restore" not in html
+    assert "btn-undo" not in html

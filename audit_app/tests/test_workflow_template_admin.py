@@ -188,7 +188,7 @@ class WorkflowTemplateAdminTests(TestCase):
             is_active=False,
         )
         url = reverse("admin:audit_app_workflowtemplate_changelist")
-        response = self.client.get(url)
+        response = self.client.get(url, {"deleted": "active"})
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertIn(f"workflowtemplate/{self.template.pk}/change/", content)
@@ -202,7 +202,7 @@ class WorkflowTemplateAdminTests(TestCase):
             is_active=False,
         )
         url = reverse("admin:audit_app_workflowtemplate_changelist")
-        response = self.client.get(url, {"is_active": "0"})
+        response = self.client.get(url, {"is_active": "0", "deleted": "active"})
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertIn(f"workflowtemplate/{inactive.pk}/change/", content)

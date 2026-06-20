@@ -350,7 +350,7 @@ def build_branded_email_html(
         logo_row = (
             f'<tr><td align="center" style="padding:28px 24px 12px;">'
             f'<img src="{safe_src}" alt="{escape(BRAND_NAME_EN)}" width="240" '
-            f'style="display:block;max-width:240px;width:100%;height:auto;margin:0 auto;border:0;">'
+            f'style="max-width:240px;width:240px;height:auto;margin:0 auto;border:0;">'
             f"</td></tr>"
         )
 

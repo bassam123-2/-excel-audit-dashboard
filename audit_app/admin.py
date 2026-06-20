@@ -938,7 +938,7 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
 
         if request.method == "POST":
             self._soft_delete_user(obj)
-            self.log_deletion(request, obj, str(obj))
+            self.log_deletions(request, self.model.objects.filter(pk=obj.pk))
             self.message_user(
                 request,
                 gettext('The user "%(name)s" was removed successfully.')

@@ -271,7 +271,7 @@ class SoftDeleteAdminMixin:
 
         if request.method == "POST":
             self.perform_soft_delete(request, obj)
-            self.log_deletion(request, obj, str(obj))
+            self.log_deletions(request, self.model.objects.filter(pk=obj.pk))
             self.message_user(
                 request,
                 self._soft_delete_success_message(obj),
