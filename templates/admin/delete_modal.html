@@ -1,0 +1,83 @@
+{% load i18n static %}
+{% translate "Delete confirmation" as admin_delete_title_generic %}
+{% translate "Remove user" as admin_delete_title_user %}
+{% translate "Remove selected items" as admin_delete_title_bulk %}
+{% translate "Remove selected users" as admin_delete_title_user_bulk %}
+{% translate "Are you sure you want to remove __OBJECT__?" as admin_delete_lead_generic %}
+{% translate "Are you sure you want to remove the user __OBJECT__?" as admin_delete_lead_user %}
+{% translate "Are you sure you want to remove the selected items?" as admin_delete_lead_bulk %}
+{% translate "The following items will be removed:" as admin_delete_items_label %}
+{% translate "The account will be deactivated and hidden from the user list, but the record will remain in the database." as admin_delete_note_user_1 %}
+{% translate 'You can view and restore deleted users from the user list using the "Deleted users" filter.' as admin_delete_note_user_2 %}
+{% translate "The record will be hidden from the admin list, but it will remain in the database." as admin_delete_note_generic_1 %}
+{% translate 'You can view and restore deleted records using the "Deleted records" filter.' as admin_delete_note_generic_2 %}
+{% translate "Yes, remove" as admin_delete_confirm_generic %}
+{% translate "Yes, remove user" as admin_delete_confirm_user %}
+{% translate "Yes, remove selected" as admin_delete_confirm_bulk %}
+{% translate "Yes, remove users" as admin_delete_confirm_user_bulk %}
+{% translate "Cancel" as admin_delete_cancel %}
+<div
+  id="admin-delete-modal"
+  class="admin-delete-modal"
+  hidden
+  aria-hidden="true"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="admin-delete-modal-title"
+  data-copy-title-generic="{{ admin_delete_title_generic|escape }}"
+  data-copy-title-user="{{ admin_delete_title_user|escape }}"
+  data-copy-title-bulk="{{ admin_delete_title_bulk|escape }}"
+  data-copy-title-user-bulk="{{ admin_delete_title_user_bulk|escape }}"
+  data-copy-lead-generic="{{ admin_delete_lead_generic|escape }}"
+  data-copy-lead-user="{{ admin_delete_lead_user|escape }}"
+  data-copy-lead-bulk="{{ admin_delete_lead_bulk|escape }}"
+  data-copy-items-label="{{ admin_delete_items_label|escape }}"
+  data-copy-note-user-1="{{ admin_delete_note_user_1|escape }}"
+  data-copy-note-user-2="{{ admin_delete_note_user_2|escape }}"
+  data-copy-note-generic-1="{{ admin_delete_note_generic_1|escape }}"
+  data-copy-note-generic-2="{{ admin_delete_note_generic_2|escape }}"
+  data-copy-confirm-generic="{{ admin_delete_confirm_generic|escape }}"
+  data-copy-confirm-user="{{ admin_delete_confirm_user|escape }}"
+  data-copy-confirm-bulk="{{ admin_delete_confirm_bulk|escape }}"
+  data-copy-confirm-user-bulk="{{ admin_delete_confirm_user_bulk|escape }}"
+  data-copy-cancel="{{ admin_delete_cancel|escape }}"
+>
+  <div class="admin-delete-modal__backdrop" data-admin-delete-cancel></div>
+  <div class="admin-delete-modal__dialog">
+    <header class="admin-delete-modal__header">
+      <div class="admin-delete-modal__icon" aria-hidden="true" data-admin-delete-icon>
+        <i class="bi bi-trash3-fill"></i>
+      </div>
+      <div class="admin-delete-modal__title-wrap">
+        <h2 id="admin-delete-modal-title" class="admin-delete-modal__title" data-admin-delete-title></h2>
+      </div>
+      <button
+        type="button"
+        class="admin-delete-modal__close"
+        data-admin-delete-cancel
+        aria-label="{% translate 'Close' %}"
+      >
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </header>
+    <div class="admin-delete-modal__body">
+      <p class="admin-delete-modal__lead" data-admin-delete-lead></p>
+      <p class="admin-delete-modal__items-label" data-admin-delete-items-label hidden></p>
+      <ul class="admin-delete-modal__items" data-admin-delete-items hidden></ul>
+      <ul class="admin-delete-modal__notes" data-admin-delete-notes hidden></ul>
+    </div>
+    <footer class="admin-delete-modal__footer">
+      <button type="button" class="admin-delete-modal__btn admin-delete-modal__btn--cancel" data-admin-delete-cancel>
+        {% translate "Cancel" %}
+      </button>
+      <button type="button" class="admin-delete-modal__btn admin-delete-modal__btn--confirm" data-admin-delete-confirm>
+        <i class="bi bi-trash3" aria-hidden="true"></i>
+        <span data-admin-delete-confirm-label>{% translate "Yes, remove" %}</span>
+      </button>
+    </footer>
+  </div>
+</div>
+<form id="admin-delete-form" method="post" hidden>
+  {% csrf_token %}
+  <input type="hidden" name="post" value="yes">
+</form>

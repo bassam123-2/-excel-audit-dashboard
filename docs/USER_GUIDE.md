@@ -59,19 +59,32 @@ To force regeneration after a server update:
 
 | Status | Meaning |
 |--------|---------|
-| **Draft** | Just uploaded or resubmitted; awaiting review |
-| **Published** | Approved and visible to viewers |
-| **Rejected** | Sent back to uploader with a reason |
+| **Draft** | Saved by uploader; private to creator until submitted |
+| **Under review** | Submitted; locked for editing; reviewers can approve or reject |
+| **In workflow** | Approved; moving through configured acknowledgment steps |
+| **Published** | Fully approved and visible to viewers |
+| **Rejected** | Returned to creator with a reason (private until resubmitted) |
+
+Typical flow (when **Use multi-step workflow** is enabled on the company):
+
+1. **Upload** → **Draft** (creator only)
+2. **Submit for review** → **Under review** (reviewers notified)
+3. **Approve** → **In workflow** (each assignee clicks **Acknowledged**)
+4. Last acknowledgment → **Published** (viewers notified)
 
 Actions (depending on your permissions):
 
-- **Approve** — reviewer publishes the dashboard
-- **Reject** — reviewer returns it with feedback
-- **Resubmit** — uploader replaces Excel/decks on a rejected dashboard
-- **Delete** — soft-delete (can be restored by admins)
+- **Submit for review** — uploader sends a draft to reviewers
+- **Approve** — reviewer accepts (starts workflow or publishes if no steps configured)
+- **Acknowledged** — workflow assignee confirms their step
+- **Reject** — reviewer returns dashboard with mandatory feedback → **Rejected**
+- **Edit draft / Resubmit** — uploader fixes data (draft or after rejection)
+- **Delete** — remove draft (if allowed) or soft-delete (superuser)
 - **Restore** — recover a deleted dashboard
 
-Users with **view own only** see dashboards they created; reviewers and admins see company-wide lists according to group membership.
+Users with **view own only** see dashboards they created; viewers see published company dashboards; reviewers see submitted/workflow/published items (not others' private drafts or rejections).
+
+List **filters** (chip bar) appear when you have multiple visibility buckets — e.g. **Needs my review**, **Published**, **My dashboards**.
 
 ## 6. Excel company matching
 

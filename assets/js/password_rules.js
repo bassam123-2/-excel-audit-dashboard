@@ -298,7 +298,7 @@
 
         onInput();
 
-        if (scope.id === "changePwForm") {
+        if (scope.id === "changePwForm" || scope.id === "setPwForm") {
             bindSubmitGuard(scope, fields);
             return;
         }
@@ -321,6 +321,10 @@
         var profileForm = document.getElementById("changePwForm");
         if (profileForm) {
             scopes.push(profileForm);
+        }
+        var setPwForm = document.getElementById("setPwForm");
+        if (setPwForm) {
+            scopes.push(setPwForm);
         }
         document.querySelectorAll('.password-reset-section[data-pw-scope="admin-reset"]').forEach(function (el) {
             scopes.push(el);

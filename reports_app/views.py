@@ -9,7 +9,7 @@ import shutil
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
@@ -27,16 +27,20 @@ from dashboard_locale import normalize_locale  # noqa: E402
 from audit_app.company_access import user_must_select_company
 from audit_app.models import Dashboard, DashboardTemplateType, DashboardStatus, ICON_CHOICES
 from .dashboard_workflow import (
+    FILTER_ALL,
     activate_company_for_dashboard,
     approve_dashboard,
+    available_dashboard_filters,
+    can_user_acknowledge,
+    can_user_delete_dashboard,
     can_user_resubmit,
     can_user_review,
+    can_user_submit,
+    dashboard_workflow_progress,
     dashboards_queryset_for_user,
-    can_user_delete_dashboard,
-    deleted_dashboards_queryset_for_user,
+    filter_dashboards_queryset,
     get_dashboard_for_review,
     get_dashboard_for_user,
-    has_delete_draft_perm,
     has_delete_perm,
     has_review_perm,
     has_upload_perm,
@@ -44,8 +48,13 @@ from .dashboard_workflow import (
     has_view_perm,
     load_dashboard_cross_company,
     reject_dashboard,
-    restore_dashboard,
     soft_delete_dashboard,
+    submit_dashboard,
+)
+from reports_app.workflow_engine import (
+    acknowledge_workflow_step,
+    company_uses_workflow_v2,
+    current_assignee_display,
 )
 from .services.report_generation import (
     build_attachment_form_slots,
@@ -97,6 +106,20 @@ def _wants_json(request) -> bool:
         return True
     accept = request.headers.get("Accept", "")
     return "application/json" in accept
+
+
+def render_page_not_found(request):
+    """Styled 404 page (works in DEBUG mode; avoids Django technical 404)."""
+    return render(request, "404.html", status=404)
+
+
+def render_embed_not_found(request):
+    """Minimal 404 for dashboard iframe embed."""
+    return render(request, "reports_app/embed_not_found.html", status=404)
+
+
+def page_not_found_view(request, exception=None):
+    return render_page_not_found(request)
 
 
 def _clear_dashboard_html_cache(dashboard: Dashboard) -> None:
@@ -200,7 +223,10 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
     lang = normalize_locale(request.session.get("ui_lang", "en"))
     return {
         "icon_choices": ICON_CHOICES,
-        "template_types": DashboardTemplateType.objects.filter(is_active=True),
+        "template_types": DashboardTemplateType.objects.filter(
+            is_active=True,
+            is_deleted=False,
+        ),
         "resubmit_dashboard": resubmit_dashboard,
         "is_edit_mode": resubmit_dashboard is not None,
         "attachment_slots": build_attachment_form_slots(
@@ -316,19 +342,25 @@ def analyze(request):
     else:
         messages.success(request, ui.get("upload_success_draft", ui["upload_success"]))
 
-    from accounts_app.services.workflow_email import notify_reviewers_pending
+    company = _active_company(request)
+    legacy_notify = company is None or not company_uses_workflow_v2(company)
+    if legacy_notify:
+        from accounts_app.services.workflow_email import notify_reviewers_pending
 
-    submit_kind = "new"
-    if resubmit_dashboard:
-        submit_kind = "edit" if was_draft_edit else "resubmit"
-    try:
-        notify_reviewers_pending(
-            dashboard,
-            base_url=request.build_absolute_uri("/"),
-            submit_kind=submit_kind,
-        )
-    except Exception:
-        logger.exception("Failed to send pending-review notification for dashboard %s", dashboard.pk)
+        submit_kind = "new"
+        if resubmit_dashboard:
+            submit_kind = "edit" if was_draft_edit else "resubmit"
+        try:
+            notify_reviewers_pending(
+                dashboard,
+                base_url=request.build_absolute_uri("/"),
+                submit_kind=submit_kind,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send pending-review notification for dashboard %s",
+                dashboard.pk,
+            )
 
     return redirect("dashboard_list")
 
@@ -341,6 +373,23 @@ def _inject_served_dashboard_html(
     return inject_web_mail_api(html_content, mail_url, plan_url)
 
 
+def _send_publish_notifications(request, dashboard, reviewer):
+    from accounts_app.services.workflow_email import (
+        notify_creator_published,
+        notify_viewers_published,
+    )
+
+    base_url = request.build_absolute_uri("/")
+    try:
+        notify_viewers_published(dashboard, base_url=base_url, reviewer=reviewer)
+    except Exception:
+        logger.exception("Failed to send publish notification for dashboard %s", dashboard.pk)
+    try:
+        notify_creator_published(dashboard, base_url=base_url, reviewer=reviewer)
+    except Exception:
+        logger.exception("Failed to send creator publish notification for dashboard %s", dashboard.pk)
+
+
 @login_required
 def dashboard_list(request):
     if user_must_select_company(request.user) and not _active_company(request):
@@ -351,16 +400,31 @@ def dashboard_list(request):
         messages.error(request, get_ui(lang)["alert_no_view_perm"])
         return redirect("profile")
 
-    show_trash = request.GET.get("trash") == "1" and _has_delete_perm(request.user)
-    if show_trash:
-        dashboards = deleted_dashboards_queryset_for_user(
-            request.user, _active_company(request)
-        )
-    else:
-        dashboards = dashboards_queryset_for_user(
-            request.user, _active_company(request)
-        )
+    show_trash = False
+    dashboards = dashboards_queryset_for_user(
+        request.user, _active_company(request)
+    )
     company = _active_company(request)
+    filter_key = request.GET.get("filter", "").strip()
+    if not filter_key and request.session.get("dashboard_list_filter"):
+        filter_key = request.session.get("dashboard_list_filter", FILTER_ALL)
+    available_filters = available_dashboard_filters(request.user, company, dashboards)
+    lang = request.session.get("ui_lang", "en")
+    ui = get_ui(lang)
+    if available_filters:
+        for item in available_filters:
+            item["label"] = ui.get(item["label_key"], item["label_key"])
+    if available_filters:
+        valid_keys = {item["key"] for item in available_filters}
+        if filter_key not in valid_keys:
+            filter_key = FILTER_ALL
+        request.session["dashboard_list_filter"] = filter_key
+        if filter_key != FILTER_ALL:
+            dashboards = filter_dashboards_queryset(
+                dashboards, request.user, company, filter_key
+            )
+    else:
+        filter_key = FILTER_ALL
     deletable_dashboard_ids = {
         dashboard.pk
         for dashboard in dashboards
@@ -368,11 +432,6 @@ def dashboard_list(request):
     }
     undo_deleted_pk = None
     undo_deleted_name = ""
-    if _has_delete_perm(request.user) and not show_trash:
-        raw_deleted = request.GET.get("deleted", "").strip()
-        if raw_deleted.isdigit():
-            undo_deleted_pk = int(raw_deleted)
-            undo_deleted_name = request.GET.get("deleted_name", "").strip()
     return render(
         request,
         "reports_app/dashboard_list.html",
@@ -382,6 +441,8 @@ def dashboard_list(request):
             "can_review_dashboards": has_review_perm(
                 request.user, company
             ),
+            "dashboard_filters": available_filters,
+            "active_dashboard_filter": filter_key,
             "show_trash": show_trash,
             "undo_deleted_pk": undo_deleted_pk,
             "undo_deleted_name": undo_deleted_name,
@@ -396,15 +457,12 @@ def dashboard_detail(request, pk: int):
         messages.error(request, get_ui(lang)["alert_no_view_perm"])
         return redirect("profile")
 
-    dashboard = _resolve_dashboard_request(
-        request,
-        pk,
-        allow_deleted=_has_delete_perm(request.user),
-    )
+    dashboard = _resolve_dashboard_request(request, pk)
     if not dashboard:
-        raise Http404
+        return render_page_not_found(request)
     rejection_logs = dashboard.rejection_logs.select_related("rejected_by").all()
     company = _active_company(request)
+    workflow_instance = getattr(dashboard, "workflow_instance", None)
     return render(
         request,
         "reports_app/dashboard_detail.html",
@@ -413,11 +471,21 @@ def dashboard_detail(request, pk: int):
             "rejection_logs": rejection_logs,
             "can_review_dashboards": has_review_perm(request.user, company),
             "can_resubmit": can_user_resubmit(request.user, dashboard, company),
+            "can_submit_for_review": can_user_submit(request.user, dashboard, company),
             "can_approve_reject": can_user_review(request.user, dashboard, company),
+            "can_acknowledge": can_user_acknowledge(request.user, dashboard, company),
             "can_delete_dashboard": can_user_delete_dashboard(
                 request.user, dashboard, company
             ),
-            "is_deleted_view": dashboard.is_deleted,
+            "workflow_progress": dashboard_workflow_progress(dashboard),
+            "workflow_assignee_name": current_assignee_display(dashboard),
+            "workflow_step_logs": (
+                workflow_instance.step_logs.select_related(
+                    "assignee", "acknowledged_by"
+                ).all()
+                if workflow_instance
+                else []
+            ),
         },
     )
 
@@ -430,7 +498,9 @@ def dashboard_delete(request, pk: int):
 
     dashboard = _resolve_dashboard_request(request, pk)
     if not dashboard or dashboard.is_deleted:
-        raise Http404
+        if _wants_json(request):
+            return JsonResponse({"error": "not_found"}, status=404)
+        return render_page_not_found(request)
 
     company = _active_company(request)
     if not can_user_delete_dashboard(request.user, dashboard, company):
@@ -443,12 +513,6 @@ def dashboard_delete(request, pk: int):
     if _wants_json(request):
         return JsonResponse({"ok": True, "pk": pk, "name": name})
 
-    if _has_delete_perm(request.user):
-        from urllib.parse import quote
-
-        url = reverse("dashboard_list") + f"?deleted={pk}&deleted_name={quote(name)}"
-        return redirect(url)
-
     messages.success(request, ui["dl_delete_success"] + f" ({name})")
     return redirect("dashboard_list")
 
@@ -456,20 +520,7 @@ def dashboard_delete(request, pk: int):
 @login_required
 @require_http_methods(["POST"])
 def dashboard_restore(request, pk: int):
-    lang = request.session.get("ui_lang", "en")
-    ui = get_ui(lang)
-
-    if not _has_delete_perm(request.user):
-        messages.error(request, ui["alert_no_delete_perm"])
-        return redirect("dashboard_list")
-
-    dashboard = _resolve_dashboard_request(request, pk, allow_deleted=True)
-    if not dashboard or not dashboard.is_deleted:
-        raise Http404
-    name = dashboard.name
-    restore_dashboard(dashboard)
-    messages.success(request, ui["dl_restore_success"] + f" ({name})")
-    return redirect("dashboard_list")
+    return render_page_not_found(request)
 
 
 @login_required
@@ -489,13 +540,9 @@ def dashboard_serve(request, pk: int):
     if not _has_view_perm(request.user, request):
         return HttpResponse("403 Forbidden", status=403)
 
-    dashboard = _resolve_dashboard_request(
-        request,
-        pk,
-        allow_deleted=_has_delete_perm(request.user),
-    )
+    dashboard = _resolve_dashboard_request(request, pk)
     if not dashboard:
-        return HttpResponse("404 Not Found", status=404)
+        return render_embed_not_found(request)
     lang = report_locale_for_dashboard(dashboard, request)
     force_regen = request.GET.get("nocache") == "1"
 
@@ -578,23 +625,38 @@ def dashboard_approve(request, pk: int):
             msg = ui.get("wf_already_published", "This dashboard is already published.")
         elif dashboard.status == DashboardStatus.REJECTED:
             msg = ui.get("wf_already_rejected", "This dashboard was already rejected.")
+        elif dashboard.status == DashboardStatus.IN_WORKFLOW:
+            msg = ui.get("wf_in_workflow", "This dashboard is in the acknowledgment workflow.")
         else:
             msg = ui.get("wf_review_not_pending", "This dashboard is not pending review.")
         return _review_action_redirect(request, dashboard, not_pending_msg=msg)
 
-    approve_dashboard(dashboard, request.user)
-    messages.success(request, ui.get("wf_approve_success", "Dashboard published."))
+    if dashboard.status == DashboardStatus.IN_WORKFLOW:
+        messages.error(request, ui.get("wf_use_acknowledge", "Use acknowledge during workflow."))
+        return redirect("dashboard_detail", pk=pk)
 
-    from accounts_app.services.workflow_email import notify_viewers_published
+    result = approve_dashboard(dashboard, request.user)
+    dashboard.refresh_from_db()
+    if result == "workflow":
+        messages.success(request, ui.get("wf_workflow_started", "Approval recorded. Acknowledgment workflow started."))
+        from accounts_app.services.workflow_email import notify_workflow_assignee
 
-    try:
-        notify_viewers_published(
-            dashboard,
-            base_url=request.build_absolute_uri("/"),
-            reviewer=request.user,
-        )
-    except Exception:
-        logger.exception("Failed to send publish notification for dashboard %s", dashboard.pk)
+        instance = getattr(dashboard, "workflow_instance", None)
+        if instance and instance.current_assignee_id:
+            try:
+                notify_workflow_assignee(
+                    dashboard,
+                    base_url=request.build_absolute_uri("/"),
+                    assignee=instance.current_assignee,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to send workflow assignee notification for dashboard %s",
+                    dashboard.pk,
+                )
+    else:
+        messages.success(request, ui.get("wf_approve_success", "Dashboard published."))
+        _send_publish_notifications(request, dashboard, request.user)
 
     return redirect("dashboard_list")
 
@@ -644,6 +706,89 @@ def dashboard_reject(request, pk: int):
         )
     except Exception:
         logger.exception("Failed to send rejection notification for dashboard %s", dashboard.pk)
+
+    return redirect("dashboard_list")
+
+
+@login_required
+@require_http_methods(["POST"])
+def dashboard_submit(request, pk: int):
+    lang = request.session.get("ui_lang", "en")
+    ui = get_ui(lang)
+    dashboard = _resolve_dashboard_request(request, pk)
+    if not dashboard:
+        messages.error(request, ui.get("wf_dashboard_not_found", "Dashboard not found."))
+        return redirect("dashboard_list")
+
+    company = _active_company(request)
+    if not can_user_submit(request.user, dashboard, company):
+        messages.error(request, ui.get("wf_submit_forbidden", "Cannot submit this dashboard."))
+        return redirect("dashboard_detail", pk=pk)
+
+    try:
+        submit_dashboard(request.user, dashboard, company)
+    except PermissionError:
+        messages.error(request, ui.get("wf_submit_forbidden", "Cannot submit this dashboard."))
+        return redirect("dashboard_detail", pk=pk)
+
+    messages.success(request, ui.get("wf_submit_success", "Dashboard submitted for review."))
+
+    from accounts_app.services.workflow_email import notify_reviewers_pending
+
+    try:
+        notify_reviewers_pending(
+            dashboard,
+            base_url=request.build_absolute_uri("/"),
+            submit_kind="new",
+        )
+    except Exception:
+        logger.exception("Failed to send submit notification for dashboard %s", dashboard.pk)
+
+    return redirect("dashboard_list")
+
+
+@login_required
+@require_http_methods(["POST"])
+def dashboard_acknowledge(request, pk: int):
+    lang = request.session.get("ui_lang", "en")
+    ui = get_ui(lang)
+    dashboard = _resolve_dashboard_request(request, pk)
+    if not dashboard:
+        messages.error(request, ui.get("wf_dashboard_not_found", "Dashboard not found."))
+        return redirect("dashboard_list")
+
+    company = _active_company(request)
+    if not can_user_acknowledge(request.user, dashboard, company):
+        messages.error(request, ui.get("wf_ack_forbidden", "You cannot acknowledge this dashboard."))
+        return redirect("dashboard_detail", pk=pk)
+
+    try:
+        published = acknowledge_workflow_step(dashboard, request.user)
+    except ValueError:
+        messages.error(request, ui.get("wf_ack_forbidden", "You cannot acknowledge this dashboard."))
+        return redirect("dashboard_detail", pk=pk)
+
+    dashboard.refresh_from_db()
+    if published:
+        messages.success(request, ui.get("wf_ack_published", "Acknowledgment complete. Dashboard published."))
+        _send_publish_notifications(request, dashboard, dashboard.reviewed_by)
+    else:
+        messages.success(request, ui.get("wf_ack_success", "Acknowledgment recorded."))
+        from accounts_app.services.workflow_email import notify_workflow_assignee
+
+        instance = getattr(dashboard, "workflow_instance", None)
+        if instance and instance.current_assignee_id:
+            try:
+                notify_workflow_assignee(
+                    dashboard,
+                    base_url=request.build_absolute_uri("/"),
+                    assignee=instance.current_assignee,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to send workflow assignee notification for dashboard %s",
+                    dashboard.pk,
+                )
 
     return redirect("dashboard_list")
 

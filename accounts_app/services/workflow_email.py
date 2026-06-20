@@ -10,10 +10,11 @@ from django.contrib.auth.models import User
 from accounts_app.services.email_branding import (
     bilingual_footer_plain,
     build_branded_email_html,
+    format_bilingual_subject,
     render_bilingual_block,
     render_bilingual_plain,
     render_cta_button,
-    resolve_logo_url,
+    resolve_logo_src_for_email,
     send_branded_email_smtp,
 )
 from accounts_app.services.email_dispatch import dispatch_in_background
@@ -30,8 +31,10 @@ SUBMIT_KIND_LABELS = {
 
 def build_auth_link(base_url: str, target_path: str) -> str:
     """Absolute URL to the workflow target page (auth redirect handled by the app)."""
+    from accounts_app.services.email_branding import require_secure_email_base_url
+
     safe_path = target_path if target_path.startswith("/") else f"/{target_path}"
-    return f"{base_url.rstrip('/')}{safe_path}"
+    return f"{require_secure_email_base_url(base_url)}{safe_path}"
 
 
 def _user_display(user: User | None) -> str:
@@ -82,6 +85,7 @@ def _reviewer_users(company: Company, *, exclude_user_id: int | None = None) -> 
     membership_qs = CompanyMembership.objects.filter(
         company=company,
         can_review=True,
+        is_deleted=False,
     ).select_related("user")
     if exclude_user_id:
         membership_qs = membership_qs.exclude(user_id=exclude_user_id)
@@ -109,6 +113,7 @@ def _viewer_users(
     membership_qs = CompanyMembership.objects.filter(
         company=company,
         can_view=True,
+        is_deleted=False,
     ).select_related("user")
     if exclude_user_id:
         membership_qs = membership_qs.exclude(user_id=exclude_user_id)
@@ -143,7 +148,10 @@ def _load_smtp_cfg():
 
 
 def _refresh_dashboard(dashboard_id: int) -> Dashboard:
-    return Dashboard.objects.select_related("created_by", "company").get(pk=dashboard_id)
+    return Dashboard.objects.select_related("created_by", "company").get(
+        pk=dashboard_id,
+        is_deleted=False,
+    )
 
 
 def notify_reviewers_pending(
@@ -230,12 +238,15 @@ def _send_reviewers_pending(dashboard_id: int, base_url: str, submit_kind: str) 
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
-    subject = "طلب مراجعة لوحة Dashboard Pending Review"
+    subject = format_bilingual_subject(
+        text_ar="طلب مراجعة لوحة تحكم",
+        text_en="Dashboard Pending Review",
+    )
     html = build_branded_email_html(
         header_ar="طلب مراجعة لوحة تحكم",
         header_en="Dashboard Pending Review",
         body_html=body_html,
-        logo_url=resolve_logo_url(base_url=base_url, cfg=cfg),
+        logo_url=resolve_logo_src_for_email(base_url=base_url, cfg=cfg),
     )
     _send_many(cfg, recipients=recipients, subject=subject, plain=plain, html=html)
 
@@ -322,12 +333,15 @@ def _send_creator_rejected(
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
-    subject = "رفض لوحة تحكم Dashboard Rejected"
+    subject = format_bilingual_subject(
+        text_ar="تم رفض لوحة التحكم",
+        text_en="Dashboard Rejected",
+    )
     html = build_branded_email_html(
         header_ar="تم رفض لوحة التحكم",
         header_en="Dashboard Rejected",
         body_html=body_html,
-        logo_url=resolve_logo_url(base_url=base_url, cfg=cfg),
+        logo_url=resolve_logo_src_for_email(base_url=base_url, cfg=cfg),
     )
     try:
         send_branded_email_smtp(cfg, to_addr=recipient, subject=subject, plain=plain, html=html)
@@ -419,11 +433,191 @@ def _send_viewers_published(dashboard_id: int, base_url: str, reviewer_id: int) 
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
-    subject = "اعتماد لوحة تحكم Dashboard Published"
+    subject = format_bilingual_subject(
+        text_ar="تم اعتماد لوحة تحكم",
+        text_en="Dashboard Published",
+    )
     html = build_branded_email_html(
         header_ar="تم اعتماد لوحة تحكم",
         header_en="Dashboard Published",
         body_html=body_html,
-        logo_url=resolve_logo_url(base_url=base_url, cfg=cfg),
+        logo_url=resolve_logo_src_for_email(base_url=base_url, cfg=cfg),
     )
     _send_many(cfg, recipients=recipients, subject=subject, plain=plain, html=html)
+
+
+def notify_workflow_assignee(
+    dashboard: Dashboard,
+    *,
+    base_url: str,
+    assignee: User,
+) -> None:
+    dispatch_in_background(
+        _send_workflow_assignee,
+        dashboard.pk,
+        base_url,
+        assignee.pk,
+    )
+
+
+def _send_workflow_assignee(dashboard_id: int, base_url: str, assignee_id: int) -> None:
+    dashboard = _refresh_dashboard(dashboard_id)
+    try:
+        assignee = User.objects.get(pk=assignee_id)
+    except User.DoesNotExist:
+        logger.warning("Skipping workflow assignee email: user %s not found", assignee_id)
+        return
+    recipient = _eligible_email(assignee)
+    if not recipient:
+        logger.warning(
+            "Skipping workflow assignee email: user %s has no eligible email",
+            assignee_id,
+        )
+        return
+    try:
+        cfg = _load_smtp_cfg()
+    except ValueError:
+        logger.warning("SMTP not configured; skipping workflow assignee notification")
+        return
+
+    dash_name = escape(dashboard.name)
+    company_name = escape(dashboard.company.name if dashboard.company else "—")
+    link = build_auth_link(base_url, f"/dashboards/{dashboard.pk}/")
+
+    text_ar = (
+        f"<p style='margin:0 0 10px;'>السلام عليكم،</p>"
+        f"<p style='margin:0 0 12px;'>لوحة تحكم بانتظار اطلاعك:</p>"
+        f"<ul style='margin:0 0 12px;padding-right:20px;'>"
+        f"<li><strong>اللوحة:</strong> {dash_name}</li>"
+        f"<li><strong>الشركة:</strong> {company_name}</li>"
+        f"</ul>"
+    )
+    text_en = (
+        f"<p style='margin:0 0 10px;'>Hello,</p>"
+        f"<p style='margin:0 0 12px;'>A dashboard awaits your acknowledgment:</p>"
+        f"<ul style='margin:0 0 12px;padding-left:20px;'>"
+        f"<li><strong>Dashboard:</strong> {dash_name}</li>"
+        f"<li><strong>Company:</strong> {company_name}</li>"
+        f"</ul>"
+    )
+
+    body_html = (
+        render_bilingual_block(text_ar=text_ar, text_en=text_en)
+        + render_cta_button(link, label_ar="تم الاطلاع", label_en="Acknowledge")
+    )
+
+    plain = render_bilingual_plain(
+        text_ar=(
+            f"لوحة بانتظار اطلاعك: {dashboard.name}\n"
+            f"الشركة: {dashboard.company.name if dashboard.company else '—'}\n"
+            f"الرابط: {link}\n"
+        ),
+        text_en=(
+            f"Dashboard awaiting acknowledgment: {dashboard.name}\n"
+            f"Company: {dashboard.company.name if dashboard.company else '—'}\n"
+            f"Link: {link}\n"
+        ),
+    ) + "\n\n" + bilingual_footer_plain()
+
+    subject = format_bilingual_subject(
+        text_ar="لوحة بانتظار اطلاعك",
+        text_en="Dashboard Acknowledgment Required",
+    )
+    html = build_branded_email_html(
+        header_ar="لوحة بانتظار اطلاعك",
+        header_en="Dashboard Awaiting Acknowledgment",
+        body_html=body_html,
+        logo_url=resolve_logo_src_for_email(base_url=base_url, cfg=cfg),
+    )
+    try:
+        send_branded_email_smtp(cfg, to_addr=recipient, subject=subject, plain=plain, html=html)
+    except Exception:
+        logger.exception("Failed to send workflow assignee email to %s", recipient)
+
+
+def notify_creator_published(
+    dashboard: Dashboard,
+    *,
+    base_url: str,
+    reviewer: User | None = None,
+) -> None:
+    dispatch_in_background(
+        _send_creator_published,
+        dashboard.pk,
+        base_url,
+        reviewer.pk if reviewer else None,
+    )
+
+
+def _send_creator_published(
+    dashboard_id: int,
+    base_url: str,
+    reviewer_id: int | None,
+) -> None:
+    dashboard = _refresh_dashboard(dashboard_id)
+    company = dashboard.company
+    if company is None or not company.notify_creator_on_publish:
+        return
+    recipient = _eligible_email(dashboard.created_by)
+    if not recipient:
+        return
+    try:
+        cfg = _load_smtp_cfg()
+    except ValueError:
+        logger.warning("SMTP not configured; skipping creator publish notification")
+        return
+
+    reviewer = None
+    if reviewer_id:
+        try:
+            reviewer = User.objects.get(pk=reviewer_id)
+        except User.DoesNotExist:
+            reviewer = None
+
+    dash_name = escape(dashboard.name)
+    reviewer_name = escape(_user_display(reviewer))
+    link = build_auth_link(base_url, f"/dashboards/{dashboard.pk}/")
+
+    text_ar = (
+        f"<p style='margin:0 0 10px;'>السلام عليكم،</p>"
+        f"<p style='margin:0 0 12px;'>تم نشر لوحتك <strong>{dash_name}</strong>.</p>"
+        f"<p style='margin:0 0 8px;'><span dir='rtl'>اعتمدها: {reviewer_name}</span></p>"
+    )
+    text_en = (
+        f"<p style='margin:0 0 10px;'>Hello,</p>"
+        f"<p style='margin:0 0 12px;'>Your dashboard <strong>{dash_name}</strong> has been published.</p>"
+        f"<p style='margin:0 0 8px;'><span dir='ltr'>Approved by: {reviewer_name}</span></p>"
+    )
+
+    body_html = (
+        render_bilingual_block(text_ar=text_ar, text_en=text_en)
+        + render_cta_button(link, label_ar="عرض اللوحة", label_en="View Dashboard")
+    )
+
+    plain = render_bilingual_plain(
+        text_ar=(
+            f"تم نشر لوحتك: {dashboard.name}\n"
+            f"اعتمدها: {_user_display(reviewer)}\n"
+            f"الرابط: {link}\n"
+        ),
+        text_en=(
+            f"Your dashboard was published: {dashboard.name}\n"
+            f"Approved by: {_user_display(reviewer)}\n"
+            f"Link: {link}\n"
+        ),
+    ) + "\n\n" + bilingual_footer_plain()
+
+    subject = format_bilingual_subject(
+        text_ar="تم نشر لوحتك",
+        text_en="Your Dashboard Was Published",
+    )
+    html = build_branded_email_html(
+        header_ar="تم نشر لوحتك",
+        header_en="Your Dashboard Was Published",
+        body_html=body_html,
+        logo_url=resolve_logo_src_for_email(base_url=base_url, cfg=cfg),
+    )
+    try:
+        send_branded_email_smtp(cfg, to_addr=recipient, subject=subject, plain=plain, html=html)
+    except Exception:
+        logger.exception("Failed to send creator publish email to %s", recipient)

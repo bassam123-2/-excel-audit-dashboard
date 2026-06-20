@@ -1,4 +1,4 @@
-django>=5.0
+django==5.2.15
 mysqlclient
 python-dotenv
 redis>=5.0

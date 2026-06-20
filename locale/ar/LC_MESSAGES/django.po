@@ -2,310 +2,2027 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Audit Dashboard\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-20 02:06+0300\n"
 "Language: ar\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 && n%100<=99 ? 4 : 5;\n"
-
-msgid "Settings"
-msgstr "الإعدادات"
-
-msgid "Basic information"
-msgstr "المعلومات الأساسية"
-
-msgid "Report data"
-msgstr "بيانات التقرير"
-
-msgid "Dates"
-msgstr "التواريخ"
-
-msgid "Excel Audit"
-msgstr "تدقيق Excel"
-
-msgid "Raw file data (JSON)"
-msgstr "بيانات الملف (JSON)"
-
-msgid "Upload session"
-msgstr "جلسة رفع"
-
-msgid "Upload sessions"
-msgstr "جلسات الرفع"
-
-msgid "Audit observation"
-msgstr "ملاحظة تدقيق"
-
-msgid "Audit observations"
-msgstr "ملاحظات التدقيق"
-
-msgid "Company logo"
-msgstr "شعار شركة"
-
-msgid "Company logos"
-msgstr "شعارات الشركات"
-
-msgid "Report artifact"
-msgstr "نتيجة تقرير"
-
-msgid "Report artifacts"
-msgstr "نتائج التقارير"
-
-msgid "Type code"
-msgstr "رمز النوع (كود)"
-
-msgid "Internal slug without spaces, e.g. ai"
-msgstr "قيمة داخلية بدون مسافات، مثل: ai"
-
-msgid "Type name"
-msgstr "اسم النوع"
-
-msgid "Display name shown to users"
-msgstr "الاسم الذي يظهر للمستخدمين"
-
-msgid "Description"
-msgstr "وصف"
-
-msgid "Bootstrap icon"
-msgstr "أيقونة Bootstrap"
-
-msgid "Example: bi-bar-chart-line-fill"
-msgstr "مثال: bi-bar-chart-line-fill"
-
-msgid "Active"
-msgstr "نشط"
-
-msgid "Sort order"
-msgstr "ترتيب العرض"
-
-msgid "Dashboard template type"
-msgstr "نوع نموذج لوحة التحكم"
-
-msgid "Dashboard template types"
-msgstr "أنواع نماذج لوحات التحكم"
-
-msgid "Bar chart"
-msgstr "مخطط أعمدة"
-
-msgid "Pie chart"
-msgstr "مخطط دائري"
-
-msgid "Line / growth chart"
-msgstr "مخطط خطي / نمو"
-
-msgid "Data table"
-msgstr "جدول بيانات"
-
-msgid "Data analysis"
-msgstr "تحليل بيانات"
-
-msgid "Spreadsheet"
-msgstr "جداول بيانات"
-
-msgid "Finance / accounting"
-msgstr "مالي / محاسبي"
-
-msgid "Organization / companies"
-msgstr "مؤسسي / شركات"
-
-msgid "AI analytical dashboard"
-msgstr "لوحة تحليلية ذكية (AI Dashboard)"
-
-msgid "Dashboard name"
-msgstr "اسم لوحة التحكم"
-
-msgid "Dashboard icon"
-msgstr "رمز اللوحة"
-
-msgid "Template type"
-msgstr "نوع النموذج"
-
-msgid "Report ID"
-msgstr "معرف التقرير"
-
-msgid "Cached HTML file"
-msgstr "ملف HTML المخزن مؤقتاً"
-
-msgid "Source files"
-msgstr "الملفات المصدر"
-
-msgid "Created by"
-msgstr "أنشأ بواسطة"
-
-msgid "Created at"
-msgstr "تاريخ الإنشاء"
-
-msgid "Dashboard"
-msgstr "لوحة تحكم"
-
-msgid "Dashboards"
-msgstr "لوحات التحكم"
-
-msgid "Can upload files and create dashboards"
-msgstr "يمكنه رفع الملفات وإنشاء لوحات التحكم"
-
-msgid "Can view dashboards"
-msgstr "يمكنه عرض لوحات التحكم"
-
-msgid "Skip to main content"
-msgstr "تخطي إلى المحتوى الرئيسي"
-
-msgid "Sidebar"
-msgstr "القائمة الجانبية"
-
-msgid "Breadcrumbs"
-msgstr "مسار التنقل"
-
-msgid "Home"
-msgstr "الرئيسية"
-
-msgid "Audit Dashboard"
-msgstr "لوحة التدقيق"
-
-msgid "Admin Panel"
-msgstr "لوحة الإدارة"
-
-msgid "Log out"
-msgstr "تسجيل الخروج"
-
-msgid "Main Site"
-msgstr "الموقع الرئيسي"
-
-msgid "Change password"
-msgstr "تغيير كلمة المرور"
-
-msgid "Recent actions"
-msgstr "أحدث الإجراءات"
-
-msgid "My actions"
-msgstr "إجراءاتي"
-
-msgid "None available"
-msgstr "لا يوجد"
-
-msgid "Added:"
-msgstr "أُضيف:"
-
-msgid "Changed:"
-msgstr "عُدّل:"
-
-msgid "Deleted:"
-msgstr "حُذف:"
-
-msgid "Unknown content"
-msgstr "محتوى غير معروف"
-
-# ── User admin (accounts_app + audit_app) ──────────────────────────────
-
-msgid "Job title"
-msgstr "المسمى الوظيفي"
-
-msgid "The user's job title or position."
-msgstr "المسمى الوظيفي أو المنصب الخاص بالمستخدم."
-
-msgid "Admin"
-msgstr "مدير"
-
-msgid "Designates whether this user has admin access to the administration site."
-msgstr "يحدد ما إذا كان المستخدم يملك صلاحية الوصول إلى لوحة الإدارة."
-
-msgid "Personal info"
-msgstr "المعلومات الشخصية"
-
-msgid "Permissions"
-msgstr "الصلاحيات"
-
-msgid "Important dates"
-msgstr "تواريخ مهمة"
-
-msgid "Password"
-msgstr "كلمة المرور"
-
-msgid "Password confirmation"
-msgstr "تأكيد كلمة المرور"
-
-msgid "Reset password"
-msgstr "إعادة تعيين كلمة المرور"
-
-msgid "User profile"
-msgstr "ملف المستخدم"
-
-msgid "User profiles"
-msgstr "ملفات المستخدمين"
-
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
+"&& n%100<=10 ? 3 : n%100>=11 && n%100<=99 ? 4 : 5;\n"
+
+#: .\accounts_app\admin.py:23
+msgid "OTP validity (minutes)"
+msgstr "مدة صلاحية رمز OTP (بالدقائق)"
+
+#: .\accounts_app\admin.py:25
+msgid ""
+"Email verification codes expire after this duration. Users must wait the "
+"same time before requesting a resend."
+msgstr ""
+"تنتهي صلاحية رموز التحقق بالبريد بعد هذه المدة. يجب على المستخدم الانتظار "
+"نفس المدة قبل طلب إعادة الإرسال."
+
+#: .\accounts_app\admin.py:50 .\accounts_app\models.py:32
+#: .\accounts_app\models.py:33
+msgid "Project security settings"
+msgstr "إعدادات أمان المشروع"
+
+#: .\accounts_app\admin.py:52
+msgid ""
+"Configure email OTP validity and sign-in verification behavior for all users."
+msgstr ""
+"اضبط مدة صلاحية رمز OTP بالبريد وسلوك التحقق عند تسجيل الدخول لجميع "
+"المستخدمين."
+
+#: .\accounts_app\admin.py:56
+msgid "Email OTP"
+msgstr "رمز OTP بالبريد"
+
+#: .\accounts_app\admin.py:60
+msgid ""
+"Controls how long sign-in verification codes remain valid. The resend "
+"cooldown uses the same duration."
+msgstr ""
+"يحدد مدة صلاحية رموز التحقق عند تسجيل الدخول. فترة الانتظار قبل إعادة "
+"الإرسال تستخدم نفس المدة."
+
+#: .\accounts_app\models.py:23
+msgid "OTP validity (seconds)"
+msgstr "مدة صلاحية OTP (بالثواني)"
+
+#: .\accounts_app\models.py:25
+msgid ""
+"How long email verification codes remain valid. The resend cooldown uses the "
+"same duration. "
+msgstr ""
+"مدة صلاحية رموز التحقق بالبريد. فترة الانتظار قبل إعادة الإرسال تستخدم نفس "
+"المدة. "
+
+#: .\accounts_app\models.py:37
+#, python-brace-format
+msgid "OTP validity: {minutes} min"
+msgstr "مدة صلاحية OTP: {minutes} د"
+
+#: .\accounts_app\models.py:62 .\audit_app\models.py:217
 msgid "User"
 msgstr "المستخدم"
 
+# ── User admin (accounts_app + audit_app) ──────────────────────────────
+#: .\accounts_app\models.py:67 .\audit_app\admin.py:867
+#: .\audit_app\admin_forms.py:158 .\audit_app\admin_forms.py:208
+#: .\audit_app\admin_forms.py:228 .\audit_app\admin_forms.py:299
+msgid "Job title"
+msgstr "المسمى الوظيفي"
+
+#: .\accounts_app\models.py:68 .\audit_app\admin_forms.py:161
+#: .\audit_app\admin_forms.py:231
+msgid "The user's job title or position."
+msgstr "المسمى الوظيفي أو المنصب الخاص بالمستخدم."
+
+#: .\accounts_app\models.py:72
 msgid "Deleted"
 msgstr "محذوف"
 
+#: .\accounts_app\models.py:73
+msgid "Soft-deleted users remain in the database but cannot sign in."
+msgstr ""
+"المستخدمون المحذوفون يبقون في قاعدة البيانات لكن لا يمكنهم تسجيل الدخول."
+
+#: .\accounts_app\models.py:78 .\audit_app\models.py:40
+#: .\audit_app\models.py:507
 msgid "Deleted at"
 msgstr "تاريخ الحذف"
 
-msgid "Soft-deleted users remain in the database but cannot sign in."
-msgstr "المستخدمون المحذوفون يبقون في قاعدة البيانات لكن لا يمكنهم تسجيل الدخول."
+#: .\accounts_app\models.py:82
+msgid "Password last changed"
+msgstr "آخر تغيير لكلمة المرور"
 
-msgid "No job title"
-msgstr "بدون مسمى وظيفي"
+#: .\accounts_app\models.py:86 .\audit_app\admin_forms.py:179
+#: .\audit_app\admin_forms.py:239
+msgid "Require password change every 6 months"
+msgstr "إلزام تغيير كلمة المرور كل 6 أشهر"
 
+#: .\accounts_app\models.py:88
+msgid "When enabled, the user must change their password "
+msgstr "عند التفعيل، يجب على المستخدم تغيير كلمة المرور "
+
+#: .\accounts_app\models.py:94 .\audit_app\admin_forms.py:173
+#: .\audit_app\admin_forms.py:234
+msgid "Email two-factor authentication"
+msgstr "المصادقة الثنائية عبر البريد"
+
+#: .\accounts_app\models.py:96
+msgid ""
+"When enabled, a one-time code is sent by email at sign-in. Enabled by "
+"default for new users — disable per user from the admin if needed."
+msgstr ""
+"عند التفعيل، يُرسل رمز لمرة واحدة بالبريد عند تسجيل الدخول. مفعّل افتراضياً "
+"للمستخدمين الجدد — يمكن تعطيله لكل مستخدم من لوحة الإدارة."
+
+#: .\accounts_app\models.py:102 .\audit_app\admin_forms.py:244
+msgid "Receive workflow notification emails"
+msgstr "استلام رسائل إشعارات سير العمل"
+
+#: .\accounts_app\models.py:104
+msgid ""
+"Superuser accounts only. When enabled, this support account receives "
+"dashboard pending-review, publish, and related workflow emails."
+msgstr ""
+"لحسابات المدير العام فقط. عند التفعيل، يستلم هذا الحساب رسائل انتظار "
+"المراجعة والنشر وسير العمل المتعلقة بلوحات التحكم."
+
+#: .\accounts_app\models.py:110
+msgid "Must change password on next sign-in"
+msgstr "يجب تغيير كلمة المرور عند تسجيل الدخول التالي"
+
+#: .\accounts_app\models.py:112
+msgid ""
+"When enabled, the user is redirected to change their password before "
+"accessing the application."
+msgstr "عند التفعيل، يُوجَّه المستخدم لتغيير كلمة المرور قبل الوصول إلى التطبيق."
+
+#: .\accounts_app\models.py:118
+msgid "English"
+msgstr "الإنجليزية"
+
+#: .\accounts_app\models.py:118
+msgid "Arabic"
+msgstr "العربية"
+
+#: .\accounts_app\models.py:120
+msgid "Preferred language"
+msgstr "اللغة المفضلة"
+
+#: .\accounts_app\models.py:121
+msgid "UI language for the dashboard and administration site."
+msgstr "لغة واجهة لوحة التحكم وموقع الإدارة."
+
+#: .\accounts_app\models.py:125
+msgid "Light"
+msgstr "فاتح"
+
+#: .\accounts_app\models.py:125
+msgid "Dark"
+msgstr "داكن"
+
+#: .\accounts_app\models.py:127
+msgid "Preferred theme"
+msgstr "المظهر المفضل"
+
+#: .\accounts_app\models.py:128
+msgid "Light or dark appearance for the dashboard and admin site."
+msgstr "مظهر فاتح أو داكن للوحة التحكم وموقع الإدارة."
+
+#: .\accounts_app\models.py:182
+msgid "User profile"
+msgstr "ملف المستخدم"
+
+#: .\accounts_app\models.py:183
+msgid "User profiles"
+msgstr "ملفات المستخدمين"
+
+#: .\accounts_app\password_validators.py:20
+msgid "Password must contain at least one lowercase letter."
+msgstr "يجب أن تحتوي كلمة المرور على حرف صغير واحد على الأقل."
+
+#: .\accounts_app\password_validators.py:22
+msgid "Password must contain at least one uppercase letter."
+msgstr "يجب أن تحتوي كلمة المرور على حرف كبير واحد على الأقل."
+
+#: .\accounts_app\password_validators.py:24
+msgid "Password must contain at least one digit."
+msgstr "يجب أن تحتوي كلمة المرور على رقم واحد على الأقل."
+
+#: .\accounts_app\password_validators.py:27
+msgid "Password must contain at least one special symbol (e.g. @ # $)."
+msgstr "يجب أن تحتوي كلمة المرور على رمز خاص واحد على الأقل (مثل @ # $)."
+
+#: .\accounts_app\password_validators.py:34
+msgid ""
+"Your password must contain at least one lowercase letter, one uppercase "
+"letter, one digit, and one symbol."
+msgstr ""
+"يجب أن تحتوي كلمة المرور على حرف صغير وحرف كبير ورقم ورمز خاص واحد على الأقل."
+
+#: .\audit_app\admin.py:87 .\audit_app\admin_soft_delete.py:26
 msgid "Deletion status"
 msgstr "حالة الحذف"
 
+#: .\audit_app\admin.py:92 .\audit_app\admin.py:131
 msgid "Active users"
 msgstr "المستخدمون النشطون"
 
+#: .\audit_app\admin.py:93 .\audit_app\admin.py:138
 msgid "Deleted users"
 msgstr "المستخدمون المحذوفون"
 
-msgid "Restore selected users"
-msgstr "استعادة المستخدمين المحددين"
+#: .\audit_app\admin.py:96 .\audit_app\admin.py:123
+#: .\audit_app\admin_soft_delete.py:35 .\audit_app\admin_soft_delete.py:61
+msgid "All"
+msgstr "الكل"
 
-msgid "Restore user"
-msgstr "استعادة المستخدم"
+#: .\audit_app\admin.py:143
+msgid "Two-factor authentication"
+msgstr "المصادقة الثنائية"
 
-msgid "This user is soft-deleted and cannot sign in."
-msgstr "هذا المستخدم محذوف ولا يمكنه تسجيل الدخول."
+#: .\audit_app\admin.py:148 .\audit_app\admin.py:169 .\audit_app\admin.py:693
+#: .\audit_app\admin.py:705 .\audit_app\models.py:280
+msgid "Enabled"
+msgstr "مفعّل"
 
-msgid "Remove user"
-msgstr "إزالة المستخدم"
+#: .\audit_app\admin.py:149 .\audit_app\admin.py:170 .\audit_app\admin.py:694
+#: .\audit_app\admin.py:706
+msgid "Disabled"
+msgstr "معطّل"
 
-msgid "Email address is required."
-msgstr "البريد الإلكتروني مطلوب."
+#: .\audit_app\admin.py:164
+msgid "6-month password expiry"
+msgstr "انتهاء كلمة المرور كل 6 أشهر"
 
-msgid "Enter a valid email address."
-msgstr "أدخل بريدًا إلكترونيًا صالحًا."
+#: .\audit_app\admin.py:298
+msgid "Browse, search, and filter all system users from one place."
+msgstr "تصفح وابحث وصفِّ جميع مستخدمي النظام من مكان واحد."
 
+#: .\audit_app\admin.py:303
+msgid ""
+"Create a new user account, set permissions, and assign company memberships."
+msgstr "أنشئ حساب مستخدم جديد وحدّد الصلاحيات وعضويات الشركات."
+
+#: .\audit_app\admin.py:305
+msgid "Update user profile, permissions, password, and company access."
+msgstr "حدّث ملف المستخدم والصلاحيات وكلمة المرور وصلاحية الوصول للشركات."
+
+#: .\audit_app\admin.py:308
+msgid "Search username, name, email, or job title…"
+msgstr "ابحث باسم المستخدم أو الاسم أو البريد أو المسمى الوظيفي…"
+
+#: .\audit_app\admin.py:313
+msgid "Total users"
+msgstr "إجمالي المستخدمين"
+
+#: .\audit_app\admin.py:319 .\audit_app\admin.py:676 .\audit_app\admin.py:1169
+#: .\audit_app\admin.py:1431 .\audit_app\admin.py:1620
+#: .\audit_app\admin.py:1678 .\audit_app\admin.py:1690
+#: .\audit_app\admin_utils.py:27 .\audit_app\models.py:110
+#: .\audit_app\models.py:392 .\audit_app\models.py:602
+msgid "Active"
+msgstr "نشط"
+
+#: .\audit_app\admin.py:325
+msgid "Staff"
+msgstr "طاقم"
+
+#: .\audit_app\admin.py:331
+msgid "2FA enabled"
+msgstr "مصادقة ثنائية مفعّلة"
+
+#: .\audit_app\admin.py:343 .\audit_app\admin.py:377
+msgid "Personal info"
+msgstr "المعلومات الشخصية"
+
+#: .\audit_app\admin.py:355
+msgid "Permissions"
+msgstr "الصلاحيات"
+
+#: .\audit_app\admin.py:366
+msgid "Important dates"
+msgstr "تواريخ مهمة"
+
+#: .\audit_app\admin.py:481
+msgid "No email address — credentials were not sent."
+msgstr "لا يوجد بريد إلكتروني — لم تُرسَل بيانات الدخول."
+
+#: .\audit_app\admin.py:489
+msgid "SMTP is not configured — credentials were not sent."
+msgstr "SMTP غير مُعد — لم تُرسَل بيانات الدخول."
+
+#: .\audit_app\admin.py:509
+msgid "Failed to send credentials email."
+msgstr "فشل إرسال بريد بيانات الدخول."
+
+#: .\audit_app\admin.py:531
+msgid "Login credentials were sent by email."
+msgstr "تم إرسال بيانات الدخول بالبريد."
+
+#: .\audit_app\admin.py:541
+#, python-format
+msgid "%(name)s object with primary key %(key)r does not exist."
+msgstr "الكائن %(name)s بالمفتاح %(key)r غير موجود."
+
+#: .\audit_app\admin.py:571
+msgid "New password was sent by email."
+msgstr "تم إرسال كلمة المرور الجديدة بالبريد."
+
+#: .\audit_app\admin.py:582
 msgid "Password changed successfully."
 msgstr "تم تغيير كلمة المرور بنجاح."
 
-msgid "First name"
-msgstr "الاسم الأول"
-
-msgid "Last name"
-msgstr "اسم العائلة"
-
-msgid "Email address"
-msgstr "البريد الإلكتروني"
-
-msgid "Username"
-msgstr "اسم المستخدم"
-
+#: .\audit_app\admin.py:680
 msgid "Staff status"
 msgstr "حالة الطاقم"
 
-msgid "Superuser status"
-msgstr "صلاحيات المدير العام"
+#: .\audit_app\admin.py:684 .\audit_app\admin.py:1543
+#: .\audit_app\admin_utils.py:57
+msgid "Yes"
+msgstr "نعم"
 
-msgid "Groups"
-msgstr "المجموعات"
+#: .\audit_app\admin.py:685 .\audit_app\admin.py:1542
+#: .\audit_app\admin_utils.py:58
+msgid "No"
+msgstr "لا"
 
-msgid "User permissions"
-msgstr "صلاحيات المستخدم"
+#: .\audit_app\admin.py:688
+msgid "2FA"
+msgstr "مصادقة ثنائية"
 
-msgid "Last login"
-msgstr "آخر تسجيل دخول"
+#: .\audit_app\admin.py:698
+msgid "Pwd expiry"
+msgstr "انتهاء كلمة المرور"
 
-msgid "Date joined"
-msgstr "تاريخ الانضمام"
+#: .\audit_app\admin.py:709
+msgid "Enable email 2FA for selected users"
+msgstr "تفعيل المصادقة الثنائية بالبريد للمستخدمين المحددين"
 
-msgid "History"
-msgstr "تاريخ"
+#: .\audit_app\admin.py:712 .\audit_app\admin.py:725 .\audit_app\admin.py:772
+#: .\audit_app\admin.py:784 .\audit_app\admin.py:875
+#: .\audit_app\admin_soft_delete.py:170
+msgid "Permission denied."
+msgstr "غير مسموح."
+
+#: .\audit_app\admin.py:717 .\audit_app\admin.py:747
+#, python-format
+msgid "Email two-factor authentication enabled for %(count)d user(s)."
+msgstr "تم تفعيل المصادقة الثنائية بالبريد لـ %(count)d مستخدم/مستخدمين."
+
+#: .\audit_app\admin.py:722
+msgid "Disable email 2FA for selected users"
+msgstr "تعطيل المصادقة الثنائية بالبريد للمستخدمين المحددين"
+
+#: .\audit_app\admin.py:730 .\audit_app\admin.py:764
+#, python-format
+msgid "Email two-factor authentication disabled for %(count)d user(s)."
+msgstr "تم تعطيل المصادقة الثنائية بالبريد لـ %(count)d مستخدم/مستخدمين."
+
+#: .\audit_app\admin.py:735
+msgid "Enable email 2FA for ALL users"
+msgstr "تفعيل المصادقة الثنائية بالبريد لجميع المستخدمين"
+
+#: .\audit_app\admin.py:740 .\audit_app\admin.py:757
+msgid "Only a superuser can change 2FA for all users."
+msgstr "يمكن للمدير العام فقط تغيير المصادقة الثنائية لجميع المستخدمين."
+
+#: .\audit_app\admin.py:752
+msgid "Disable email 2FA for ALL users"
+msgstr "تعطيل المصادقة الثنائية بالبريد لجميع المستخدمين"
+
+#: .\audit_app\admin.py:769
+msgid "Enable 6-month password expiry for selected users"
+msgstr "تفعيل انتهاء كلمة المرور كل 6 أشهر للمستخدمين المحددين"
+
+#: .\audit_app\admin.py:777 .\audit_app\admin.py:805
+#, python-format
+msgid "6-month password expiry enabled for %(count)d user(s)."
+msgstr "تم تفعيل انتهاء كلمة المرور كل 6 أشهر لـ %(count)d مستخدم/مستخدمين."
+
+#: .\audit_app\admin.py:781
+msgid "Disable 6-month password expiry for selected users"
+msgstr "تعطيل انتهاء كلمة المرور كل 6 أشهر للمستخدمين المحددين"
+
+#: .\audit_app\admin.py:789 .\audit_app\admin.py:821
+#, python-format
+msgid "6-month password expiry disabled for %(count)d user(s)."
+msgstr "تم تعطيل انتهاء كلمة المرور كل 6 أشهر لـ %(count)d مستخدم/مستخدمين."
+
+#: .\audit_app\admin.py:793
+msgid "Enable 6-month password expiry for ALL users"
+msgstr "تفعيل انتهاء كلمة المرور كل 6 أشهر لجميع المستخدمين"
+
+#: .\audit_app\admin.py:798 .\audit_app\admin.py:814
+msgid "Only a superuser can change password expiry for all users."
+msgstr "يمكن للمدير العام فقط تغيير انتهاء كلمة المرور لجميع المستخدمين."
+
+#: .\audit_app\admin.py:809
+msgid "Disable 6-month password expiry for ALL users"
+msgstr "تعطيل انتهاء كلمة المرور كل 6 أشهر لجميع المستخدمين"
+
+#: .\audit_app\admin.py:825
+msgid "Export selected users (CSV)"
+msgstr "تصدير المستخدمين المحددين (CSV)"
+
+#: .\audit_app\admin.py:862 .\audit_app\models.py:594
+msgid "Name"
+msgstr "الاسم"
+
+#: .\audit_app\admin.py:872
+msgid "Restore selected users"
+msgstr "استعادة المستخدمين المحددين"
+
+#: .\audit_app\admin.py:886
+#, python-format
+msgid "%(count)d user(s) were restored successfully."
+msgstr "تمت استعادة %(count)d مستخدم/مستخدمين بنجاح."
+
+#: .\audit_app\admin.py:918
+#, python-format
+msgid "The user \"%(name)s\" was removed successfully."
+msgstr "تمت إزالة المستخدم \"%(name)s\" بنجاح."
+
+#: .\audit_app\admin.py:931 .\templates\admin\delete_modal.html:3
+msgid "Remove user"
+msgstr "إزالة المستخدم"
+
+#: .\audit_app\admin.py:933
+msgid "user"
+msgstr "مستخدم"
+
+#: .\audit_app\admin.py:965
+#, python-format
+msgid "The user \"%(name)s\" was restored successfully."
+msgstr "تمت استعادة المستخدم \"%(name)s\" بنجاح."
+
+#: .\audit_app\admin.py:1019
+msgid "Manage permission groups and assign capabilities to users."
+msgstr "أدر مجموعات الصلاحيات وعيّن القدرات للمستخدمين."
+
+#: .\audit_app\admin.py:1023
+msgid "Create a permission group and assign capabilities to users."
+msgstr "أنشئ مجموعة صلاحيات وعيّن القدرات للمستخدمين."
+
+#: .\audit_app\admin.py:1024
+msgid "Edit group name and assigned permissions."
+msgstr "عدّل اسم المجموعة والصلاحيات المعيّنة."
+
+#: .\audit_app\admin.py:1027
+msgid "Search group name…"
+msgstr "ابحث باسم المجموعة…"
+
+#: .\audit_app\admin.py:1037
+msgid "Total groups"
+msgstr "إجمالي المجموعات"
+
+#: .\audit_app\admin.py:1039
+msgid "With members"
+msgstr "بها أعضاء"
+
+#: .\audit_app\admin.py:1045
+msgid "With permissions"
+msgstr "بها صلاحيات"
+
+#: .\audit_app\admin.py:1051
+msgid "Empty groups"
+msgstr "مجموعات فارغة"
+
+#: .\audit_app\admin.py:1089
+msgid "Browse and manage all companies (active and inactive) from one place."
+msgstr "تصفح وأدر جميع الشركات (النشطة وغير النشطة) من مكان واحد."
+
+#: .\audit_app\admin.py:1113
+msgid "Excel mapping"
+msgstr "ربط Excel"
+
+#: .\audit_app\admin.py:1115 .\audit_app\admin.py:1498
+msgid "Workflow"
+msgstr "سير العمل"
+
+#: .\audit_app\admin.py:1119 .\audit_app\admin.py:1136
+msgid "Attachments (enable or disable per company)"
+msgstr "المرفقات (تفعيل أو تعطيل لكل شركة)"
+
+#: .\audit_app\admin.py:1151
+msgid "Logo preview"
+msgstr "معاينة الشعار"
+
+#: .\audit_app\admin.py:1153 .\audit_app\models.py:478
+msgid "Status"
+msgstr "الحالة"
+
+#: .\audit_app\admin.py:1158 .\audit_app\admin.py:1683
+msgid "Search company code or name…"
+msgstr "ابحث برمز الشركة أو الاسم…"
+
+#: .\audit_app\admin.py:1163
+msgid "Total companies"
+msgstr "إجمالي الشركات"
+
+#: .\audit_app\admin.py:1175
+msgid "Main companies"
+msgstr "الشركات الرئيسية"
+
+#: .\audit_app\admin.py:1181
+msgid "Subsidiaries"
+msgstr "الشركات التابعة"
+
+#: .\audit_app\admin.py:1218
+msgid "Manage user access, upload rights, and review permissions per company."
+msgstr "أدر صلاحيات الوصول ورفع الملفات والمراجعة لكل شركة."
+
+#: .\audit_app\admin.py:1239
+msgid "Search username, email, or company code…"
+msgstr "ابحث باسم المستخدم أو البريد أو رمز الشركة…"
+
+#: .\audit_app\admin.py:1244
+msgid "Total memberships"
+msgstr "إجمالي العضويات"
+
+#: .\audit_app\admin.py:1250
+msgid "Can upload"
+msgstr "يمكنه الرفع"
+
+#: .\audit_app\admin.py:1257
+msgid "Can review"
+msgstr "يمكنه المراجعة"
+
+#: .\audit_app\admin.py:1264
+msgid "Can view"
+msgstr "يمكنه العرض"
+
+#: .\audit_app\admin.py:1286
+msgid "Browse Excel upload sessions and imported source files."
+msgstr "تصفح جلسات رفع Excel والملفات المصدر المستوردة."
+
+#: .\audit_app\admin.py:1292
+msgid "Search file name, sheet, or hash…"
+msgstr "ابحث باسم الملف أو الورقة أو التجزئة…"
+
+#: .\audit_app\admin.py:1296
+msgid "Total uploads"
+msgstr "إجمالي عمليات الرفع"
+
+#: .\audit_app\admin.py:1299
+msgid "AI mode"
+msgstr "وضع الذكاء الاصطناعي"
+
+#: .\audit_app\admin.py:1306
+msgid "Arabic locale"
+msgstr "اللغة العربية"
+
+#: .\audit_app\admin.py:1312
+msgid "With content hash"
+msgstr "بها تجزئة محتوى"
+
+#: .\audit_app\admin.py:1322
+msgid "Browse audit observations extracted from uploaded Excel files."
+msgstr "تصفح ملاحظات التدقيق المستخرجة من ملفات Excel المرفوعة."
+
+#: .\audit_app\admin.py:1328
+msgid "Search year, observation, company, or subcompany…"
+msgstr "ابحث بالسنة أو الملاحظة أو الشركة أو الفرع…"
+
+#: .\audit_app\admin.py:1332
+msgid "Total observations"
+msgstr "إجمالي الملاحظات"
+
+#: .\audit_app\admin.py:1334
+msgid "Audit years"
+msgstr "سنوات التدقيق"
+
+#: .\audit_app\admin.py:1340
+msgid "With company"
+msgstr "بها شركة"
+
+#: .\audit_app\admin.py:1346
+msgid "Companies listed"
+msgstr "شركات مدرجة"
+
+#: .\audit_app\admin.py:1358
+msgid "Browse generated report artifacts linked to upload sessions."
+msgstr "تصفح نتائج التقارير المولّدة المرتبطة بجلسات الرفع."
+
+#: .\audit_app\admin.py:1363
+msgid "Search report ID or version…"
+msgstr "ابحث بمعرف التقرير أو الإصدار…"
+
+#: .\audit_app\admin.py:1368
+msgid "Total artifacts"
+msgstr "إجمالي النتائج"
+
+#: .\audit_app\admin.py:1370
+msgid "Total rows"
+msgstr "إجمالي الصفوف"
+
+#: .\audit_app\admin.py:1376
+msgid "Total columns"
+msgstr "إجمالي الأعمدة"
+
+#: .\audit_app\admin.py:1382
+msgid "Report versions"
+msgstr "إصدارات التقارير"
+
+#: .\audit_app\admin.py:1393
+msgid "Manage dashboard template types shown when creating dashboards."
+msgstr "أدر أنواع نماذج لوحات التحكم المعروضة عند الإنشاء."
+
+#: .\audit_app\admin.py:1400
+msgid "Settings"
+msgstr "الإعدادات"
+
+#: .\audit_app\admin.py:1404
+msgid "Search type code or name…"
+msgstr "ابحث برمز النوع أو الاسم…"
+
+#: .\audit_app\admin.py:1408
+msgid "Total types"
+msgstr "إجمالي الأنواع"
+
+#: .\audit_app\admin.py:1411
+msgid "Active types"
+msgstr "أنواع نشطة"
+
+#: .\audit_app\admin.py:1418
+msgid "Inactive types"
+msgstr "أنواع غير نشطة"
+
+#: .\audit_app\admin.py:1424
+msgid "With description"
+msgstr "بها وصف"
+
+#: .\audit_app\admin.py:1448
+msgid "Review dashboard rejection history and reasons."
+msgstr "راجع سجل رفض لوحات التحكم وأسبابه."
+
+#: .\audit_app\admin.py:1455
+msgid "Search reason, dashboard name, or reviewer…"
+msgstr "ابحث بالسبب أو اسم اللوحة أو المراجع…"
+
+#: .\audit_app\admin.py:1459
+msgid "Total rejections"
+msgstr "إجمالي عمليات الرفض"
+
+#: .\audit_app\admin.py:1461
+msgid "Dashboards rejected"
+msgstr "لوحات مرفوضة"
+
+#: .\audit_app\admin.py:1467
+msgid "Reviewers"
+msgstr "المراجعون"
+
+#: .\audit_app\admin.py:1473
+msgid "With reason text"
+msgstr "بها نص سبب"
+
+#: .\audit_app\admin.py:1484
+msgid "Browse dashboards across companies, statuses, and workflow states."
+msgstr "تصفح لوحات التحكم عبر الشركات والحالات وحالات سير العمل."
+
+#: .\audit_app\admin.py:1497
+msgid "Basic information"
+msgstr "المعلومات الأساسية"
+
+#: .\audit_app\admin.py:1499
+msgid "Soft delete"
+msgstr "حذف منطقي"
+
+#: .\audit_app\admin.py:1500
+msgid "Report data"
+msgstr "بيانات التقرير"
+
+#: .\audit_app\admin.py:1501
+msgid "Dates"
+msgstr "التواريخ"
+
+#: .\audit_app\admin.py:1505
+msgid "Search dashboard name, report ID, or description…"
+msgstr "ابحث باسم اللوحة أو معرف التقرير أو الوصف…"
+
+#: .\audit_app\admin.py:1515
+msgid "Total dashboards"
+msgstr "إجمالي لوحات التحكم"
+
+#: .\audit_app\admin.py:1518 .\audit_app\models.py:424
+msgid "Published"
+msgstr "منشور"
+
+#: .\audit_app\admin.py:1525 .\audit_app\models.py:421
+msgid "Draft"
+msgstr "مسودة"
+
+#: .\audit_app\admin.py:1531
+msgid "In review / workflow"
+msgstr "قيد المراجعة / سير العمل"
+
+#: .\audit_app\admin.py:1538 .\audit_app\models.py:34
+#: .\audit_app\models.py:501
+msgid "Soft deleted"
+msgstr "محذوف منطقياً"
+
+#: .\audit_app\admin.py:1556
+msgid "Restore selected dashboards"
+msgstr "استعادة لوحات التحكم المحددة"
+
+#: .\audit_app\admin.py:1565
+#, python-format
+msgid "Restored %(count)d dashboard(s)."
+msgstr "تمت استعادة %(count)d لوحة/لوحات."
+
+#: .\audit_app\admin.py:1579
+msgid "Step"
+msgstr "خطوة"
+
+#: .\audit_app\admin.py:1585
+msgid "Drag row up or down to reorder"
+msgstr "اسحب الصف لأعلى أو لأسفل لإعادة الترتيب"
+
+#: .\audit_app\admin.py:1592
+#: .\templates\admin\auth\user\delete_confirmation.html:18
+#: .\templates\admin\soft_delete_confirmation.html:18
+msgid "Remove"
+msgstr "إزالة"
+
+#: .\audit_app\admin.py:1594
+msgid "Check to remove this person from the workflow chain when saving."
+msgstr "حدّد لإزالة هذا الشخص من سلسلة سير العمل عند الحفظ."
+
+#: .\audit_app\admin.py:1615
+msgid "Active status"
+msgstr "حالة النشاط"
+
+#: .\audit_app\admin.py:1621 .\audit_app\admin_utils.py:28
+msgid "Inactive"
+msgstr "غير نشط"
+
+#: .\audit_app\admin.py:1644
+msgid ""
+"Configure per-company acknowledgment chains before dashboards are published."
+msgstr "اضبط سلاسل الإقرار لكل شركة قبل نشر لوحات التحكم."
+
+#: .\audit_app\admin.py:1661
+msgid ""
+"Each company has one workflow lineage. Version increments automatically when "
+"you save changes to the active workflow; older versions stay read-only and "
+"cannot be reactivated. Reorder steps by dragging rows. Use «Remove» to drop "
+"someone from the chain before saving."
+msgstr ""
+"لكل شركة سلسلة سير عمل واحدة. يزداد رقم الإصدار تلقائياً عند حفظ تغييرات سير "
+"العمل النشط؛ الإصدارات الأقدم للقراءة فقط ولا يمكن إعادة تفعيلها. أعد ترتيب "
+"الخطوات بسحب الصفوف. استخدم «إزالة» لحذف شخص من السلسلة قبل الحفظ."
+
+#: .\audit_app\admin.py:1687
+msgid "Total workflows"
+msgstr "إجمالي سير العمل"
+
+#: .\audit_app\admin.py:1697
+msgid "Historical"
+msgstr "تاريخي"
+
+#: .\audit_app\admin.py:1703 .\audit_app\models.py:127
+msgid "Companies"
+msgstr "الشركات"
+
+#: .\audit_app\admin.py:1798
+msgid "Historical workflow versions are read-only and cannot be edited."
+msgstr "إصدارات سير العمل التاريخية للقراءة فقط ولا يمكن تعديلها."
+
+#: .\audit_app\admin.py:1807
+msgid ""
+"This company already has a workflow. Edit the active version — saving "
+"changes creates a new version automatically."
+msgstr ""
+"هذه الشركة لديها سير عمل بالفعل. عدّل الإصدار النشط — حفظ التغييرات ينشئ "
+"إصداراً جديداً تلقائياً."
+
+#: .\audit_app\admin.py:1852
+#, python-format
+msgid ""
+"Saved as new workflow version %(version)s. Previous versions were "
+"deactivated."
+msgstr "تم الحفظ كإصدار سير عمل جديد %(version)s. تم تعطيل الإصدارات السابقة."
+
+#: .\audit_app\admin.py:1862 .\audit_app\admin_forms.py:527
+msgid "Add at least one workflow step with an assignee."
+msgstr "أضف خطوة سير عمل واحدة على الأقل مع مُكلَّف."
+
+#: .\audit_app\admin.py:1885
+#, python-format
+msgid "Published workflow version %(version)s"
+msgstr "إصدار سير العمل المنشور %(version)s"
+
+#: .\audit_app\admin.py:1934
+msgid "Track in-progress and completed dashboard workflow runs."
+msgstr "تتبّع عمليات سير عمل لوحات التحكم الجارية والمكتملة."
+
+#: .\audit_app\admin.py:1949
+msgid "Search dashboard name…"
+msgstr "ابحث باسم لوحة التحكم…"
+
+#: .\audit_app\admin.py:1953
+msgid "Total instances"
+msgstr "إجمالي الحالات"
+
+#: .\audit_app\admin.py:1956 .\audit_app\models.py:675
+msgid "Complete"
+msgstr "مكتمل"
+
+#: .\audit_app\admin.py:1963
+msgid "In progress"
+msgstr "قيد التنفيذ"
+
+#: .\audit_app\admin.py:1969
+msgid "With assignee"
+msgstr "بها مُكلَّف"
+
+#: .\audit_app\admin.py:1979
+msgid "Audit trail of workflow step acknowledgments."
+msgstr "سجل تدقيق إقرارات خطوات سير العمل."
+
+#: .\audit_app\admin.py:1986
+msgid "Search dashboard, assignee, or acknowledger…"
+msgstr "ابحث باللوحة أو المُكلَّف أو المُقرّ…"
+
+#: .\audit_app\admin.py:1990
+msgid "Total step logs"
+msgstr "إجمالي سجلات الخطوات"
+
+#: .\audit_app\admin.py:1992
+msgid "Acknowledged"
+msgstr "مُقرّ"
+
+#: .\audit_app\admin.py:1998
+msgid "Workflow instances"
+msgstr "حالات سير العمل"
+
+#: .\audit_app\admin.py:2004
+msgid "Assignees"
+msgstr "المُكلَّفون"
+
+#: .\audit_app\admin_changelist_v2.py:62
+msgid "Search…"
+msgstr "بحث…"
+
+#: .\audit_app\admin_changelist_v2.py:199
+#: .\templates\admin\change_form_v2.html:21
+#: .\templates\admin\change_form_v2.html:33
+#: .\templates\admin\change_list_object_tools.html:8
+msgid "Add New"
+msgstr "إضافة جديد"
+
+#: .\audit_app\admin_changelist_v2.py:209
+msgid "Fill in the details below, then save to create the record."
+msgstr "أكمل التفاصيل أدناه ثم احفظ لإنشاء السجل."
+
+#: .\audit_app\admin_changelist_v2.py:210
+msgid "Update the fields below and save your changes."
+msgstr "حدّث الحقول أدناه واحفظ التغييرات."
+
+#: .\audit_app\admin_forms.py:26
+msgid "Admin"
+msgstr "مدير"
+
+#: .\audit_app\admin_forms.py:28
+msgid ""
+"Designates whether this user has admin access to the administration site."
+msgstr "يحدد ما إذا كان المستخدم يملك صلاحية الوصول إلى لوحة الإدارة."
+
+#: .\audit_app\admin_forms.py:49
+#, python-format
+msgid "%(field)s is required."
+msgstr "%(field)s مطلوب."
+
+#: .\audit_app\admin_forms.py:61
+msgid "Email address is required."
+msgstr "البريد الإلكتروني مطلوب."
+
+#: .\audit_app\admin_forms.py:65
+msgid "Enter a valid email address."
+msgstr "أدخل بريدًا إلكترونيًا صالحًا."
+
+#: .\audit_app\admin_forms.py:70
+msgid "A user with this email already exists."
+msgstr "يوجد مستخدم بهذا البريد الإلكتروني بالفعل."
+
+#: .\audit_app\admin_forms.py:77
+msgid "Username is required."
+msgstr "اسم المستخدم مطلوب."
+
+#: .\audit_app\admin_forms.py:79
+msgid "Username must not contain spaces."
+msgstr "يجب ألا يحتوي اسم المستخدم على مسافات."
+
+#: .\audit_app\admin_forms.py:141
+msgid "Email address"
+msgstr "البريد الإلكتروني"
+
+#: .\audit_app\admin_forms.py:148 .\audit_app\admin_forms.py:198
+#: .\audit_app\admin_forms.py:289
+msgid "First name"
+msgstr "الاسم الأول"
+
+#: .\audit_app\admin_forms.py:153 .\audit_app\admin_forms.py:203
+#: .\audit_app\admin_forms.py:294
+msgid "Last name"
+msgstr "اسم العائلة"
+
+#: .\audit_app\admin_forms.py:164 .\audit_app\admin_forms.py:325
+#: .\templates\admin\auth\user\send_credentials_checkbox.html:6
+msgid "Send new password by email"
+msgstr "إرسال كلمة المرور الجديدة بالبريد"
+
+#: .\audit_app\admin_forms.py:168 .\audit_app\admin_forms.py:329
+#: .\templates\admin\auth\user\send_credentials_checkbox.html:8
+msgid ""
+"When checked, the new password is emailed to the user. They must change it "
+"on next sign-in."
+msgstr ""
+"عند التحديد، تُرسَل كلمة المرور الجديدة بالبريد. يجب على المستخدم تغييرها عند "
+"تسجيل الدخول التالي."
+
+#: .\audit_app\admin_forms.py:176 .\audit_app\admin_forms.py:236
+msgid "When enabled, a one-time code is sent by email at sign-in."
+msgstr "عند التفعيل، يُرسل رمز لمرة واحدة بالبريد عند تسجيل الدخول."
+
+#: .\audit_app\admin_forms.py:182 .\audit_app\admin_forms.py:241
+msgid "When enabled, the user must change their password every 180 days."
+msgstr "عند التفعيل، يجب على المستخدم تغيير كلمة المرور كل 180 يوماً."
+
+#: .\audit_app\admin_forms.py:247
+msgid ""
+"Superuser accounts only. Enable to receive dashboard workflow emails "
+"(pending review, publish, etc.) on this support account."
+msgstr ""
+"لحسابات المدير العام فقط. فعّل لاستلام رسائل سير عمل لوحات التحكم (انتظار "
+"المراجعة، النشر، إلخ) على هذا الحساب."
+
+#: .\audit_app\admin_forms.py:413
+msgid "Company logo is required."
+msgstr "شعار الشركة مطلوب."
+
+#: .\audit_app\admin_forms.py:417
+msgid "Logo must be PNG, JPEG, WebP, or GIF."
+msgstr "يجب أن يكون الشعار PNG أو JPEG أو WebP أو GIF."
+
+#: .\audit_app\admin_forms.py:422
+#, python-format
+msgid "Logo file is too large (maximum %(max)s MB)."
+msgstr "ملف الشعار كبير جداً (الحد الأقصى %(max)s م.ب.)."
+
+#: .\audit_app\admin_forms.py:435 .\audit_app\models.py:175
+msgid "Select the parent main company for a subsidiary."
+msgstr "اختر الشركة الرئيسية الأم للشركة التابعة."
+
+#: .\audit_app\admin_forms.py:442 .\audit_app\models.py:182
+msgid "Main companies cannot have a parent."
+msgstr "الشركات الرئيسية لا يمكن أن يكون لها شركة أم."
+
+#: .\audit_app\admin_forms.py:532
+msgid "Each person can appear only once in the workflow chain."
+msgstr "لا يمكن أن يظهر الشخص أكثر من مرة في سلسلة سير العمل."
+
+#: .\audit_app\admin_soft_delete.py:31 .\audit_app\admin_soft_delete.py:69
+msgid "Active records"
+msgstr "السجلات النشطة"
+
+#: .\audit_app\admin_soft_delete.py:32 .\audit_app\admin_soft_delete.py:76
+#: .\templates\admin\soft_delete_confirmation.html:24
+#: .\templates\admin\soft_delete_selected_confirmation.html:23
+msgid "Deleted records"
+msgstr "السجلات المحذوفة"
+
+#: .\audit_app\admin_soft_delete.py:115
+msgid "Restore selected records"
+msgstr "استعادة السجلات المحددة"
+
+#: .\audit_app\admin_soft_delete.py:179
+#, python-format
+msgid "Restored %(count)d record(s) successfully."
+msgstr "تمت استعادة %(count)d سجل/سجلات بنجاح."
+
+#: .\audit_app\admin_soft_delete.py:193
+#, python-format
+msgid "The %(type)s \"%(name)s\" was removed successfully."
+msgstr "تمت إزالة %(type)s \"%(name)s\" بنجاح."
+
+#: .\audit_app\admin_soft_delete.py:199
+#, python-format
+msgid "The %(type)s \"%(name)s\" was restored successfully."
+msgstr "تمت استعادة %(type)s \"%(name)s\" بنجاح."
+
+#: .\audit_app\admin_soft_delete.py:226
+msgid "This record is not deleted."
+msgstr "هذا السجل غير محذوف."
+
+#: .\audit_app\admin_soft_delete.py:289
+#, python-format
+msgid "Remove %(name)s"
+msgstr "إزالة %(name)s"
+
+#: .\audit_app\apps.py:10
+msgid "Excel Audit"
+msgstr "تدقيق Excel"
+
+#: .\audit_app\company_access.py:275
+msgid "(none registered)"
+msgstr "(لا يوجد مسجّل)"
+
+#: .\audit_app\models.py:12
+msgid "Main company"
+msgstr "شركة رئيسية"
+
+#: .\audit_app\models.py:13
+msgid "Subsidiary"
+msgstr "شركة تابعة"
+
+#: .\audit_app\models.py:18
+msgid "Company wise Audit committee report"
+msgstr "تقرير لجنة التدقيق حسب الشركة"
+
+#: .\audit_app\models.py:19
+msgid "High Risk Observations & Emerging Risks"
+msgstr "ملاحظات عالية المخاطر والمخاطر الناشئة"
+
+#: .\audit_app\models.py:20
+msgid "TGA Violations Report"
+msgstr "تقرير مخالفات TGA"
+
+#: .\audit_app\models.py:21
+msgid "Missing Vehicle Report"
+msgstr "تقرير المركبات المفقودة"
+
+#: .\audit_app\models.py:22
+msgid "Internal Audit Quarterly Report"
+msgstr "تقرير التدقيق الداخلي الربع سنوي"
+
+#: .\audit_app\models.py:23
+msgid "Special Assignment Report"
+msgstr "تقرير المهمة الخاصة"
+
+#: .\audit_app\models.py:48 .\audit_app\models.py:515
+msgid "Deleted by"
+msgstr "حُذف بواسطة"
+
+#: .\audit_app\models.py:72
+msgid "Company code"
+msgstr "رمز الشركة"
+
+#: .\audit_app\models.py:73
+msgid "Short identifier, e.g. BTC, NAT"
+msgstr "معرّف قصير، مثل BTC أو NAT"
+
+#: .\audit_app\models.py:75
+msgid "Display name"
+msgstr "الاسم المعروض"
+
+#: .\audit_app\models.py:79
+msgid "Excel company names"
+msgstr "أسماء الشركة في Excel"
+
+#: .\audit_app\models.py:81
+msgid ""
+"Names accepted in the Excel Company column for this tenant (defaults to the "
+"company code if empty)."
+msgstr ""
+"الأسماء المقبولة في عمود Company في Excel لهذا المستأجر (افتراضياً رمز الشركة "
+"إذا كان فارغاً)."
+
+#: .\audit_app\models.py:89
+msgid "Company type"
+msgstr "نوع الشركة"
+
+#: .\audit_app\models.py:91
+msgid ""
+"Main companies have their own dashboards and Excel uploads. Subsidiaries are "
+"registered only for Excel subcompany codes and logos."
+msgstr ""
+"الشركات الرئيسية لديها لوحات تحكم ورفع Excel خاص بها. الشركات التابعة تُسجَّل "
+"فقط لرموز الفروع والشعارات في Excel."
+
+#: .\audit_app\models.py:101
+msgid "Parent company"
+msgstr "الشركة الأم"
+
+#: .\audit_app\models.py:102
+msgid "Required when the company type is Subsidiary."
+msgstr "مطلوب عندما يكون نوع الشركة شركة تابعة."
+
+#: .\audit_app\models.py:107 .\audit_app\models.py:346
+msgid "Company logo"
+msgstr "شعار شركة"
+
+#: .\audit_app\models.py:108
+msgid "PNG, JPEG, or WebP. Required for all companies."
+msgstr "PNG أو JPEG أو WebP. مطلوب لجميع الشركات."
+
+#: .\audit_app\models.py:113
+msgid "Use multi-step workflow"
+msgstr "استخدام سير عمل متعدد الخطوات"
+
+#: .\audit_app\models.py:115
+msgid ""
+"When enabled, uploads stay as private drafts until submit; approval starts a "
+"configurable acknowledgment chain before publish."
+msgstr ""
+"عند التفعيل، تبقى الرفوعات مسودات خاصة حتى الإرسال؛ الموافقة تبدأ سلسلة "
+"إقرار قابلة للضبط قبل النشر."
+
+#: .\audit_app\models.py:121
+msgid "Email creator when dashboard is published"
+msgstr "إرسال بريد للمنشئ عند نشر لوحة التحكم"
+
+#: .\audit_app\models.py:123 .\audit_app\models.py:254
+#: .\audit_app\models.py:327 .\audit_app\models.py:362
+#: .\audit_app\models.py:517 .\audit_app\models.py:571
+#: .\audit_app\models.py:605
+msgid "Created at"
+msgstr "تاريخ الإنشاء"
+
+msgid "ID"
+msgstr "رقم المعرف"
+
+#: .\audit_app\models.py:126 .\audit_app\models.py:223
+#: .\audit_app\models.py:273 .\audit_app\models.py:323
+#: .\audit_app\models.py:324 .\audit_app\models.py:456
+#: .\audit_app\models.py:592
+msgid "Company"
+msgstr "شركة"
+
+#: .\audit_app\models.py:177
+msgid "A company cannot be its own parent."
+msgstr "لا يمكن أن تكون الشركة أمّاً لنفسها."
+
+#: .\audit_app\models.py:179
+msgid "Parent must be a main company."
+msgstr "يجب أن تكون الشركة الأم شركة رئيسية."
+
+#: .\audit_app\models.py:188
+msgid "Circular parent chain is not allowed."
+msgstr "سلسلة أمومة دائرية غير مسموحة."
+
+#: .\audit_app\models.py:227 .\audit_app\models.py:524
+msgid "Can upload files and create dashboards"
+msgstr "يمكنه رفع الملفات وإنشاء لوحات التحكم"
+
+#: .\audit_app\models.py:231 .\audit_app\models.py:525
+msgid "Can view dashboards"
+msgstr "يمكنه عرض لوحات التحكم"
+
+#: .\audit_app\models.py:232
+msgid "View all published dashboards in this company."
+msgstr "عرض جميع لوحات التحكم المنشورة في هذه الشركة."
+
+#: .\audit_app\models.py:236
+msgid "Can view own dashboards only"
+msgstr "يمكنه عرض لوحاته فقط"
+
+#: .\audit_app\models.py:238
+msgid ""
+"View only dashboards this user created in this company (draft, rejected, or "
+"published)."
+msgstr ""
+"عرض لوحات التحكم التي أنشأها هذا المستخدم في هذه الشركة فقط (مسودة أو مرفوضة "
+"أو منشورة)."
+
+#: .\audit_app\models.py:244 .\audit_app\models.py:527
+msgid "Can approve or reject dashboards"
+msgstr "يمكنه الموافقة على لوحات التحكم أو رفضها"
+
+#: .\audit_app\models.py:248
+msgid "Can delete draft dashboards"
+msgstr "يمكنه حذف مسودات لوحات التحكم"
+
+#: .\audit_app\models.py:250
+msgid ""
+"Remove draft dashboards in this company only. Published dashboards cannot be "
+"deleted."
+msgstr ""
+"إزالة مسودات لوحات التحكم في هذه الشركة فقط. لا يمكن حذف اللوحات المنشورة."
+
+#: .\audit_app\models.py:257
+msgid "Company membership"
+msgstr "عضوية شركة"
+
+#: .\audit_app\models.py:258
+msgid "Company memberships"
+msgstr "عضويات الشركات"
+
+#: .\audit_app\models.py:278
+msgid "Attachment type"
+msgstr "نوع المرفق"
+
+#: .\audit_app\models.py:283
+msgid "Company attachment setting"
+msgstr "إعداد مرفق الشركة"
+
+#: .\audit_app\models.py:284
+msgid "Company attachment settings"
+msgstr "إعدادات مرفقات الشركات"
+
+#: .\audit_app\models.py:289
+msgid "enabled"
+msgstr "مفعّل"
+
+#: .\audit_app\models.py:289
+msgid "disabled"
+msgstr "معطّل"
+
+#: .\audit_app\models.py:294
+msgid "Source name"
+msgstr "اسم المصدر"
+
+#: .\audit_app\models.py:295
+msgid "Sheet name"
+msgstr "اسم الورقة"
+
+#: .\audit_app\models.py:296
+msgid "Mode"
+msgstr "الوضع"
+
+#: .\audit_app\models.py:297
+msgid "Locale"
+msgstr "اللغة"
+
+#: .\audit_app\models.py:298
+msgid "Content hash"
+msgstr "تجزئة المحتوى"
+
+#: .\audit_app\models.py:300
+msgid "Raw file data (JSON)"
+msgstr "بيانات الملف (JSON)"
+
+#: .\audit_app\models.py:302
+msgid "Uploaded at"
+msgstr "تاريخ الرفع"
+
+#: .\audit_app\models.py:305 .\audit_app\models.py:317
+#: .\audit_app\models.py:355 .\audit_app\models.py:472
+msgid "Upload session"
+msgstr "جلسة رفع"
+
+#: .\audit_app\models.py:306
+msgid "Upload sessions"
+msgstr "جلسات الرفع"
+
+#: .\audit_app\models.py:319
+msgid "Audit year"
+msgstr "سنة التدقيق"
+
+#: .\audit_app\models.py:320
+msgid "Observation name"
+msgstr "اسم الملاحظة"
+
+#: .\audit_app\models.py:321
+msgid "Department"
+msgstr "القسم"
+
+#: .\audit_app\models.py:322
+msgid "IA status"
+msgstr "حالة التدقيق الداخلي"
+
+#: .\audit_app\models.py:324
+msgid "Subcompany"
+msgstr "الشركة الفرعية"
+
+#: .\audit_app\models.py:325
+msgid "Email"
+msgstr "البريد الإلكتروني"
+
+#: .\audit_app\models.py:326
+msgid "Raw row"
+msgstr "الصف الخام"
+
+#: .\audit_app\models.py:330
+msgid "Audit observation"
+msgstr "ملاحظة تدقيق"
+
+#: .\audit_app\models.py:331
+msgid "Audit observations"
+msgstr "ملاحظات التدقيق"
+
+#: .\audit_app\models.py:347
+msgid "Company logos"
+msgstr "شعارات الشركات"
+
+#: .\audit_app\models.py:357 .\audit_app\models.py:445
+msgid "Report ID"
+msgstr "معرف التقرير"
+
+#: .\audit_app\models.py:358
+msgid "Report version"
+msgstr "إصدار التقرير"
+
+#: .\audit_app\models.py:359
+msgid "Rows"
+msgstr "الصفوف"
+
+#: .\audit_app\models.py:360
+msgid "Columns"
+msgstr "الأعمدة"
+
+#: .\audit_app\models.py:361
+msgid "Payload"
+msgstr "الحمولة"
+
+#: .\audit_app\models.py:365
+msgid "Report artifact"
+msgstr "نتيجة تقرير"
+
+#: .\audit_app\models.py:366
+msgid "Report artifacts"
+msgstr "نتائج التقارير"
+
+#: .\audit_app\models.py:377
+msgid "Type code"
+msgstr "رمز النوع (كود)"
+
+#: .\audit_app\models.py:378
+msgid "Internal slug without spaces, e.g. ai"
+msgstr "قيمة داخلية بدون مسافات، مثل: ai"
+
+#: .\audit_app\models.py:382
+msgid "Type name"
+msgstr "اسم النوع"
+
+#: .\audit_app\models.py:383
+msgid "Display name shown to users"
+msgstr "الاسم الذي يظهر للمستخدمين"
+
+#: .\audit_app\models.py:385 .\audit_app\models.py:432
+msgid "Description"
+msgstr "وصف"
+
+#: .\audit_app\models.py:389
+msgid "Bootstrap icon"
+msgstr "أيقونة Bootstrap"
+
+#: .\audit_app\models.py:390
+msgid "Example: bi-bar-chart-line-fill"
+msgstr "مثال: bi-bar-chart-line-fill"
+
+#: .\audit_app\models.py:393
+msgid "Sort order"
+msgstr "ترتيب العرض"
+
+#: .\audit_app\models.py:396
+msgid "Dashboard template type"
+msgstr "نوع نموذج لوحة التحكم"
+
+#: .\audit_app\models.py:397
+msgid "Dashboard template types"
+msgstr "أنواع نماذج لوحات التحكم"
+
+#: .\audit_app\models.py:405
+msgid "Bar chart"
+msgstr "مخطط أعمدة"
+
+#: .\audit_app\models.py:406
+msgid "Pie chart"
+msgstr "مخطط دائري"
+
+#: .\audit_app\models.py:407
+msgid "Line / growth chart"
+msgstr "مخطط خطي / نمو"
+
+#: .\audit_app\models.py:408
+msgid "Data table"
+msgstr "جدول بيانات"
+
+#: .\audit_app\models.py:409
+msgid "Data analysis"
+msgstr "تحليل بيانات"
+
+#: .\audit_app\models.py:410
+msgid "Spreadsheet"
+msgstr "جداول بيانات"
+
+#: .\audit_app\models.py:411
+msgid "Finance / accounting"
+msgstr "مالي / محاسبي"
+
+#: .\audit_app\models.py:412
+msgid "Organization / companies"
+msgstr "مؤسسي / شركات"
+
+#: .\audit_app\models.py:416
+msgid "AI analytical dashboard"
+msgstr "لوحة تحليلية ذكية (AI Dashboard)"
+
+#: .\audit_app\models.py:422
+msgid "Under review"
+msgstr "قيد المراجعة"
+
+#: .\audit_app\models.py:423
+msgid "In workflow"
+msgstr "في سير العمل"
+
+#: .\audit_app\models.py:425
+msgid "Rejected"
+msgstr "مرفوض"
+
+#: .\audit_app\models.py:431
+msgid "Dashboard name"
+msgstr "اسم لوحة التحكم"
+
+#: .\audit_app\models.py:437
+msgid "Dashboard icon"
+msgstr "رمز اللوحة"
+
+#: .\audit_app\models.py:443
+msgid "Template type"
+msgstr "نوع النموذج"
+
+#: .\audit_app\models.py:447
+msgid "Cached HTML file"
+msgstr "ملف HTML المخزن مؤقتاً"
+
+#: .\audit_app\models.py:449
+msgid "Source files"
+msgstr "الملفات المصدر"
+
+#: .\audit_app\models.py:464
+msgid "Created by"
+msgstr "أنشأ بواسطة"
+
+#: .\audit_app\models.py:484
+msgid "Published at"
+msgstr "تاريخ النشر"
+
+#: .\audit_app\models.py:492
+msgid "Reviewed by"
+msgstr "رُاجع بواسطة"
+
+#: .\audit_app\models.py:497
+msgid "Submitted for review at"
+msgstr "تاريخ الإرسال للمراجعة"
+
+#: .\audit_app\models.py:520 .\audit_app\models.py:560
+#: .\audit_app\models.py:662
+msgid "Dashboard"
+msgstr "لوحة تحكم"
+
+#: .\audit_app\models.py:521
+msgid "Dashboards"
+msgstr "لوحات التحكم"
+
+#: .\audit_app\models.py:526
+msgid "Can remove and restore dashboards"
+msgstr "يمكنه إزالة لوحات التحكم واستعادتها"
+
+#: .\audit_app\models.py:562
+msgid "Rejection reason"
+msgstr "سبب الرفض"
+
+#: .\audit_app\models.py:569
+msgid "Rejected by"
+msgstr "رُفض بواسطة"
+
+#: .\audit_app\models.py:574
+msgid "Dashboard rejection log"
+msgstr "سجل رفض لوحة التحكم"
+
+#: .\audit_app\models.py:575
+msgid "Dashboard rejection logs"
+msgstr "سجلات رفض لوحات التحكم"
+
+#: .\audit_app\models.py:594
+msgid "Default"
+msgstr "افتراضي"
+
+#: .\audit_app\models.py:597
+msgid "Version"
+msgstr "الإصدار"
+
+#: .\audit_app\models.py:606
+msgid "Updated at"
+msgstr "تاريخ التحديث"
+
+#: .\audit_app\models.py:609
+msgid "Workflow template"
+msgstr "قالب سير العمل"
+
+#: .\audit_app\models.py:610
+msgid "Workflow templates"
+msgstr "قوالب سير العمل"
+
+#: .\audit_app\models.py:630
+msgid "Template"
+msgstr "القالب"
+
+#: .\audit_app\models.py:632 .\audit_app\models.py:700
+#: .\audit_app\models.py:729
+msgid "Step order"
+msgstr "ترتيب الخطوة"
+
+#: .\audit_app\models.py:637 .\audit_app\models.py:705
+#: .\audit_app\models.py:736
+msgid "Assignee"
+msgstr "المُكلَّف"
+
+#: .\audit_app\models.py:641
+msgid "Workflow template step"
+msgstr "خطوة قالب سير العمل"
+
+#: .\audit_app\models.py:642
+msgid "Workflow template steps"
+msgstr "خطوات قالب سير العمل"
+
+#: .\audit_app\models.py:664
+msgid "Template version"
+msgstr "إصدار القالب"
+
+#: .\audit_app\models.py:665
+msgid "Current step"
+msgstr "الخطوة الحالية"
+
+#: .\audit_app\models.py:666
+msgid "Total steps"
+msgstr "إجمالي الخطوات"
+
+#: .\audit_app\models.py:673
+msgid "Current assignee"
+msgstr "المُكلَّف الحالي"
+
+#: .\audit_app\models.py:676
+msgid "Started at"
+msgstr "تاريخ البدء"
+
+#: .\audit_app\models.py:680
+msgid "Completed at"
+msgstr "تاريخ الإكمال"
+
+#: .\audit_app\models.py:684
+msgid "Dashboard workflow instance"
+msgstr "حالة سير عمل لوحة التحكم"
+
+#: .\audit_app\models.py:685
+msgid "Dashboard workflow instances"
+msgstr "حالات سير عمل لوحات التحكم"
+
+#: .\audit_app\models.py:698 .\audit_app\models.py:727
+msgid "Workflow instance"
+msgstr "حالة سير العمل"
+
+#: .\audit_app\models.py:709
+msgid "Workflow step snapshot"
+msgstr "لقطة خطوة سير العمل"
+
+#: .\audit_app\models.py:710
+msgid "Workflow step snapshots"
+msgstr "لقطات خطوات سير العمل"
+
+#: .\audit_app\models.py:744
+msgid "Acknowledged by"
+msgstr "أُقرّ بواسطة"
+
+#: .\audit_app\models.py:746
+msgid "Acknowledged at"
+msgstr "تاريخ الإقرار"
+
+#: .\audit_app\models.py:749
+msgid "Workflow step log"
+msgstr "سجل خطوة سير العمل"
+
+#: .\audit_app\models.py:750
+msgid "Workflow step logs"
+msgstr "سجلات خطوات سير العمل"
+
+#: .\audit_app\workflow_template_service.py:57
+msgid ""
+"This company already has a workflow. Edit the active version to publish "
+"changes."
+msgstr "هذه الشركة لديها سير عمل بالفعل. عدّل الإصدار النشط لنشر التغييرات."
+
+#: .\audit_app\workflow_template_service.py:78
+msgid ""
+"Only the active workflow can be edited. Historical versions are read-only."
+msgstr "يمكن تعديل سير العمل النشط فقط. الإصدارات التاريخية للقراءة فقط."
+
+#: .\templates\admin\app_list.html:12
+msgid "Model name"
+msgstr "اسم النموذج"
+
+#: .\templates\admin\app_list.html:13
+msgid "Add link"
+msgstr "رابط الإضافة"
+
+#: .\templates\admin\app_list.html:14
+msgid "Change or view list link"
+msgstr "رابط التعديل أو عرض القائمة"
+
+#: .\templates\admin\app_list.html:29
+msgid "Add"
+msgstr "إضافة"
+
+#: .\templates\admin\app_list.html:36
+msgid "View"
+msgstr "عرض"
+
+#: .\templates\admin\app_list.html:38
+msgid "Change"
+msgstr "تعديل"
+
+#: .\templates\admin\app_list.html:50
+msgid "You don’t have permission to view or edit anything."
+msgstr "ليس لديك صلاحية لعرض أو تعديل أي شيء."
+
+#: .\templates\admin\auth\user\add_credentials_email_section.html:4
+msgid "Email credentials"
+msgstr "إرسال بيانات الدخول بالبريد"
+
+#: .\templates\admin\auth\user\change_form.html:29
+#: .\templates\admin\auth\user\change_form.html:36
+msgid "This user is soft-deleted and cannot sign in."
+msgstr "هذا المستخدم محذوف ولا يمكنه تسجيل الدخول."
+
+#: .\templates\admin\auth\user\change_form.html:31
+msgid "Restore user"
+msgstr "استعادة المستخدم"
+
+#: .\templates\admin\auth\user\change_password.html:11
+#: .\templates\admin\auth\user\delete_confirmation.html:14
+#: .\templates\admin\auth\user\delete_selected_confirmation.html:14
+#: .\templates\admin\base.html:65 .\templates\admin\base_site.html:134
+#: .\templates\admin\change_form_v2.html:18
+#: .\templates\admin\change_list.html:33
+#: .\templates\admin\soft_delete_confirmation.html:14
+#: .\templates\admin\soft_delete_selected_confirmation.html:14
+msgid "Home"
+msgstr "الرئيسية"
+
+#: .\templates\admin\auth\user\change_password.html:15
+#: .\templates\admin\auth\user\change_password.html:44
+msgid "Change password"
+msgstr "تغيير كلمة المرور"
+
+#: .\templates\admin\auth\user\change_password.html:25
+#: .\templates\admin\change_form_v2.html:56
+#: .\templates\admin\change_list.html:58
+#: .\templates\admin\changelist_v2.html:84
+msgid "Please correct the error below."
+msgid_plural "Please correct the errors below."
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+msgstr[3] ""
+msgstr[4] ""
+msgstr[5] ""
+
+#: .\templates\admin\auth\user\change_password.html:28
+#, python-format
+msgid "Enter a new password for the user <strong>%(username)s</strong>."
+msgstr "أدخل كلمة مرور جديدة للمستخدم <strong>%(username)s</strong>."
+
+#: .\templates\admin\auth\user\delete_confirmation.html:24
+#, python-format
+msgid ""
+"\n"
+"    Are you sure you want to remove the user \"%(escaped_object)s\"?\n"
+"    The account will be deactivated and hidden from the user list, but the "
+"record will remain in the database.\n"
+"    You can view and restore deleted users from the user list using the "
+"\"Deleted users\" filter.\n"
+"    "
+msgstr ""
+"\n"
+"    هل أنت متأكد من إزالة المستخدم \"%(escaped_object)s\"؟\n"
+"    سيتم إلغاء تفعيل الحساب وإخفاؤه من قائمة المستخدمين، لكن السجل سيبقى في "
+"قاعدة البيانات.\n"
+"    يمكنك عرض المستخدمين المحذوفين واستعادتهم من قائمة المستخدمين باستخدام "
+"فلتر \"المستخدمون المحذوفون\".\n"
+"    "
+
+#: .\templates\admin\auth\user\delete_confirmation.html:35
+#: .\templates\admin\delete_modal.html:15
+msgid "Yes, remove user"
+msgstr "نعم، إزالة المستخدم"
+
+#: .\templates\admin\auth\user\delete_confirmation.html:36
+#: .\templates\admin\auth\user\delete_selected_confirmation.html:42
+#: .\templates\admin\soft_delete_confirmation.html:36
+#: .\templates\admin\soft_delete_selected_confirmation.html:42
+msgid "No, take me back"
+msgstr "لا، العودة للخلف"
+
+#: .\templates\admin\auth\user\delete_selected_confirmation.html:17
+msgid "Remove multiple users"
+msgstr "إزالة عدة مستخدمين"
+
+#: .\templates\admin\auth\user\delete_selected_confirmation.html:23
+msgid ""
+"\n"
+"    Are you sure you want to remove the selected users?\n"
+"    Their accounts will be deactivated and hidden from the default user "
+"list, but records will remain in the database.\n"
+"    You can view and restore them using the \"Deleted users\" filter.\n"
+"    "
+msgstr ""
+"\n"
+"    هل أنت متأكد من إزالة المستخدمين المحددين؟\n"
+"    سيتم إلغاء تفعيل حساباتهم وإخفاؤهم من قائمة المستخدمين الافتراضية، لكن "
+"السجلات ستبقى في قاعدة البيانات.\n"
+"    يمكنك عرضهم واستعادتهم باستخدام فلتر \"المستخدمون المحذوفون\".\n"
+"    "
+
+#: .\templates\admin\auth\user\delete_selected_confirmation.html:41
+#: .\templates\admin\delete_modal.html:17
+msgid "Yes, remove users"
+msgstr "نعم، إزالة المستخدمين"
+
+#: .\templates\admin\auth\user\password_reset_form.html:5
+msgid "Password"
+msgstr "كلمة المرور"
+
+#: .\templates\admin\auth\user\password_reset_form.html:48
+msgid "Reset password"
+msgstr "إعادة تعيين كلمة المرور"
+
+#: .\templates\admin\base.html:24
+msgid "Skip to main content"
+msgstr "تخطي إلى المحتوى الرئيسي"
+
+#: .\templates\admin\base.html:39
+msgid "Sidebar"
+msgstr "القائمة الجانبية"
+
+#: .\templates\admin\base.html:57
+msgid "Menu"
+msgstr "القائمة"
+
+#: .\templates\admin\base.html:62
+msgid "Breadcrumbs"
+msgstr "مسار التنقل"
+
+#: .\templates\admin\base_site.html:7 .\templates\admin\base_site.html:51
+msgid "Audit Dashboard"
+msgstr "لوحة التدقيق"
+
+#: .\templates\admin\base_site.html:53
+msgid "Admin Panel"
+msgstr "لوحة الإدارة"
+
+#: .\templates\admin\base_site.html:92
+msgid "Log out"
+msgstr "تسجيل الخروج"
+
+#: .\templates\admin\base_site.html:124
+msgid "Theme"
+msgstr "المظهر"
+
+#: .\templates\admin\base_site.html:130
+msgid "Main Site"
+msgstr "الموقع الرئيسي"
+
+#: .\templates\admin\change_form_v2.html:81
+msgid "This record is soft-deleted and hidden from the application."
+msgstr "هذا السجل محذوف و مخفي عن التطبيق."
+
+#: .\templates\admin\change_form_v2.html:83
+msgid "Restore record"
+msgstr "استعادة السجل"
+
+#: .\templates\admin\change_list.html:4
+msgid "Error:"
+msgstr "خطأ:"
+
+#: .\templates\admin\change_list.html:83
+#: .\templates\admin\changelist_v2.html:148
+msgid "Filter"
+msgstr "تصفية"
+
+#: .\templates\admin\change_list.html:86
+#: .\templates\admin\changelist_v2.html:155
+msgid "Hide counts"
+msgstr "إخفاء العدد"
+
+#: .\templates\admin\change_list.html:87
+#: .\templates\admin\changelist_v2.html:155
+msgid "Show counts"
+msgstr "إظهار العدد"
+
+#: .\templates\admin\change_list.html:90
+#: .\templates\admin\changelist_v2.html:161
+msgid "Clear all filters"
+msgstr "مسح جميع الفلاتر"
+
+#: .\templates\admin\changelist_v2.html:17
+msgid "selected"
+msgstr "محدد"
+
+#: .\templates\admin\changelist_v2.html:17
+msgid "Select at least one row in the table first."
+msgstr "حدّد صفاً واحداً على الأقل في الجدول أولاً."
+
+#: .\templates\admin\changelist_v2.html:39
+msgid "Summary"
+msgstr "ملخص"
+
+#: .\templates\admin\changelist_v2.html:53
+msgid "Quick actions"
+msgstr "إجراءات سريعة"
+
+#: .\templates\admin\changelist_v2.html:103
+msgid "Search"
+msgstr "بحث"
+
+#: .\templates\admin\changelist_v2.html:173
+msgid "Tip"
+msgstr "نصيحة"
+
+#: .\templates\admin\changelist_v2.html:174
+msgid "Use filters to narrow results quickly and save time."
+msgstr "استخدم الفلاتر لتضييق النتائج بسرعة وتوفير الوقت."
+
+#: .\templates\admin\delete_modal.html:2
+msgid "Delete confirmation"
+msgstr "تأكيد الحذف"
+
+#: .\templates\admin\delete_modal.html:4
+msgid "Remove selected items"
+msgstr "إزالة العناصر المحددة"
+
+#: .\templates\admin\delete_modal.html:5
+msgid "Remove selected users"
+msgstr "إزالة المستخدمين المحددين"
+
+#: .\templates\admin\delete_modal.html:6
+msgid "Are you sure you want to remove __OBJECT__?"
+msgstr "هل أنت متأكد من إزالة __OBJECT__؟"
+
+#: .\templates\admin\delete_modal.html:7
+msgid "Are you sure you want to remove the user __OBJECT__?"
+msgstr "هل أنت متأكد من إزالة المستخدم __OBJECT__؟"
+
+#: .\templates\admin\delete_modal.html:8
+msgid "Are you sure you want to remove the selected items?"
+msgstr "هل أنت متأكد من إزالة العناصر المحددة؟"
+
+#: .\templates\admin\delete_modal.html:9
+msgid "The following items will be removed:"
+msgstr "سيتم إزالة العناصر التالية:"
+
+#: .\templates\admin\delete_modal.html:10
+msgid ""
+"The account will be deactivated and hidden from the user list, but the "
+"record will remain in the database."
+msgstr ""
+"سيتم إلغاء تفعيل الحساب وإخفاؤه من قائمة المستخدمين، لكن السجل سيبقى في "
+"قاعدة البيانات."
+
+#: .\templates\admin\delete_modal.html:11
+msgid ""
+"You can view and restore deleted users from the user list using the "
+"\"Deleted users\" filter."
+msgstr ""
+"يمكنك عرض المستخدمين المحذوفين واستعادتهم من قائمة المستخدمين باستخدام فلتر "
+"«المستخدمون المحذوفون»."
+
+#: .\templates\admin\delete_modal.html:12
+msgid ""
+"The record will be hidden from the admin list, but it will remain in the "
+"database."
+msgstr "سيتم إخفاء السجل من قائمة الإدارة، لكنه سيبقى في قاعدة البيانات."
+
+#: .\templates\admin\delete_modal.html:13
+msgid ""
+"You can view and restore deleted records using the \"Deleted records\" "
+"filter."
+msgstr ""
+"يمكنك عرض السجلات المحذوفة واستعادتها باستخدام فلتر «السجلات المحذوفة»."
+
+#: .\templates\admin\delete_modal.html:14
+#: .\templates\admin\delete_modal.html:75
+#: .\templates\admin\soft_delete_confirmation.html:35
+msgid "Yes, remove"
+msgstr "نعم، إزالة"
+
+#: .\templates\admin\delete_modal.html:16
+#: .\templates\admin\soft_delete_selected_confirmation.html:41
+msgid "Yes, remove selected"
+msgstr "نعم، إزالة المحدد"
+
+#: .\templates\admin\delete_modal.html:18
+#: .\templates\admin\delete_modal.html:71
+msgid "Cancel"
+msgstr "إلغاء"
+
+#: .\templates\admin\delete_modal.html:58
+msgid "Close"
+msgstr "إغلاق"
+
+#: .\templates\admin\index.html:37
+msgid "Site administration"
+msgstr "إدارة الموقع"
+
+#: .\templates\admin\index.html:41
+msgid "Review your latest admin activity and open models from the sidebar."
+msgstr "راجع أحدث نشاط إداري وافتح النماذج من القائمة الجانبية."
+
+#: .\templates\admin\index.html:47 .\templates\admin\index.html:57
+msgid "Recent actions"
+msgstr "أحدث الإجراءات"
+
+#: .\templates\admin\index.html:59
+msgid "My actions"
+msgstr "إجراءاتي"
+
+#: .\templates\admin\index.html:71
+msgid "None available"
+msgstr "لا يوجد"
+
+#: .\templates\admin\index.html:91
+msgid "Added:"
+msgstr "أُضيف:"
+
+#: .\templates\admin\index.html:91
+msgid "Changed:"
+msgstr "عُدّل:"
+
+#: .\templates\admin\index.html:91
+msgid "Deleted:"
+msgstr "حُذف:"
+
+#: .\templates\admin\index.html:111
+msgid "Unknown content"
+msgstr "محتوى غير معروف"
+
+#: .\templates\admin\soft_delete_confirmation.html:24
+#, python-format
+msgid ""
+"\n"
+"    Are you sure you want to remove %(escaped_object)s?\n"
+"    The record will be hidden from the admin list, but it will remain in the "
+"database.\n"
+"    You can view and restore deleted records using the “%(filter_name)s” "
+"filter.\n"
+"    "
+msgstr ""
+"\n"
+"    هل أنت متأكد من إزالة %(escaped_object)s؟\n"
+"    سيتم إخفاء السجل من قائمة الإدارة، لكنه سيبقى في قاعدة البيانات.\n"
+"    يمكنك عرض السجلات المحذوفة واستعادتها باستخدام فلتر «%(filter_name)s».\n"
+"    "
+
+#: .\templates\admin\soft_delete_selected_confirmation.html:17
+msgid "Remove selected records"
+msgstr "إزالة السجلات المحددة"
+
+#: .\templates\admin\soft_delete_selected_confirmation.html:23
+#, python-format
+msgid ""
+"\n"
+"    Are you sure you want to remove the selected records?\n"
+"    They will be hidden from the default admin list, but will remain in the "
+"database.\n"
+"    You can view and restore them using the “%(filter_name)s” filter.\n"
+"    "
+msgstr ""
+"\n"
+"    هل أنت متأكد من إزالة السجلات المحددة؟\n"
+"    سيتم إخفاؤها من قائمة الإدارة الافتراضية، لكنها ستبقى في قاعدة "
+"البيانات.\n"
+"    يمكنك عرضها واستعادتها باستخدام فلتر «%(filter_name)s».\n"
+"    "
+
+#~ msgid "Password confirmation"
+#~ msgstr "تأكيد كلمة المرور"
+
+#~ msgid "No job title"
+#~ msgstr "بدون مسمى وظيفي"
+
+#~ msgid ""
+#~ "Are you sure you want to remove the user <span class=\"admin-delete-"
+#~ "modal__username\" data-admin-delete-username>%(username)s</span>?"
+#~ msgstr ""
+#~ "هل أنت متأكد من إزالة المستخدم <span class=\"admin-delete-modal__username"
+#~ "\" data-admin-delete-username>%(username)s</span>؟"
+
+#~ msgid ""
+#~ "Are you sure you want to delete __OBJECT__? This action cannot be undone."
+#~ msgstr "هل أنت متأكد من حذف __OBJECT__؟ لا يمكن التراجع عن هذا الإجراء."
+
+#~ msgid "Delete selected items"
+#~ msgstr "حذف العناصر المحددة"
+
+#~ msgid "Are you sure you want to delete the selected items?"
+#~ msgstr "هل أنت متأكد من حذف العناصر المحددة؟"
+
+#~ msgid "The following items will be deleted:"
+#~ msgstr "سيتم حذف العناصر التالية:"
+
+#~ msgid "Yes, delete selected"
+#~ msgstr "نعم، حذف المحدد"
+
+#~ msgid ""
+#~ "You can view and restore deleted records using the “%(filter_name)s” "
+#~ "filter."
+#~ msgstr ""
+#~ "يمكنك عرض السجلات المحذوفة واستعادتها باستخدام فلتر «%(filter_name)s»."
+
+#~ msgid ""
+#~ "You can view and restore deleted users from the user list using the "
+#~ "“%(filter_name)s” filter."
+#~ msgstr ""
+#~ "يمكنك عرض المستخدمين المحذوفين واستعادتهم من قائمة المستخدمين باستخدام "
+#~ "فلتر «%(filter_name)s»."
+
+#~ msgid "Username"
+#~ msgstr "اسم المستخدم"
+
+#~ msgid "Superuser status"
+#~ msgstr "صلاحيات المدير العام"
+
+#~ msgid "Groups"
+#~ msgstr "المجموعات"
+
+#~ msgid "Last login"
+#~ msgstr "آخر تسجيل دخول"
+
+#~ msgid "Date joined"
+#~ msgstr "تاريخ الانضمام"

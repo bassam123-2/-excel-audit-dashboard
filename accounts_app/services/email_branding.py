@@ -21,13 +21,144 @@ DIVIDER_COLOR = "#e2e8f0"
 
 BRAND_NAME_EN = "Audit Dashboard"
 BRAND_NAME_AR = "لوحة التدقيق"
+BRAND_SUBJECT_PREFIX = "[Audit Dashboard]"
+SUBJECT_MAX_LENGTH = 78
 LOGO_FILENAME = "Abdullatif Alissa Group Holding Co.png"
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOGO_PATH = _PROJECT_ROOT / "assets" / "logos" / LOGO_FILENAME
 LOGO_STATIC_PATH = f"/static/logos/{quote(LOGO_FILENAME)}"
+LOGO_CID = "company_logo"
+LOGO_CID_REF = f"cid:{LOGO_CID}"
 
 SMTP_TIMEOUT_SECONDS = 30
+
+
+def format_bilingual_subject(*, text_ar: str, text_en: str) -> str:
+    """Branded subject line: [Audit Dashboard] Arabic | English."""
+    body = f"{text_ar} | {text_en}"
+    if body.startswith(BRAND_SUBJECT_PREFIX):
+        return truncate_email_subject(body)
+    return truncate_email_subject(f"{BRAND_SUBJECT_PREFIX} {body}")
+
+
+def truncate_email_subject(subject: str, *, max_length: int = SUBJECT_MAX_LENGTH) -> str:
+    subject = " ".join(str(subject or "").split())
+    if len(subject) <= max_length:
+        return subject
+    if max_length <= 1:
+        return subject[:max_length]
+    return subject[: max_length - 1].rstrip() + "…"
+
+
+def resolve_from_name(cfg: dict[str, Any] | None = None) -> str:
+    if cfg:
+        name = str(cfg.get("from_name") or cfg.get("sender_name") or "").strip()
+        if name:
+            return name
+    return BRAND_NAME_EN
+
+
+def _message_id_domain(from_addr: str) -> str:
+    domain = from_addr.rsplit("@", 1)[-1].strip().lower()
+    return domain or "localhost"
+
+
+def enrich_message_headers(
+    msg,
+    cfg: dict[str, Any],
+    *,
+    from_addr: str,
+    to_addr: str,
+) -> None:
+    from email.utils import formatdate, make_msgid
+
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain=_message_id_domain(from_addr))
+    msg["MIME-Version"] = "1.0"
+    reply_to = str(cfg.get("reply_to") or "").strip()
+    msg["Reply-To"] = reply_to or from_addr
+    msg["X-Auto-Response-Suppress"] = "All"
+    msg["To"] = to_addr
+
+
+def _smtp_send_message(
+    cfg: dict[str, Any],
+    *,
+    from_addr: str,
+    to_addr: str,
+    msg,
+) -> None:
+    import smtplib
+    import ssl
+
+    host = str(cfg.get("host", "")).strip()
+    port = int(cfg.get("port", 587))
+    use_tls = bool(cfg.get("use_tls", True))
+    user = str(cfg.get("username") or cfg.get("user") or from_addr).strip()
+    password = str(cfg.get("password", ""))
+    timeout = int(cfg.get("timeout", SMTP_TIMEOUT_SECONDS))
+    tls_context = ssl.create_default_context()
+
+    with smtplib.SMTP(host, port, timeout=timeout) as smtp:
+        smtp.ehlo()
+        if use_tls:
+            smtp.starttls(context=tls_context)
+            smtp.ehlo()
+        if user and password:
+            smtp.login(user, password)
+        smtp.sendmail(from_addr, [to_addr], msg.as_string())
+
+
+def normalize_email_base_url(base_url: str) -> str:
+    """Prefer PUBLIC_SITE_URL (HTTPS) for links embedded in outbound email."""
+    site = os.environ.get("PUBLIC_SITE_URL", "").strip().rstrip("/")
+    if site:
+        return site
+    base = str(base_url or "").strip().rstrip("/")
+    if base.startswith("http://"):
+        try:
+            from django.conf import settings
+
+            if not settings.DEBUG:
+                base = "https://" + base[len("http://") :]
+        except Exception:
+            pass
+    return base
+
+
+def require_secure_email_base_url(base_url: str) -> str:
+    """Return a HTTPS base URL for email links; raise in production if insecure."""
+    site = os.environ.get("PUBLIC_SITE_URL", "").strip().rstrip("/")
+    if site:
+        if site.startswith("https://"):
+            return site
+        if site.startswith("http://"):
+            _raise_if_production_insecure_url()
+            return site
+        return site
+
+    base = str(base_url or "").strip().rstrip("/")
+    if base.startswith("https://"):
+        return base
+    if base.startswith("http://"):
+        _raise_if_production_insecure_url()
+        return base
+
+    _raise_if_production_insecure_url()
+    return base
+
+
+def _raise_if_production_insecure_url() -> None:
+    try:
+        from django.conf import settings
+
+        if not settings.DEBUG:
+            raise ValueError("insecure_email_base_url")
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError("insecure_email_base_url") from None
 
 
 def resolve_logo_path() -> Path | None:
@@ -53,6 +184,33 @@ def resolve_logo_url(*, base_url: str | None = None, cfg: dict[str, Any] | None 
         return None
 
     return f"{site}{LOGO_STATIC_PATH}"
+
+
+def resolve_logo_src_for_email(
+    *,
+    logo_url: str | None = None,
+    base_url: str | None = None,
+    cfg: dict[str, Any] | None = None,
+) -> str | None:
+    """Prefer inline CID when the logo file exists locally."""
+    if logo_url:
+        return logo_url
+    if resolve_logo_path() is not None:
+        return LOGO_CID_REF
+    return resolve_logo_url(base_url=base_url, cfg=cfg)
+
+
+def load_logo_attachment() -> tuple[bytes, str] | None:
+    """Return logo bytes and MIME subtype for inline CID attachment."""
+    path = resolve_logo_path()
+    if path is None:
+        return None
+    subtype = path.suffix.lstrip(".").lower()
+    if subtype == "jpg":
+        subtype = "jpeg"
+    if subtype not in {"png", "jpeg", "gif", "webp"}:
+        subtype = "png"
+    return path.read_bytes(), subtype
 
 
 def bilingual_footer_html() -> str:
@@ -106,9 +264,10 @@ def render_info_box(inner_html: str) -> str:
 
 
 def render_otp_code(code: str) -> str:
+    safe_code = escape(code)
     return render_info_box(
         f'<span style="font-size:38px;font-weight:bold;color:{BRAND_RED};'
-        f'letter-spacing:8px;font-family:Arial,Helvetica,sans-serif;">{code}</span>'
+        f'letter-spacing:8px;font-family:Arial,Helvetica,sans-serif;">{safe_code}</span>'
     )
 
 
@@ -182,15 +341,16 @@ def build_branded_email_html(
     header_en: str,
     body_html: str,
     logo_url: str | None = None,
+    base_url: str | None = None,
 ) -> str:
     logo_row = ""
-    resolved_logo = logo_url or resolve_logo_url()
+    resolved_logo = resolve_logo_src_for_email(logo_url=logo_url, base_url=base_url)
     if resolved_logo:
         safe_src = escape(resolved_logo, quote=True)
         logo_row = (
             f'<tr><td align="center" style="padding:28px 24px 12px;">'
             f'<img src="{safe_src}" alt="{escape(BRAND_NAME_EN)}" width="240" '
-            f'style="display:block;max-width:240px;width:100%;height:auto;margin:0 auto;border:0;">'
+            f'style="max-width:240px;width:240px;height:auto;margin:0 auto;border:0;">'
             f"</td></tr>"
         )
 
@@ -232,6 +392,33 @@ def build_branded_email_html(
 </html>"""
 
 
+def _build_branded_mime_root(*, plain: str, html: str):
+    from email.mime.image import MIMEImage
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    logo_attachment = load_logo_attachment()
+    use_inline_logo = logo_attachment is not None and LOGO_CID_REF in html
+
+    if use_inline_logo:
+        root = MIMEMultipart("related")
+        alternative = MIMEMultipart("alternative")
+        alternative.attach(MIMEText(plain, "plain", "utf-8"))
+        alternative.attach(MIMEText(html, "html", "utf-8"))
+        root.attach(alternative)
+        logo_bytes, subtype = logo_attachment
+        image = MIMEImage(logo_bytes, _subtype=subtype)
+        image.add_header("Content-ID", f"<{LOGO_CID}>")
+        image.add_header("Content-Disposition", "inline", filename=LOGO_FILENAME)
+        root.attach(image)
+        return root
+
+    root = MIMEMultipart("alternative")
+    root.attach(MIMEText(plain, "plain", "utf-8"))
+    root.attach(MIMEText(html, "html", "utf-8"))
+    return root
+
+
 def send_branded_email_smtp(
     cfg: dict[str, Any],
     *,
@@ -241,10 +428,7 @@ def send_branded_email_smtp(
     html: str,
 ) -> None:
     from email.header import Header
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
     from email.utils import formataddr
-    import smtplib
 
     to_addr = to_addr.strip()
     host = str(cfg.get("host", "")).strip()
@@ -252,34 +436,43 @@ def send_branded_email_smtp(
     if not host or not from_addr:
         raise ValueError("smtp_incomplete_config")
 
-    port = int(cfg.get("port", 587))
-    use_tls = bool(cfg.get("use_tls", True))
-    user = str(cfg.get("username") or cfg.get("user") or from_addr).strip()
-    password = str(cfg.get("password", ""))
-    timeout = int(cfg.get("timeout", SMTP_TIMEOUT_SECONDS))
+    msg = _build_branded_mime_root(plain=plain, html=html)
 
-    msg = MIMEMultipart("alternative")
-    msg.attach(MIMEText(plain, "plain", "utf-8"))
-    msg.attach(MIMEText(html, "html", "utf-8"))
-
-    msg["Subject"] = Header(subject, "utf-8")
-    from_name = str(cfg.get("from_name") or cfg.get("sender_name") or "Audit Dashboard").strip()
+    msg["Subject"] = Header(truncate_email_subject(subject), "utf-8")
+    from_name = resolve_from_name(cfg)
     if from_name:
         msg["From"] = formataddr((str(Header(from_name, "utf-8")), from_addr))
     else:
         msg["From"] = from_addr
-    msg["To"] = to_addr
+    enrich_message_headers(msg, cfg, from_addr=from_addr, to_addr=to_addr)
 
-    if use_tls:
-        with smtplib.SMTP(host, port, timeout=timeout) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.ehlo()
-            if user and password:
-                smtp.login(user, password)
-            smtp.sendmail(from_addr, [to_addr], msg.as_string())
+    _smtp_send_message(cfg, from_addr=from_addr, to_addr=to_addr, msg=msg)
+
+
+def send_plain_email_smtp(
+    cfg: dict[str, Any],
+    *,
+    to_addr: str,
+    subject: str,
+    plain: str,
+) -> None:
+    from email.header import Header
+    from email.mime.text import MIMEText
+    from email.utils import formataddr
+
+    to_addr = to_addr.strip()
+    host = str(cfg.get("host", "")).strip()
+    from_addr = str(cfg.get("from", "")).strip()
+    if not host or not from_addr:
+        raise ValueError("smtp_incomplete_config")
+
+    msg = MIMEText(plain, "plain", "utf-8")
+    msg["Subject"] = Header(truncate_email_subject(subject), "utf-8")
+    from_name = resolve_from_name(cfg)
+    if from_name:
+        msg["From"] = formataddr((str(Header(from_name, "utf-8")), from_addr))
     else:
-        with smtplib.SMTP(host, port, timeout=timeout) as smtp:
-            if user and password:
-                smtp.login(user, password)
-            smtp.sendmail(from_addr, [to_addr], msg.as_string())
+        msg["From"] = from_addr
+    enrich_message_headers(msg, cfg, from_addr=from_addr, to_addr=to_addr)
+
+    _smtp_send_message(cfg, from_addr=from_addr, to_addr=to_addr, msg=msg)

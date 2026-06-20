@@ -5,6 +5,7 @@ from accounts_app.services.email_branding import (
     TEXT_MUTED,
     bilingual_footer_plain,
     build_branded_email_html,
+    format_bilingual_subject,
     render_bilingual_block,
     render_bilingual_plain,
     render_otp_code,
@@ -26,7 +27,7 @@ def build_otp_email_content(
     del locale  # backward compatibility; content is always bilingual
     minutes = otp_validity_minutes()
 
-    subject = "رمز التحقق Your OTP Code"
+    subject = format_bilingual_subject(text_ar=f"رمز التحقق — {code}", text_en=f"OTP Code — {code}")
 
     text_ar = (
         "<p style='margin:0 0 10px;'>السلام عليكم،</p>"

@@ -7,6 +7,8 @@ from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
+from audit_app.admin_changelist_v2 import AdminChangeFormV2Mixin
+
 from accounts_app.models import (
     MAX_OTP_TTL_SECONDS,
     MIN_OTP_TTL_SECONDS,
@@ -43,8 +45,12 @@ class ProjectSecuritySettingsForm(forms.ModelForm):
 
 
 @admin.register(ProjectSecuritySettings)
-class ProjectSecuritySettingsAdmin(admin.ModelAdmin):
+class ProjectSecuritySettingsAdmin(AdminChangeFormV2Mixin, admin.ModelAdmin):
     form = ProjectSecuritySettingsForm
+    cl_v2_page_title = _("Project security settings")
+    cl_v2_subtitle = _(
+        "Configure email OTP validity and sign-in verification behavior for all users."
+    )
     fieldsets = (
         (
             _("Email OTP"),

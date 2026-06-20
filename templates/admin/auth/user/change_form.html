@@ -1,4 +1,4 @@
-{% extends "admin/change_form.html" %}
+{% extends "admin/change_form_v2.html" %}
 {% load i18n admin_urls admin_modify static %}
 
 {% block extrahead %}
@@ -7,21 +7,6 @@
 <script>document.documentElement.setAttribute("data-pw-username", "{{ original.username|escapejs }}");</script>
 {% else %}
 <script>document.documentElement.setAttribute("data-pw-username", "");</script>
-{% endif %}
-{% endblock %}
-
-{% block content_subtitle %}{% endblock %}
-
-{% block object-tools %}
-{% if change and not is_popup %}
-<div class="change-form-header-row">
-    {% if original %}<h2 class="change-form-object-title">{{ original }}</h2>{% endif %}
-    <ul class="object-tools change-form-object-tools">
-        {% block object-tools-items %}
-            {% change_form_object_tools %}
-        {% endblock %}
-    </ul>
-</div>
 {% endif %}
 {% endblock %}
 
@@ -38,12 +23,18 @@
 {% endblock %}
 
 {% block submit_buttons_bottom %}
-{% if user_is_soft_deleted %}
+{% if user_is_soft_deleted and can_restore_user %}
 <div class="submit-row">
     <p class="deletelink-box soft-deleted-notice">
         {% translate "This user is soft-deleted and cannot sign in." %}
     </p>
     <input type="submit" value="{% translate 'Restore user' %}" class="default" name="_restore">
+</div>
+{% elif user_is_soft_deleted %}
+<div class="submit-row">
+    <p class="deletelink-box soft-deleted-notice">
+        {% translate "This user is soft-deleted and cannot sign in." %}
+    </p>
 </div>
 {% endif %}
 {{ block.super }}

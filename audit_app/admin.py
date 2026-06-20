@@ -8,7 +8,7 @@ from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, Permission, User
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q
+from django.db.models import Count, Q, Sum
 from django.http import Http404, HttpResponseRedirect, JsonResponse, QueryDict
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -22,16 +22,31 @@ from django.views.decorators.debug import sensitive_post_parameters
 
 from accounts_app.models import UserProfile
 
+from .admin_soft_delete import SoftDeleteAdminMixin
+from .admin_changelist_v2 import (
+    AdminClV2Mixin,
+    cl_v2_count_where,
+    cl_v2_stat_card,
+)
+from .admin_utils import (
+    format_admin_active_status_icon,
+    format_admin_boolean_icon,
+    install_boolean_icon_list_columns,
+)
 from .admin_forms import (
     AdminUserChangeForm,
     CompanyAdminForm,
     MandatoryPasswordAdminChangeForm,
     MandatoryPasswordAdminCreationForm,
+    WorkflowTemplateStepForm,
+    WorkflowTemplateStepFormSet,
     apply_user_profile_form,
     company_attachment_field_name,
 )
 from .models import (
     ATTACHMENT_KIND_CODES,
+    COMPANY_KIND_MAIN,
+    COMPANY_KIND_SUBSIDIARY,
     Company,
     CompanyAttachmentSetting,
     CompanyMembership,
@@ -40,9 +55,13 @@ from .models import (
     DashboardRejectionLog,
     DashboardStatus,
     DashboardTemplateType,
+    DashboardWorkflowInstance,
+    DashboardWorkflowStepLog,
     ObservationRecord,
     ReportArtifact,
     UploadSession,
+    WorkflowTemplate,
+    WorkflowTemplateStep,
 )
 
 # ── Protected User Admin ─────────────────────────────────────────────
@@ -69,22 +88,55 @@ class DeletedUserFilter(admin.SimpleListFilter):
     parameter_name = "deleted"
 
     def lookups(self, request, model_admin):
-        return (
+        choices = [
             ("active", _("Active users")),
             ("deleted", _("Deleted users")),
-        )
+        ]
+        if model_admin.can_view_deleted_users(request):
+            choices.insert(0, ("all", _("All")))
+        return tuple(choices)
 
     def queryset(self, request, queryset):
-        value = self.value()
+        value = self.value() or "active"
+        if value == "all":
+            if request.user.has_perm("auth.delete_user") or request.user.is_superuser:
+                return queryset
+            value = "active"
         if value == "deleted":
             return queryset.filter(profile__is_deleted=True)
-        if value == "active":
-            return queryset.filter(
-                Q(profile__is_deleted=False) | Q(profile__isnull=True)
-            )
         return queryset.filter(
             Q(profile__is_deleted=False) | Q(profile__isnull=True)
         )
+
+    def choices(self, changelist):
+        request = self.request
+        model_admin = changelist.model_admin
+        value = self.value() or "active"
+        can_view_all = model_admin.can_view_deleted_users(request)
+
+        if can_view_all:
+            yield {
+                "selected": value == "all",
+                "query_string": changelist.get_query_string(
+                    {self.parameter_name: "all"}
+                ),
+                "display": _("All"),
+            }
+
+        yield {
+            "selected": value == "active",
+            "query_string": changelist.get_query_string(
+                {self.parameter_name: "active"}
+            ),
+            "display": _("Active users"),
+        }
+        yield {
+            "selected": value == "deleted",
+            "query_string": changelist.get_query_string(
+                {self.parameter_name: "deleted"}
+            ),
+            "display": _("Deleted users"),
+        }
 
 
 class TwoFactorFilter(admin.SimpleListFilter):
@@ -143,8 +195,18 @@ class CompanyMembershipInline(admin.TabularInline):
         "can_delete_drafts",
     )
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(is_deleted=False)
 
-class ProtectedUserAdmin(BaseUserAdmin):
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "company":
+            from audit_app.company_access import active_main_companies
+
+            kwargs["queryset"] = active_main_companies().order_by("code")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
     """
     Blocks any modification or deletion of the default superadmin account ('myadmin').
     All other users can be managed normally by staff with user-management permissions.
@@ -156,6 +218,18 @@ class ProtectedUserAdmin(BaseUserAdmin):
     """
 
     PROTECTED_USERNAME = "myadmin"
+    CL_V2_QUICK_ACTIONS = (
+        "enable_two_factor_selected",
+        "disable_two_factor_selected",
+        "enable_password_expiry_selected",
+        "disable_password_expiry_selected",
+    )
+    CL_V2_QUICK_ACTION_ICONS = {
+        "enable_two_factor_selected": "bi-shield-lock",
+        "disable_two_factor_selected": "bi-shield-slash",
+        "enable_password_expiry_selected": "bi-clock-history",
+        "disable_password_expiry_selected": "bi-clock",
+    }
     form = AdminUserChangeForm
     add_form = MandatoryPasswordAdminCreationForm
     add_form_template = "admin/auth/user/change_form.html"
@@ -163,6 +237,7 @@ class ProtectedUserAdmin(BaseUserAdmin):
     inlines = [CompanyMembershipInline]
     delete_confirmation_template = "admin/auth/user/delete_confirmation.html"
     delete_selected_confirmation_template = "admin/auth/user/delete_selected_confirmation.html"
+    cl_v2_default_filter_params = {"deleted": "active"}
     readonly_fields = ("last_login", "date_joined")
     actions = [
         "restore_users",
@@ -190,12 +265,78 @@ class ProtectedUserAdmin(BaseUserAdmin):
             "js/admin_password_generate.js",
         )
 
-    list_display = BaseUserAdmin.list_display + (
+    list_display = (
+        "username",
+        "active_status_display",
+        "full_name_display",
+        "email",
         "job_title_display",
+        "staff_status_display",
         "two_factor_display",
         "password_expiry_display",
     )
     search_fields = BaseUserAdmin.search_fields + ("profile__job_title",)
+
+    def get_search_results(self, request, queryset, search_term):
+        """Search across all user text fields shown in the changelist."""
+        if not search_term:
+            return queryset, False
+        term = search_term.strip()
+        if not term:
+            return queryset, False
+        from django.db.models import Q
+
+        qs = queryset.filter(
+            Q(username__icontains=term)
+            | Q(first_name__icontains=term)
+            | Q(last_name__icontains=term)
+            | Q(email__icontains=term)
+            | Q(profile__job_title__icontains=term)
+        )
+        return qs, True
+
+    cl_v2_subtitle = _("Browse, search, and filter all system users from one place.")
+
+    def get_cl_v2_form_subtitle(self, request, obj=None, add=False):
+        if add:
+            return _(
+                "Create a new user account, set permissions, and assign company memberships."
+            )
+        return _("Update user profile, permissions, password, and company access.")
+
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search username, name, email, or job title…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        return [
+            {
+                "label": _("Total users"),
+                "value": queryset.count(),
+                "icon": "bi-people-fill",
+                "tone": "primary",
+            },
+            {
+                "label": _("Active"),
+                "value": queryset.filter(is_active=True).count(),
+                "icon": "bi-person-check-fill",
+                "tone": "success",
+            },
+            {
+                "label": _("Staff"),
+                "value": queryset.filter(is_staff=True).count(),
+                "icon": "bi-person-badge-fill",
+                "tone": "info",
+            },
+            {
+                "label": _("2FA enabled"),
+                "value": queryset.filter(profile__two_factor_enabled=True).count(),
+                "icon": "bi-shield-lock-fill",
+                "tone": "warning",
+            },
+        ]
+
+    def can_view_deleted_users(self, request) -> bool:
+        return request.user.has_perm("auth.delete_user") or request.user.is_superuser
 
     fieldsets = (
         (None, {"fields": ("username",)}),
@@ -280,7 +421,20 @@ class ProtectedUserAdmin(BaseUserAdmin):
         return super().formfield_for_manytomany(db_field, request, **kwargs)
 
     def get_urls(self):
-        return [
+        from django.contrib.admin.views.autocomplete import AutocompleteJsonView
+
+        from audit_app.admin_utils import format_admin_user_label
+
+        class AdminUserAutocompleteJsonView(AutocompleteJsonView):
+            def serialize_result(self, obj, to_field_name):
+                return {
+                    "id": str(getattr(obj, to_field_name)),
+                    "text": format_admin_user_label(obj),
+                }
+
+        info = self.model._meta.app_label, self.model._meta.model_name
+        autocomplete_name = "%s_%s_autocomplete" % info
+        urls = self.get_cl_v2_urls() + [
             path(
                 "generate-password/",
                 self.admin_site.admin_view(self.generate_password_view),
@@ -293,7 +447,19 @@ class ProtectedUserAdmin(BaseUserAdmin):
                 name="%s_%s_set_password"
                 % (self.model._meta.app_label, self.model._meta.model_name),
             ),
-        ] + admin.ModelAdmin.get_urls(self)
+            path(
+                "autocomplete/",
+                self.admin_site.admin_view(
+                    AdminUserAutocompleteJsonView.as_view(admin_site=self.admin_site)
+                ),
+                name=autocomplete_name,
+            ),
+        ]
+        for url_pattern in admin.ModelAdmin.get_urls(self):
+            if url_pattern.name == autocomplete_name:
+                continue
+            urls.append(url_pattern)
+        return urls
 
     def generate_password_view(self, request):
         if not request.user.is_staff:
@@ -303,10 +469,15 @@ class ProtectedUserAdmin(BaseUserAdmin):
         return JsonResponse({"password": generate_compliant_password()})
 
     def _send_credentials_email(self, request, user, raw_password: str) -> bool:
+        del raw_password  # password is never sent by email; user sets it via one-time link
         from ai_excel_dashboard import load_smtp_config
 
         from accounts_app.services.credentials_email import send_credentials_email_smtp
-        from accounts_app.services.email_branding import resolve_logo_url
+        from accounts_app.services.email_branding import resolve_logo_src_for_email
+        from accounts_app.services.password_set_token import (
+            build_set_password_url,
+            create_password_set_token,
+        )
 
         email = (user.email or "").strip()
         if not email:
@@ -325,18 +496,39 @@ class ProtectedUserAdmin(BaseUserAdmin):
             )
             return False
         try:
+            token = create_password_set_token(user)
+            set_password_url = build_set_password_url(
+                token,
+                base_url=request.build_absolute_uri("/"),
+            )
             send_credentials_email_smtp(
                 cfg,
                 to_addr=email,
                 username=user.username,
-                password=raw_password,
-                login_url=request.build_absolute_uri(reverse("login")),
-                logo_url=resolve_logo_url(
+                set_password_url=set_password_url,
+                logo_url=resolve_logo_src_for_email(
                     base_url=request.build_absolute_uri("/"),
                     cfg=cfg,
                 ),
             )
             return True
+        except ValueError as exc:
+            if str(exc) == "insecure_email_base_url":
+                self.message_user(
+                    request,
+                    _(
+                        "Cannot send credentials email: configure PUBLIC_SITE_URL "
+                        "with HTTPS for production links."
+                    ),
+                    messages.WARNING,
+                )
+            else:
+                self.message_user(
+                    request,
+                    _("Failed to send credentials email."),
+                    messages.WARNING,
+                )
+            return False
         except Exception:
             self.message_user(
                 request,
@@ -351,6 +543,8 @@ class ProtectedUserAdmin(BaseUserAdmin):
         if not change and isinstance(form, MandatoryPasswordAdminCreationForm):
             send_credentials = bool(form.cleaned_data.get("send_credentials_email"))
             raw_password = form.cleaned_data.get("password1") or ""
+        if change and self._is_soft_deleted(obj):
+            obj.is_active = False
         super().save_model(request, obj, form, change)
         if not change:
             profile, _created = UserProfile.objects.get_or_create(user=obj)
@@ -482,6 +676,11 @@ class ProtectedUserAdmin(BaseUserAdmin):
             return False
         return super().has_delete_permission(request, obj)
 
+    def has_restore_permission(self, request, obj=None) -> bool:
+        if self._is_protected(obj):
+            return False
+        return request.user.has_perm("auth.delete_user") or request.user.is_superuser
+
     def get_readonly_fields(self, request, obj=None):
         rf = list(super().get_readonly_fields(request, obj))
         if not request.user.is_superuser:
@@ -490,6 +689,8 @@ class ProtectedUserAdmin(BaseUserAdmin):
             rf += ["two_factor_enabled", "password_expiry_enabled"]
             if obj is None or obj.is_superuser:
                 rf += ["receive_workflow_emails"]
+        if obj is not None and self._is_soft_deleted(obj):
+            rf.append("is_active")
         return rf
 
     def _can_manage_user_security(self, request) -> bool:
@@ -498,19 +699,38 @@ class ProtectedUserAdmin(BaseUserAdmin):
     def _can_manage_two_factor(self, request) -> bool:
         return self._can_manage_user_security(request)
 
-    @admin.display(description=_("2FA"), boolean=True, ordering="profile__two_factor_enabled")
+    @admin.display(description=_("Active"), ordering="is_active")
+    def active_status_display(self, obj):
+        return format_admin_active_status_icon(obj.is_active)
+
+    @admin.display(description=_("Staff status"), ordering="is_staff")
+    def staff_status_display(self, obj):
+        return format_admin_boolean_icon(
+            obj.is_staff,
+            yes_label=_("Yes"),
+            no_label=_("No"),
+        )
+
+    @admin.display(description=_("2FA"), ordering="profile__two_factor_enabled")
     def two_factor_display(self, obj):
         profile = getattr(obj, "profile", None)
-        return bool(profile and profile.two_factor_enabled)
+        return format_admin_boolean_icon(
+            bool(profile and profile.two_factor_enabled),
+            yes_label=_("Enabled"),
+            no_label=_("Disabled"),
+        )
 
     @admin.display(
         description=_("Pwd expiry"),
-        boolean=True,
         ordering="profile__password_expiry_enabled",
     )
     def password_expiry_display(self, obj):
         profile = getattr(obj, "profile", None)
-        return bool(profile and profile.password_expiry_enabled)
+        return format_admin_boolean_icon(
+            bool(profile and profile.password_expiry_enabled),
+            yes_label=_("Enabled"),
+            no_label=_("Disabled"),
+        )
 
     @admin.action(description=_("Enable email 2FA for selected users"))
     def enable_two_factor_selected(self, request, queryset):
@@ -665,6 +885,11 @@ class ProtectedUserAdmin(BaseUserAdmin):
             )
         return response
 
+    @admin.display(description=_("Name"), ordering="first_name")
+    def full_name_display(self, obj):
+        full = obj.get_full_name().strip()
+        return full or "—"
+
     @admin.display(description=_("Job title"), ordering="profile__job_title")
     def job_title_display(self, obj):
         profile = getattr(obj, "profile", None)
@@ -672,9 +897,12 @@ class ProtectedUserAdmin(BaseUserAdmin):
 
     @admin.action(description=_("Restore selected users"))
     def restore_users(self, request, queryset):
+        if not self.has_restore_permission(request):
+            self.message_user(request, _("Permission denied."), messages.ERROR)
+            return
         restored = 0
-        for user in queryset:
-            if self._is_protected(user):
+        for user in queryset.select_related("profile"):
+            if self._is_protected(user) or not self._is_soft_deleted(user):
                 continue
             self._restore_user(user)
             restored += 1
@@ -685,6 +913,12 @@ class ProtectedUserAdmin(BaseUserAdmin):
                 % {"count": restored},
                 messages.SUCCESS,
             )
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not self.has_restore_permission(request):
+            actions.pop("restore_users", None)
+        return actions
 
     def delete_model(self, request, obj):
         self._soft_delete_user(obj)
@@ -704,7 +938,7 @@ class ProtectedUserAdmin(BaseUserAdmin):
 
         if request.method == "POST":
             self._soft_delete_user(obj)
-            self.log_deletion(request, obj, str(obj))
+            self.log_deletions(request, self.model.objects.filter(pk=obj.pk))
             self.message_user(
                 request,
                 gettext('The user "%(name)s" was removed successfully.')
@@ -747,8 +981,10 @@ class ProtectedUserAdmin(BaseUserAdmin):
         )
 
     def response_change(self, request, obj):
-        if "_restore" in request.POST and self.has_change_permission(request, obj):
-            if not self._is_protected(obj):
+        if "_restore" in request.POST:
+            if not self.has_restore_permission(request, obj):
+                raise PermissionDenied
+            if not self._is_protected(obj) and self._is_soft_deleted(obj):
                 self._restore_user(obj)
                 self.message_user(
                     request,
@@ -777,6 +1013,10 @@ class ProtectedUserAdmin(BaseUserAdmin):
                 "user_is_soft_deleted",
                 self._is_soft_deleted(obj),
             )
+            context.setdefault(
+                "can_restore_user",
+                self._is_soft_deleted(obj) and self.has_restore_permission(request, obj),
+            )
         return super().render_change_form(
             request, context, add=add, change=change, form_url=form_url, obj=obj
         )
@@ -786,6 +1026,9 @@ class ProtectedUserAdmin(BaseUserAdmin):
         obj = self.get_object(request, unquote(object_id))
         if obj is not None:
             extra_context["user_is_soft_deleted"] = self._is_soft_deleted(obj)
+            extra_context["can_restore_user"] = (
+                self._is_soft_deleted(obj) and self.has_restore_permission(request, obj)
+            )
             extra_context.setdefault(
                 "password_form",
                 MandatoryPasswordAdminChangeForm(obj),
@@ -793,8 +1036,50 @@ class ProtectedUserAdmin(BaseUserAdmin):
         return super().change_view(request, object_id, form_url, extra_context)
 
 
-class ProtectedGroupAdmin(BaseGroupAdmin):
+class ProtectedGroupAdmin(AdminClV2Mixin, BaseGroupAdmin):
     """Hide legacy dashboard permissions — use Company memberships instead."""
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    cl_v2_subtitle = _("Manage permission groups and assign capabilities to users.")
+
+    def get_cl_v2_form_subtitle(self, request, obj=None, add=False):
+        if add:
+            return _("Create a permission group and assign capabilities to users.")
+        return _("Edit group name and assigned permissions.")
+
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search group name…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        with_members = queryset.annotate(_member_count=Count("user")).filter(
+            _member_count__gt=0
+        ).count()
+        with_permissions = queryset.annotate(_perm_count=Count("permissions")).filter(
+            _perm_count__gt=0
+        ).count()
+        return [
+            cl_v2_stat_card(_("Total groups"), queryset.count(), icon="bi-people-fill"),
+            cl_v2_stat_card(
+                _("With members"),
+                with_members,
+                icon="bi-person-check-fill",
+                tone="success",
+            ),
+            cl_v2_stat_card(
+                _("With permissions"),
+                with_permissions,
+                icon="bi-shield-check",
+                tone="info",
+            ),
+            cl_v2_stat_card(
+                _("Empty groups"),
+                queryset.count() - with_members,
+                icon="bi-person-dash-fill",
+                tone="warning",
+            ),
+        ]
 
     def formfield_for_manytomany(self, db_field, request, **kwargs):
         if db_field.name == "permissions":
@@ -823,9 +1108,13 @@ class ActiveCompanyFkMixin:
 
 
 @admin.register(Company)
-class CompanyAdmin(admin.ModelAdmin):
+class CompanyAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
+    soft_delete_deactivate_active_field = "is_active"
     form = CompanyAdminForm
-    list_display = ("active_status_display", "code", "name", "company_kind", "parent", "created_at")
+    cl_v2_subtitle = _(
+        "Browse and manage all companies (active and inactive) from one place."
+    )
+    list_display = ("code", "active_status_display", "name", "company_kind", "parent", "created_at")
     list_display_links = ("code",)
     search_fields = ("code", "name")
     list_filter = ("is_active", "company_kind")
@@ -848,6 +1137,10 @@ class CompanyAdmin(admin.ModelAdmin):
             },
         ),
         (_("Excel mapping"), {"fields": ("excel_company_names",)}),
+        (
+            _("Workflow"),
+            {"fields": ("use_workflow_v2", "notify_creator_on_publish")},
+        ),
         (
             _("Attachments (enable or disable per company)"),
             {
@@ -885,30 +1178,53 @@ class CompanyAdmin(admin.ModelAdmin):
 
     @admin.display(description=_("Status"), ordering="is_active")
     def active_status_display(self, obj):
-        if obj.is_active:
-            return format_html(
-                '<i class="bi bi-check-circle-fill company-active-status company-active-status--yes" '
-                'title="{}" aria-label="{}"></i>',
-                _("Active"),
-                _("Active"),
-            )
-        return format_html(
-            '<i class="bi bi-x-circle-fill company-active-status company-active-status--no" '
-            'title="{}" aria-label="{}"></i>',
-            _("Inactive"),
-            _("Inactive"),
-        )
+        return format_admin_active_status_icon(obj.is_active)
+
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search company code or name…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        return [
+            {
+                "label": _("Total companies"),
+                "value": queryset.count(),
+                "icon": "bi-building-fill",
+                "tone": "primary",
+            },
+            {
+                "label": _("Active"),
+                "value": queryset.filter(is_active=True).count(),
+                "icon": "bi-check-circle-fill",
+                "tone": "success",
+            },
+            {
+                "label": _("Main companies"),
+                "value": queryset.filter(company_kind=COMPANY_KIND_MAIN).count(),
+                "icon": "bi-diagram-3-fill",
+                "tone": "info",
+            },
+            {
+                "label": _("Subsidiaries"),
+                "value": queryset.filter(company_kind=COMPANY_KIND_SUBSIDIARY).count(),
+                "icon": "bi-diagram-2-fill",
+                "tone": "warning",
+            },
+        ]
 
     def get_search_results(self, request, queryset, search_term):
         """Changelist search includes inactive companies; autocomplete keeps active only."""
         if "/autocomplete/" in request.path:
-            queryset = queryset.filter(is_active=True)
+            queryset = queryset.filter(is_active=True, is_deleted=False)
+            if (
+                request.GET.get("app_label") == "audit_app"
+                and request.GET.get("model_name") == "workflowtemplate"
+                and request.GET.get("field_name") == "company"
+            ):
+                used_company_ids = WorkflowTemplate.objects.values_list(
+                    "company_id", flat=True
+                )
+                queryset = queryset.exclude(pk__in=used_company_ids)
         return super().get_search_results(request, queryset, search_term)
-
-    def changelist_view(self, request, extra_context=None):
-        extra_context = extra_context or {}
-        extra_context["title"] = _("Companies (active and inactive)")
-        return super().changelist_view(request, extra_context=extra_context)
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "parent":
@@ -923,16 +1239,16 @@ class CompanyAdmin(admin.ModelAdmin):
 
 
 @admin.register(CompanyMembership)
-class CompanyMembershipAdmin(ActiveCompanyFkMixin, admin.ModelAdmin):
-    list_display = (
-        "user",
-        "company",
+class CompanyMembershipAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, ActiveCompanyFkMixin, admin.ModelAdmin):
+    cl_v2_subtitle = _(
+        "Manage user access, upload rights, and review permissions per company."
+    )
+    _MEMBERSHIP_BOOL_FIELDS = (
         "can_upload",
         "can_view",
         "can_view_own_only",
         "can_review",
         "can_delete_drafts",
-        "created_at",
     )
     list_filter = (
         "company",
@@ -945,33 +1261,163 @@ class CompanyMembershipAdmin(ActiveCompanyFkMixin, admin.ModelAdmin):
     search_fields = ("user__username", "user__email", "company__code")
     autocomplete_fields = ("user", "company")
 
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search username, email, or company code…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        return [
+            cl_v2_stat_card(
+                _("Total memberships"),
+                queryset.count(),
+                icon="bi-person-badge-fill",
+            ),
+            cl_v2_count_where(
+                queryset,
+                _("Can upload"),
+                icon="bi-cloud-upload-fill",
+                tone="success",
+                can_upload=True,
+            ),
+            cl_v2_count_where(
+                queryset,
+                _("Can review"),
+                icon="bi-clipboard-check-fill",
+                tone="info",
+                can_review=True,
+            ),
+            cl_v2_count_where(
+                queryset,
+                _("Can view"),
+                icon="bi-eye-fill",
+                tone="warning",
+                can_view=True,
+            ),
+        ]
+
+
+CompanyMembershipAdmin.list_display = (
+    "user",
+    "company",
+    *install_boolean_icon_list_columns(
+        CompanyMembershipAdmin,
+        CompanyMembership,
+        CompanyMembershipAdmin._MEMBERSHIP_BOOL_FIELDS,
+    ),
+    "created_at",
+)
+
 
 @admin.register(UploadSession)
-class UploadSessionAdmin(admin.ModelAdmin):
+class UploadSessionAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
+    cl_v2_subtitle = _("Browse Excel upload sessions and imported source files.")
     list_display = ("id", "source_name", "mode", "locale", "uploaded_at")
     search_fields = ("source_name", "sheet_name", "content_sha256")
     readonly_fields = ("raw_data_json",)
 
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search file name, sheet, or hash…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        return [
+            cl_v2_stat_card(_("Total uploads"), queryset.count(), icon="bi-upload"),
+            cl_v2_count_where(
+                queryset,
+                _("AI mode"),
+                icon="bi-robot",
+                tone="success",
+                mode="ai",
+            ),
+            cl_v2_count_where(
+                queryset,
+                _("Arabic locale"),
+                icon="bi-translate",
+                tone="info",
+                locale="ar",
+            ),
+            cl_v2_stat_card(
+                _("With content hash"),
+                queryset.exclude(content_sha256="").count(),
+                icon="bi-fingerprint",
+                tone="warning",
+            ),
+        ]
+
 
 @admin.register(ObservationRecord)
-class ObservationRecordAdmin(admin.ModelAdmin):
+class ObservationRecordAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
+    cl_v2_subtitle = _("Browse audit observations extracted from uploaded Excel files.")
     list_display = ("id", "upload_session", "audit_year", "company", "subcompany")
     search_fields = ("audit_year", "observation_name", "company", "subcompany")
     list_filter = ("audit_year", "company", "subcompany")
+
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search year, observation, company, or subcompany…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        return [
+            cl_v2_stat_card(_("Total observations"), queryset.count(), icon="bi-journal-text"),
+            cl_v2_stat_card(
+                _("Audit years"),
+                queryset.exclude(audit_year="").values("audit_year").distinct().count(),
+                icon="bi-calendar3",
+                tone="success",
+            ),
+            cl_v2_stat_card(
+                _("With company"),
+                queryset.exclude(company="").count(),
+                icon="bi-building",
+                tone="info",
+            ),
+            cl_v2_stat_card(
+                _("Companies listed"),
+                queryset.exclude(company="").values("company").distinct().count(),
+                icon="bi-diagram-3-fill",
+                tone="warning",
+            ),
+        ]
 
 
 # Legacy filesystem logo table — superseded by Company.logo (kept for data migration only).
 # admin.site.unregister(CompanyLogo) — not registered
 @admin.register(ReportArtifact)
-class ReportArtifactAdmin(admin.ModelAdmin):
+class ReportArtifactAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
+    cl_v2_subtitle = _("Browse generated report artifacts linked to upload sessions.")
     list_display = ("id", "report_id", "report_version", "rows", "columns", "created_at")
     search_fields = ("report_id", "report_version")
 
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search report ID or version…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        totals = queryset.aggregate(row_sum=Sum("rows"), col_sum=Sum("columns"))
+        return [
+            cl_v2_stat_card(_("Total artifacts"), queryset.count(), icon="bi-file-earmark-bar-graph"),
+            cl_v2_stat_card(
+                _("Total rows"),
+                totals["row_sum"] or 0,
+                icon="bi-list-ol",
+                tone="success",
+            ),
+            cl_v2_stat_card(
+                _("Total columns"),
+                totals["col_sum"] or 0,
+                icon="bi-layout-three-columns",
+                tone="info",
+            ),
+            cl_v2_stat_card(
+                _("Report versions"),
+                queryset.values("report_version").distinct().count(),
+                icon="bi-tags-fill",
+                tone="warning",
+            ),
+        ]
+
 
 @admin.register(DashboardTemplateType)
-class DashboardTemplateTypeAdmin(admin.ModelAdmin):
-    list_display = ("code", "name", "icon", "is_active", "sort_order")
-    list_editable = ("name", "is_active", "sort_order")
+class DashboardTemplateTypeAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
+    soft_delete_deactivate_active_field = "is_active"
+    cl_v2_subtitle = _("Manage dashboard template types shown when creating dashboards.")
+    list_display = ("code", "name", "icon", "active_status_display", "sort_order")
     list_display_links = ("code",)
     search_fields = ("code", "name")
     ordering = ("sort_order", "code")
@@ -979,6 +1425,38 @@ class DashboardTemplateTypeAdmin(admin.ModelAdmin):
         (None, {"fields": ("code", "name", "icon", "description")}),
         (_("Settings"), {"fields": ("is_active", "sort_order")}),
     )
+
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search type code or name…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        return [
+            cl_v2_stat_card(_("Total types"), queryset.count(), icon="bi-grid-fill"),
+            cl_v2_count_where(
+                queryset,
+                _("Active types"),
+                icon="bi-check-circle-fill",
+                tone="success",
+                is_active=True,
+            ),
+            cl_v2_count_where(
+                queryset,
+                _("Inactive types"),
+                icon="bi-pause-circle-fill",
+                tone="warning",
+                is_active=False,
+            ),
+            cl_v2_stat_card(
+                _("With description"),
+                queryset.exclude(description="").count(),
+                icon="bi-card-text",
+                tone="info",
+            ),
+        ]
+
+    @admin.display(description=_("Active"), ordering="is_active")
+    def active_status_display(self, obj):
+        return format_admin_active_status_icon(obj.is_active)
 
 
 class DashboardRejectionLogInline(admin.TabularInline):
@@ -992,40 +1470,566 @@ class DashboardRejectionLogInline(admin.TabularInline):
 
 
 @admin.register(DashboardRejectionLog)
-class DashboardRejectionLogAdmin(admin.ModelAdmin):
+class DashboardRejectionLogAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
+    cl_v2_subtitle = _("Review dashboard rejection history and reasons.")
     list_display = ("id", "dashboard", "rejected_by", "created_at")
     search_fields = ("reason", "dashboard__name", "rejected_by__username")
     list_filter = ("created_at",)
     readonly_fields = ("dashboard", "reason", "rejected_by", "created_at")
 
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search reason, dashboard name, or reviewer…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        return [
+            cl_v2_stat_card(_("Total rejections"), queryset.count(), icon="bi-x-circle-fill"),
+            cl_v2_stat_card(
+                _("Dashboards rejected"),
+                queryset.values("dashboard").distinct().count(),
+                icon="bi-speedometer2",
+                tone="success",
+            ),
+            cl_v2_stat_card(
+                _("Reviewers"),
+                queryset.values("rejected_by").distinct().count(),
+                icon="bi-person-fill",
+                tone="info",
+            ),
+            cl_v2_stat_card(
+                _("With reason text"),
+                queryset.exclude(reason="").count(),
+                icon="bi-chat-left-text-fill",
+                tone="warning",
+            ),
+        ]
+
 
 @admin.register(Dashboard)
-class DashboardAdmin(ActiveCompanyFkMixin, admin.ModelAdmin):
+class DashboardAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, ActiveCompanyFkMixin, admin.ModelAdmin):
+    cl_v2_subtitle = _(
+        "Browse dashboards across companies, statuses, and workflow states."
+    )
     list_display = (
-        "id", "name", "company", "status", "is_deleted", "icon", "template_type", "created_by", "created_at",
+        "id", "name", "company", "status", "soft_deleted_display", "icon", "template_type", "created_by", "created_at",
     )
     search_fields = ("name", "report_id", "description")
-    list_filter = ("company", "is_deleted", "status", "template_type", "icon", "created_at", "created_by")
+    list_filter = ("company", "status", "template_type", "icon", "created_at", "created_by")
     readonly_fields = (
         "report_id", "html_file", "source_files", "created_at", "upload_session",
         "published_at", "deleted_at", "deleted_by",
     )
     inlines = [DashboardRejectionLogInline]
-    actions = ["restore_dashboards"]
     fieldsets = (
         (_("Basic information"), {"fields": ("name", "description", "icon", "template_type", "company", "created_by")}),
-        (_("Workflow"), {"fields": ("status", "published_at", "reviewed_by")}),
+        (_("Workflow"), {"fields": ("status", "submitted_at", "published_at", "reviewed_by")}),
         (_("Soft delete"), {"fields": ("is_deleted", "deleted_at", "deleted_by")}),
         (_("Report data"), {"fields": ("report_id", "html_file", "source_files", "upload_session")}),
         (_("Dates"), {"fields": ("created_at",)}),
     )
 
-    @admin.action(description=_("Restore selected dashboards"))
-    def restore_dashboards(self, request, queryset):
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search dashboard name, report ID, or description…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        in_progress = queryset.filter(
+            status__in=(
+                DashboardStatus.UNDER_REVIEW,
+                DashboardStatus.IN_WORKFLOW,
+            )
+        ).count()
+        return [
+            cl_v2_stat_card(_("Total dashboards"), queryset.count(), icon="bi-speedometer2"),
+            cl_v2_count_where(
+                queryset,
+                _("Published"),
+                icon="bi-check-circle-fill",
+                tone="success",
+                status=DashboardStatus.PUBLISHED,
+            ),
+            cl_v2_count_where(
+                queryset,
+                _("Draft"),
+                icon="bi-pencil-square",
+                tone="info",
+                status=DashboardStatus.DRAFT,
+            ),
+            cl_v2_stat_card(
+                _("In review / workflow"),
+                in_progress,
+                icon="bi-arrow-repeat",
+                tone="warning",
+            ),
+        ]
+
+    @admin.display(description=_("Soft deleted"), ordering="is_deleted")
+    def soft_deleted_display(self, obj):
+        return format_admin_boolean_icon(
+            not obj.is_deleted,
+            yes_label=_("No"),
+            no_label=_("Yes"),
+        )
+
+    def perform_soft_delete(self, request, obj):
+        from reports_app.dashboard_workflow import soft_delete_dashboard
+
+        soft_delete_dashboard(obj, request.user)
+
+    def perform_restore(self, request, obj):
         from reports_app.dashboard_workflow import restore_dashboard
 
-        count = 0
+        restore_dashboard(obj)
+
+    @admin.action(description=_("Restore selected dashboards"))
+    def restore_dashboards(self, request, queryset):
+        restored = 0
         for dashboard in queryset.filter(is_deleted=True):
-            restore_dashboard(dashboard)
-            count += 1
-        self.message_user(request, _("Restored %(count)d dashboard(s).") % {"count": count})
+            self.perform_restore(request, dashboard)
+            restored += 1
+        if restored:
+            self.message_user(
+                request,
+                _("Restored %(count)d dashboard(s).") % {"count": restored},
+                messages.SUCCESS,
+            )
+
+
+class WorkflowTemplateStepInline(admin.TabularInline):
+    model = WorkflowTemplateStep
+    form = WorkflowTemplateStepForm
+    formset = WorkflowTemplateStepFormSet
+    extra = 1
+    ordering = ("step_order",)
+    fields = ("step_order_display", "wf_row_order", "assignee")
+    readonly_fields = ("step_order_display",)
+
+    @admin.display(description=_("Step"))
+    def step_order_display(self, obj):
+        order = obj.step_order if obj and obj.pk else None
+        return format_html(
+            '<span class="wf-step-drag-handle" title="{}">⋮⋮</span> '
+            '<span class="wf-step-order-num">{}</span>',
+            _("Drag row up or down to reorder"),
+            order if order else "—",
+        )
+
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj, **kwargs)
+        if "DELETE" in formset.form.base_fields:
+            formset.form.base_fields["DELETE"].label = _("Remove")
+            formset.form.base_fields["DELETE"].help_text = _(
+                "Check to remove this person from the workflow chain when saving."
+            )
+        return formset
+
+    def has_add_permission(self, request, obj=None):
+        if obj is not None and not obj.is_active:
+            return False
+        return super().has_add_permission(request, obj)
+
+    def has_change_permission(self, request, obj=None):
+        if obj is not None and not obj.is_active:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        if obj is not None and not obj.is_active:
+            return False
+        return super().has_delete_permission(request, obj)
+
+
+class WorkflowTemplateActiveFilter(admin.SimpleListFilter):
+    title = _("Active status")
+    parameter_name = "is_active"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("1", _("Active")),
+            ("0", _("Inactive")),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == "0":
+            return queryset.filter(is_active=False)
+        return queryset.filter(is_active=True)
+
+    def choices(self, changelist):
+        value = self.value() or "1"
+        for lookup, title in self.lookup_choices:
+            yield {
+                "selected": value == lookup,
+                "query_string": changelist.get_query_string(
+                    {self.parameter_name: lookup},
+                ),
+                "display": title,
+            }
+
+
+@admin.register(WorkflowTemplate)
+class WorkflowTemplateAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
+    cl_v2_subtitle = _(
+        "Configure per-company acknowledgment chains before dashboards are published."
+    )
+    list_display = ("company", "version", "active_status_display", "updated_at")
+    list_filter = (WorkflowTemplateActiveFilter, "company")
+    search_fields = ("company__code", "company__name")
+    inlines = [WorkflowTemplateStepInline]
+    readonly_fields = ("version", "is_active", "created_at", "updated_at")
+
+    class Media:
+        css = {"all": ("css/admin_workflow_steps.css",)}
+        js = ("js/admin_workflow_steps.js",)
+
+    fieldsets = (
+        (
+            None,
+            {
+                "description": _(
+                    "Each company has one workflow lineage. Version increments automatically "
+                    "when you save changes to the active workflow; older versions stay read-only "
+                    "and cannot be reactivated. "
+                    "Reorder steps by dragging rows. "
+                    "Use «Remove» to drop someone from the chain before saving."
+                ),
+                "fields": (
+                    "company",
+                    "version",
+                    "is_active",
+                    "created_at",
+                    "updated_at",
+                )
+            },
+        ),
+    )
+
+    @admin.display(description=_("Active"), ordering="is_active")
+    def active_status_display(self, obj):
+        return format_admin_active_status_icon(obj.is_active)
+
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search company code or name…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        return [
+            cl_v2_stat_card(_("Total workflows"), queryset.count(), icon="bi-diagram-3-fill"),
+            cl_v2_count_where(
+                queryset,
+                _("Active"),
+                icon="bi-check-circle-fill",
+                tone="success",
+                is_active=True,
+            ),
+            cl_v2_count_where(
+                queryset,
+                _("Historical"),
+                icon="bi-clock-history",
+                tone="info",
+                is_active=False,
+            ),
+            cl_v2_stat_card(
+                _("Companies"),
+                queryset.values("company").distinct().count(),
+                icon="bi-building-fill",
+                tone="warning",
+            ),
+        ]
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if "is_active" not in request.GET:
+            return qs.filter(is_active=True)
+        return qs
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "company" and request.resolver_match.url_name.endswith("_add"):
+            from audit_app.company_access import active_main_companies
+
+            used_company_ids = WorkflowTemplate.objects.values_list("company_id", flat=True)
+            kwargs["queryset"] = (
+                active_main_companies()
+                .exclude(pk__in=used_company_ids)
+                .order_by("code")
+            )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = list(super().get_readonly_fields(request, obj))
+        if obj is not None:
+            readonly.append("company")
+        return readonly
+
+    def has_change_permission(self, request, obj=None):
+        if obj is not None and not obj.is_active:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def get_urls(self):
+        urls = [
+            path(
+                "assignee-autocomplete/",
+                self.admin_site.admin_view(self.assignee_autocomplete_view),
+                name="audit_app_workflowtemplate_assignee_autocomplete",
+            ),
+        ]
+        return urls + super().get_urls()
+
+    def assignee_autocomplete_view(self, request):
+        from django.core.paginator import Paginator
+
+        from audit_app.admin_utils import format_admin_user_label
+
+        if not request.user.is_staff:
+            raise PermissionDenied
+
+        term = request.GET.get("term", "")
+        page_number = request.GET.get("page", "1")
+        exclude_raw = request.GET.get("exclude_assignees", "")
+        exclude_ids = [
+            int(part) for part in exclude_raw.split(",") if part.strip().isdigit()
+        ]
+
+        qs = User.objects.filter(is_active=True).order_by("username")
+        qs = qs.filter(Q(profile__is_deleted=False) | Q(profile__isnull=True))
+        if exclude_ids:
+            qs = qs.exclude(pk__in=exclude_ids)
+
+        user_admin = self.admin_site._registry[User]
+        qs, use_distinct = user_admin.get_search_results(request, qs, term)
+        if use_distinct:
+            qs = qs.distinct()
+
+        paginator = Paginator(qs, 20)
+        page_obj = paginator.get_page(page_number)
+
+        return JsonResponse(
+            {
+                "results": [
+                    {"id": str(user.pk), "text": format_admin_user_label(user)}
+                    for user in page_obj.object_list
+                ],
+                "pagination": {"more": page_obj.has_next()},
+            }
+        )
+
+    def save_model(self, request, obj, form, change):
+        from django.core.exceptions import ValidationError
+
+        from audit_app.workflow_template_service import company_has_workflow
+
+        if change:
+            if not obj.is_active:
+                raise ValidationError(
+                    _("Historical workflow versions are read-only and cannot be edited.")
+                )
+            request._workflow_revision_name = obj.company.code
+            request._workflow_revision_source_pk = obj.pk
+            return
+
+        if company_has_workflow(obj.company):
+            raise ValidationError(
+                _(
+                    "This company already has a workflow. Edit the active version — "
+                    "saving changes creates a new version automatically."
+                )
+            )
+        obj.name = obj.company.code
+        obj.version = 1
+        obj.is_active = True
+        super().save_model(request, obj, form, change)
+
+    def save_formset(self, request, form, formset, change):
+        from django.contrib import messages
+
+        from audit_app.workflow_template_service import (
+            WorkflowTemplateError,
+            create_workflow_template_revision,
+            _replace_steps,
+        )
+
+        if formset.model is not WorkflowTemplateStep:
+            super().save_formset(request, form, formset, change)
+            return
+
+        if not formset.is_valid():
+            return
+
+        steps = self._steps_from_formset(formset)
+        if change:
+            source_pk = getattr(request, "_workflow_revision_source_pk", None)
+            if source_pk is None:
+                self._mark_formset_saved(formset)
+                return
+            source = WorkflowTemplate.objects.get(pk=source_pk)
+            name = getattr(request, "_workflow_revision_name", source.company.code)
+            try:
+                new_template = create_workflow_template_revision(
+                    source,
+                    name=name,
+                    steps=steps,
+                )
+            except WorkflowTemplateError as exc:
+                messages.error(request, str(exc))
+                self._mark_formset_saved(formset)
+                return
+            messages.success(
+                request,
+                _("Saved as new workflow version %(version)s. Previous versions were deactivated.")
+                % {"version": new_template.version},
+            )
+            request._workflow_redirect_pk = new_template.pk
+            self._mark_formset_saved(formset)
+            return
+
+        if not steps:
+            messages.error(
+                request,
+                _("Add at least one workflow step with an assignee."),
+            )
+            self._mark_formset_saved(formset)
+            return
+        _replace_steps(form.instance, steps)
+        self._mark_formset_saved(formset)
+
+    @staticmethod
+    def _mark_formset_saved(formset) -> None:
+        """Admin construct_change_message expects these after save_formset."""
+        formset.new_objects = []
+        formset.changed_objects = []
+        formset.deleted_objects = []
+
+    def construct_change_message(self, request, form, formsets, add=False):
+        redirect_pk = getattr(request, "_workflow_redirect_pk", None)
+        if redirect_pk and not add:
+            template = WorkflowTemplate.objects.filter(pk=redirect_pk).first()
+            if template:
+                return [
+                    {
+                        "changed": {
+                            "fields": [
+                                _("Published workflow version %(version)s")
+                                % {"version": template.version}
+                            ]
+                        }
+                    }
+                ]
+        return super().construct_change_message(request, form, formsets, add=add)
+
+    def response_add(self, request, obj, post_url_continue=None):
+        redirect_pk = getattr(request, "_workflow_redirect_pk", None)
+        if redirect_pk:
+            return HttpResponseRedirect(
+                reverse("admin:audit_app_workflowtemplate_change", args=[redirect_pk])
+            )
+        return super().response_add(request, obj, post_url_continue)
+
+    def response_change(self, request, obj):
+        redirect_pk = getattr(request, "_workflow_redirect_pk", None)
+        if redirect_pk:
+            return HttpResponseRedirect(
+                reverse("admin:audit_app_workflowtemplate_change", args=[redirect_pk])
+            )
+        return super().response_change(request, obj)
+
+    @staticmethod
+    def _steps_from_formset(formset) -> list[tuple[int, User]]:
+        """Collect assignees ordered by wf_row_order / form index; save as 1..N."""
+        pending: list[tuple[int, int, User]] = []
+        for index, inline_form in enumerate(formset.forms):
+            if not hasattr(inline_form, "cleaned_data"):
+                continue
+            cleaned = inline_form.cleaned_data
+            if not cleaned or cleaned.get("DELETE"):
+                continue
+            assignee = cleaned.get("assignee")
+            if assignee is None:
+                continue
+            row_order = cleaned.get("wf_row_order")
+            try:
+                sort_key = int(row_order)
+            except (TypeError, ValueError):
+                sort_key = index
+            pending.append((sort_key, index, assignee))
+        pending.sort(key=lambda item: (item[0], item[1]))
+        return [(order, assignee) for order, (_, __, assignee) in enumerate(pending, start=1)]
+
+
+@admin.register(DashboardWorkflowInstance)
+class DashboardWorkflowInstanceAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
+    cl_v2_subtitle = _("Track in-progress and completed dashboard workflow runs.")
+    list_display = (
+        "dashboard",
+        "template_version",
+        "current_step_index",
+        "total_steps",
+        "current_assignee",
+        "is_complete",
+        "started_at",
+    )
+    readonly_fields = ("started_at", "completed_at")
+    search_fields = ("dashboard__name",)
+    list_filter = ("is_complete",)
+
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search dashboard name…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        return [
+            cl_v2_stat_card(_("Total instances"), queryset.count(), icon="bi-arrow-repeat"),
+            cl_v2_count_where(
+                queryset,
+                _("Complete"),
+                icon="bi-check-circle-fill",
+                tone="success",
+                is_complete=True,
+            ),
+            cl_v2_count_where(
+                queryset,
+                _("In progress"),
+                icon="bi-hourglass-split",
+                tone="info",
+                is_complete=False,
+            ),
+            cl_v2_stat_card(
+                _("With assignee"),
+                queryset.filter(current_assignee__isnull=False).count(),
+                icon="bi-person-check-fill",
+                tone="warning",
+            ),
+        ]
+
+
+@admin.register(DashboardWorkflowStepLog)
+class DashboardWorkflowStepLogAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
+    cl_v2_subtitle = _("Audit trail of workflow step acknowledgments.")
+    list_display = ("instance", "step_order", "assignee", "acknowledged_by", "acknowledged_at")
+    readonly_fields = ("acknowledged_at",)
+    search_fields = ("instance__dashboard__name", "assignee__username", "acknowledged_by__username")
+    list_filter = ("acknowledged_at",)
+
+    def get_cl_v2_search_placeholder(self, request):
+        return _("Search dashboard, assignee, or acknowledger…")
+
+    def get_cl_v2_stat_cards(self, request, queryset):
+        return [
+            cl_v2_stat_card(_("Total step logs"), queryset.count(), icon="bi-journal-check"),
+            cl_v2_stat_card(
+                _("Acknowledged"),
+                queryset.filter(acknowledged_by__isnull=False).count(),
+                icon="bi-hand-thumbs-up-fill",
+                tone="success",
+            ),
+            cl_v2_stat_card(
+                _("Workflow instances"),
+                queryset.values("instance").distinct().count(),
+                icon="bi-diagram-2-fill",
+                tone="info",
+            ),
+            cl_v2_stat_card(
+                _("Assignees"),
+                queryset.values("assignee").distinct().count(),
+                icon="bi-people-fill",
+                tone="warning",
+            ),
+        ]

@@ -142,7 +142,7 @@ def login_view(request):
     if request.GET.get("session_expired") == "1":
         session_expired_msg = ui.get(
             "login_session_expired",
-            "Your session ended after one hour of inactivity. Please sign in again.",
+            "Your session ended due to inactivity. Please sign in again.",
         )
 
     return render(
@@ -180,6 +180,16 @@ def verify_2fa_view(request):
     except User.DoesNotExist:
         next_url = request.session.pop("pending_2fa_next", "") or ""
         request.session.pop("pending_2fa_user_id", None)
+        return _login_redirect_with_next(next_url)
+
+    profile = getattr(user, "profile", None)
+    if profile and profile.is_deleted:
+        next_url = request.session.pop("pending_2fa_next", "") or ""
+        request.session.pop("pending_2fa_user_id", None)
+        messages.error(
+            request,
+            ui.get("login_err_deleted", "This account has been deactivated."),
+        )
         return _login_redirect_with_next(next_url)
 
     client_ip = request.META.get("REMOTE_ADDR", "")
@@ -452,6 +462,46 @@ def profile_view(request):
                     return redirect("profile")
 
     return render(request, "accounts/profile.html", ctx)
+
+
+@require_http_methods(["GET", "POST"])
+def set_password_view(request, token: str):
+    from django.contrib.auth.password_validation import validate_password
+    from django.core.exceptions import ValidationError
+
+    from accounts_app.services.password_set_token import (
+        get_valid_token,
+        set_password_with_token,
+    )
+
+    lang = request.session.get("ui_lang", DEFAULT_UI_LANG)
+    ui = get_ui(lang)
+    token_obj = get_valid_token(token)
+    ctx: dict = {
+        "invalid_link": token_obj is None,
+        "pw_error": None,
+        "username": token_obj.user.username if token_obj else "",
+    }
+
+    if token_obj is None:
+        return render(request, "accounts/set_password.html", ctx)
+
+    if request.method == "POST":
+        new_pw1 = request.POST.get("new_password1", "")
+        new_pw2 = request.POST.get("new_password2", "")
+        if new_pw1 != new_pw2:
+            ctx["pw_error"] = ui["profile_pw_mismatch"]
+        else:
+            try:
+                validate_password(new_pw1, token_obj.user)
+            except ValidationError as exc:
+                ctx["pw_error"] = " ".join(exc.messages)
+            else:
+                set_password_with_token(token=token_obj, new_password=new_pw1)
+                messages.success(request, ui["set_password_success"])
+                return redirect("login")
+
+    return render(request, "accounts/set_password.html", ctx)
 
 
 # ── Internal helpers ──────────────────────────────────────────────

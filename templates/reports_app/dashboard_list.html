@@ -43,30 +43,31 @@
                    placeholder="{% if is_rtl %}بحث...{% else %}Search...{% endif %}">
             <i class="bi bi-search"></i>
         </div>
-        {% if can_delete_dashboards %}
-        <div class="list-tabs">
-            <a href="{% url 'dashboard_list' %}"
-               class="btn btn-sm {% if not show_trash %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-                <i class="bi bi-grid-3x3-gap"></i> {{ ui.dl_active_btn }}
-            </a>
-            <a href="{% url 'dashboard_list' %}?trash=1"
-               class="btn btn-sm {% if show_trash %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-                <i class="bi bi-trash"></i> {{ ui.dl_trash_btn }}
-            </a>
-        </div>
-        {% endif %}
     </div>
-    {% if can_upload_files and not show_trash %}
+    {% if can_upload_files %}
     <a href="{% url 'upload' %}" class="btn btn-primary btn-sm d-flex align-items-center gap-2">
         <i class="bi bi-plus-lg"></i> {{ ui.dl_new_btn }}
     </a>
     {% endif %}
 </div>
 
+{% if dashboard_filters %}
+<div class="dashboard-filter-bar mb-3" role="group" aria-label="{% if is_rtl %}تصفية اللوحات{% else %}Filter dashboards{% endif %}">
+    {% for f in dashboard_filters %}
+    <a href="?filter={{ f.key }}"
+       class="dashboard-filter-chip{% if active_dashboard_filter == f.key %} is-active{% endif %}"
+       aria-pressed="{% if active_dashboard_filter == f.key %}true{% else %}false{% endif %}">
+        {{ f.label }}
+        <span class="dashboard-filter-count">{{ f.count }}</span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
 {% if dashboards %}
 <div class="db-grid" id="dbGrid">
     {% for db in dashboards %}
-    <div class="db-card-wrap status-{{ db.status }}{% if show_trash %} is-deleted{% endif %}" data-name="{{ db.name|lower }}">
+    <div class="db-card-wrap status-{{ db.status }}" data-name="{{ db.name|lower }}">
         <a href="{% url 'dashboard_detail' db.pk %}" class="db-card d-flex align-items-start gap-3">
             <div class="db-card-icon">
                 <i class="bi {{ db.icon|default:'bi-bar-chart-line-fill' }}"></i>
@@ -78,9 +79,6 @@
                 {% endif %}
                 <div class="dc-date mt-1 d-flex align-items-center gap-1 flex-wrap">
                     <i class="bi bi-calendar3"></i>{{ db.created_at|date:"Y/m/d H:i" }}
-                    {% if show_trash and db.deleted_at %}
-                    &nbsp;·&nbsp;<i class="bi bi-trash"></i>{{ db.deleted_at|date:"Y/m/d H:i" }}
-                    {% endif %}
                     {% if db.created_by %}
                     &nbsp;·&nbsp;<i class="bi bi-person"></i>{{ db.created_by.get_full_name|default:db.created_by.username }}
                     {% endif %}
@@ -91,26 +89,19 @@
             </div>
         </a>
         <div class="db-card-footer">
-            {% if show_trash %}
-            <span class="badge badge-deleted"><i class="bi bi-trash me-1"></i>{{ ui.dl_deleted_badge }}</span>
-            {% elif db.status == "draft" %}
+            {% if db.status == "draft" %}
             <span class="badge badge-status-draft"><i class="bi bi-pencil-square me-1"></i>{{ ui.wf_status_draft }}</span>
+            {% elif db.status == "under_review" %}
+            <span class="badge badge-status-review"><i class="bi bi-hourglass-split me-1"></i>{{ ui.wf_status_under_review }}</span>
+            {% elif db.status == "in_workflow" %}
+            <span class="badge badge-status-workflow"><i class="bi bi-diagram-3 me-1"></i>{{ ui.wf_status_in_workflow }}</span>
             {% elif db.status == "rejected" %}
             <span class="badge badge-status-rejected"><i class="bi bi-x-circle me-1"></i>{{ ui.wf_status_rejected }}</span>
             {% else %}
             <span class="badge badge-status-published"><i class="bi bi-check-circle me-1"></i>{{ ui.wf_status_published }}</span>
             {% endif %}
             <span class="badge badge-template">{{ db.get_template_display_name }}</span>
-            {% if show_trash and can_delete_dashboards %}
-            <form method="post" action="{% url 'dashboard_restore' db.pk %}" class="db-card-delete"
-                  onsubmit="return confirm('{{ ui.dl_restore_confirm|escapejs }}'.replace('{name}', '{{ db.name|escapejs }}'));">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-success btn-sm db-card-restore-btn">
-                    <i class="bi bi-arrow-counterclockwise"></i> {{ ui.dl_restore_btn }}
-                </button>
-            </form>
-            {% elif not show_trash %}
-            {% if can_review_dashboards and db.status == "draft" %}
+            {% if can_review_dashboards and db.status == "under_review" %}
             <div class="wf-actions">
                 <button type="button" class="btn btn-success btn-sm js-approve-btn"
                         data-approve-url="{% url 'dashboard_approve' db.pk %}"
@@ -124,7 +115,7 @@
                 </button>
             </div>
             {% endif %}
-            {% if can_delete_dashboards and db.pk in deletable_dashboard_ids and not show_trash %}
+            {% if can_delete_dashboards and db.pk in deletable_dashboard_ids %}
             <form method="post" action="{% url 'dashboard_delete' db.pk %}" class="db-card-delete js-super-delete-form"
                   data-dashboard-pk="{{ db.pk }}"
                   data-dashboard-name="{{ db.name|escape }}">
@@ -134,7 +125,6 @@
                 </button>
             </form>
             {% endif %}
-            {% endif %}
         </div>
     </div>
     {% endfor %}
@@ -143,12 +133,11 @@
 {% else %}
 <div class="empty-state">
     <div class="empty-icon"><i class="bi bi-bar-chart-line"></i></div>
-    <h5 class="empty-state-title">{% if show_trash %}{{ ui.dl_trash_empty_title }}{% else %}{{ ui.dl_empty_title }}{% endif %}</h5>
+    <h5 class="empty-state-title">{{ ui.dl_empty_title }}</h5>
     <p style="color:var(--muted);font-size:.875rem;max-width:320px;margin:.5rem auto 0;">
-        {% if show_trash %}{{ ui.dl_trash_empty_sub }}
-        {% elif can_upload_files %}{{ ui.dl_empty_sub_uploader }}{% else %}{{ ui.dl_empty_sub_viewer }}{% endif %}
+        {% if can_upload_files %}{{ ui.dl_empty_sub_uploader }}{% else %}{{ ui.dl_empty_sub_viewer }}{% endif %}
     </p>
-    {% if can_upload_files and not show_trash %}
+    {% if can_upload_files %}
     <a href="{% url 'upload' %}" class="btn btn-primary mt-3">
         <i class="bi bi-cloud-upload me-1"></i> {{ ui.dl_upload_btn }}
     </a>
@@ -203,23 +192,6 @@
 </div>
 {% endif %}
 
-{% if can_delete_dashboards and undo_deleted_pk %}
-<div id="undoToast" class="undo-toast" role="status" aria-live="polite"
-     data-pk="{{ undo_deleted_pk }}"
-     data-restore-url="{% url 'dashboard_restore' undo_deleted_pk %}"
-     data-expired-msg="{{ ui.dl_undo_expired|escapejs }}"
-     data-msg-template="{{ ui.dl_undo_message|escapejs }}"
-     data-name="{{ undo_deleted_name|escapejs }}">
-    <span class="undo-toast-msg" id="undoToastMsg"></span>
-    <span class="undo-toast-timer" id="undoTimer">30s</span>
-    <form method="post" action="{% url 'dashboard_restore' undo_deleted_pk %}" class="d-inline" id="undoForm">
-        {% csrf_token %}
-        <button type="submit" class="btn-undo">{{ ui.dl_undo_btn }}</button>
-    </form>
-    <button type="button" class="undo-toast-close" id="undoDismiss" aria-label="{% if is_rtl %}إغلاق{% else %}Dismiss{% endif %}">&times;</button>
-</div>
-{% endif %}
-
 {% endblock %}
 
 {% block extra_js %}
@@ -228,54 +200,6 @@
     function getCsrfToken() {
         var match = document.cookie.match(/csrftoken=([^;]+)/);
         return match ? decodeURIComponent(match[1]) : '';
-    }
-
-    function showUndoToast(pk, name) {
-        var existing = document.getElementById('undoToast');
-        if (existing) existing.remove();
-
-        var toast = document.createElement('div');
-        toast.id = 'undoToast';
-        toast.className = 'undo-toast';
-        toast.setAttribute('role', 'status');
-        toast.dataset.pk = String(pk);
-        toast.dataset.msgTemplate = '{{ ui.dl_undo_message|escapejs }}';
-        toast.dataset.expiredMsg = '{{ ui.dl_undo_expired|escapejs }}';
-        toast.innerHTML =
-            '<span class="undo-toast-msg" id="undoToastMsg"></span>' +
-            '<span class="undo-toast-timer" id="undoTimer">30s</span>' +
-            '<form method="post" action="/dashboards/' + pk + '/restore/" class="d-inline" id="undoForm">' +
-            '<input type="hidden" name="csrfmiddlewaretoken" value="' + getCsrfToken() + '">' +
-            '<button type="submit" class="btn-undo">{{ ui.dl_undo_btn|escapejs }}</button></form>' +
-            '<button type="button" class="undo-toast-close" id="undoDismiss">&times;</button>';
-        document.body.appendChild(toast);
-        initUndoToast(toast, name);
-    }
-
-    function initUndoToast(toast, nameOverride) {
-        if (!toast) return;
-        var msgEl = toast.querySelector('#undoToastMsg');
-        var timerEl = toast.querySelector('#undoTimer');
-        var dismissBtn = toast.querySelector('#undoDismiss');
-        var template = toast.dataset.msgTemplate || '';
-        var displayName = nameOverride || toast.dataset.name || '';
-        if (msgEl) msgEl.textContent = template.replace('{name}', displayName);
-
-        var seconds = 30;
-        var interval = setInterval(function () {
-            seconds -= 1;
-            if (timerEl) timerEl.textContent = seconds + 's';
-            if (seconds <= 0) {
-                clearInterval(interval);
-                toast.remove();
-            }
-        }, 1000);
-        if (dismissBtn) {
-            dismissBtn.addEventListener('click', function () {
-                clearInterval(interval);
-                toast.remove();
-            });
-        }
     }
 
     {% if can_delete_dashboards %}
@@ -297,20 +221,15 @@
             }).then(function (res) {
                 if (!res.ok) throw new Error('delete failed');
                 return res.json();
-            }).then(function (data) {
+            }).then(function () {
                 var wrap = form.closest('.db-card-wrap');
                 if (wrap) wrap.remove();
-                showUndoToast(data.pk, data.name || name);
             }).catch(function () {
                 if (btn) btn.disabled = false;
                 form.submit();
             });
         });
     });
-    {% endif %}
-
-    {% if can_delete_dashboards and undo_deleted_pk %}
-    initUndoToast(document.getElementById('undoToast'));
     {% endif %}
 })();
 {% if can_review_dashboards %}

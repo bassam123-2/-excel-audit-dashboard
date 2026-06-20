@@ -30,6 +30,9 @@
 <link rel="stylesheet" href="{% static 'admin/custom.css' %}">
 <link rel="stylesheet" href="{% static 'css/app-layout.css' %}">
 <link rel="stylesheet" href="{% static 'css/dark-theme.css' %}">
+{% if user.is_authenticated and user.is_staff and not is_popup %}
+<link rel="stylesheet" href="{% static 'css/admin_delete_modal.css' %}">
+{% endif %}
 <link rel="manifest" href="{% static 'manifest.json' %}">
 <script>(function(){var t="{{ ui_theme|default:'light'|escapejs }}";document.documentElement.setAttribute("data-ui-theme",t);if(t==="dark")document.documentElement.setAttribute("data-theme","dark");})();</script>
 
@@ -172,8 +175,13 @@
 
 </script>
 <script src="{% static 'js/app-layout.js' %}"></script>
+<script src="{% static 'js/admin-messages-auto-dismiss.js' %}"></script>
 <script>window.UI_THEME_SWITCH_URL = "{% url 'switch_theme' %}";</script>
 <script src="{% static 'js/theme-toggle.js' %}"></script>
+{% if user.is_authenticated and user.is_staff and not is_popup %}
+{% include "admin/delete_modal.html" %}
+<script src="{% static 'js/admin_delete_modal.js' %}" defer></script>
+{% endif %}
 
 {% endblock %}
 
