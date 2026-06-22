@@ -6,6 +6,11 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from .dashboard_template_codes import (
+    DEFAULT_DASHBOARD_TEMPLATE_CODE,
+    TEMPLATE_TYPE_SEEDS,
+)
+
 COMPANY_KIND_MAIN = "main"
 COMPANY_KIND_SUBSIDIARY = "subsidiary"
 COMPANY_KIND_CHOICES = [
@@ -293,7 +298,11 @@ class CompanyAttachmentSetting(models.Model):
 class UploadSession(AdminSoftDeleteFields):
     source_name = models.CharField(max_length=255, verbose_name=_("Source name"))
     sheet_name = models.CharField(max_length=255, blank=True, verbose_name=_("Sheet name"))
-    mode = models.CharField(max_length=32, default="ai", verbose_name=_("Mode"))
+    mode = models.CharField(
+        max_length=32,
+        default=DEFAULT_DASHBOARD_TEMPLATE_CODE,
+        verbose_name=_("Mode"),
+    )
     locale = models.CharField(max_length=8, default="ar", verbose_name=_("Locale"))
     content_sha256 = models.CharField(max_length=64, blank=True, verbose_name=_("Content hash"))
     raw_data_json = models.TextField(
@@ -375,7 +384,7 @@ class DashboardTemplateType(AdminSoftDeleteFields):
         max_length=32,
         unique=True,
         verbose_name=_("Type code"),
-        help_text=_("Internal slug without spaces, e.g. ai"),
+        help_text=_("Internal slug without spaces, e.g. IAD"),
     )
     name = models.CharField(
         max_length=128,
@@ -413,7 +422,7 @@ ICON_CHOICES = [
 ]
 
 TEMPLATE_TYPE_CHOICES = [
-    ("ai", _("AI analytical dashboard")),
+    (seed["code"], _(seed["name"])) for seed in TEMPLATE_TYPE_SEEDS
 ]
 
 
@@ -439,7 +448,7 @@ class Dashboard(models.Model):
     template_type = models.CharField(
         max_length=32,
         choices=TEMPLATE_TYPE_CHOICES,
-        default="ai",
+        default=DEFAULT_DASHBOARD_TEMPLATE_CODE,
         verbose_name=_("Template type"),
     )
     report_id = models.CharField(max_length=64, unique=True, verbose_name=_("Report ID"))

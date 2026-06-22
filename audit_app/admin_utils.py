@@ -1,6 +1,8 @@
 """Shared helpers for Django admin display."""
 from __future__ import annotations
 
+import re
+
 from django.contrib import admin
 from django.contrib.admin.widgets import AutocompleteSelect
 from django.contrib.auth.models import User
@@ -97,3 +99,26 @@ class WorkflowAssigneeAutocompleteWidget(AutocompleteSelect):
         )
         built["class"] = (css_class + " wf-assignee-autocomplete").strip()
         return built
+
+
+def company_parent_autocomplete_exclude_pk(request) -> int | None:
+    """Resolve company pk to omit from parent-company autocomplete (self on change form)."""
+    raw = (request.GET.get("exclude_pk") or "").strip()
+    if raw:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
+
+    referer = request.META.get("HTTP_REFERER") or ""
+    for pattern in (
+        r"/audit_app/company/(\d+)/change/?",
+        r"/company/(\d+)/change/?",
+    ):
+        match = re.search(pattern, referer)
+        if match:
+            try:
+                return int(match.group(1))
+            except (TypeError, ValueError):
+                pass
+    return None

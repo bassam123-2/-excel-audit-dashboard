@@ -386,6 +386,10 @@ class _CompanyAdminFormBase(forms.ModelForm):
             pk=self.instance.pk if self.instance.pk else None
         )
         self.fields["parent"].required = False
+        if self.instance.pk:
+            self.fields["parent"].widget.attrs["data-exclude-pk"] = str(
+                self.instance.pk
+            )
         self.fields["logo"].required = not bool(self.instance.pk and self.instance.logo)
         kind = (
             (self.data.get("company_kind") if self.data else None)

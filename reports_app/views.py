@@ -25,7 +25,13 @@ from web_strings import get_ui  # noqa: E402
 from dashboard_locale import normalize_locale  # noqa: E402
 
 from audit_app.company_access import user_must_select_company
-from audit_app.models import Dashboard, DashboardTemplateType, DashboardStatus, ICON_CHOICES
+from audit_app.models import (
+    Dashboard,
+    DashboardTemplateType,
+    DashboardStatus,
+    ICON_CHOICES,
+    TEMPLATE_TYPE_CHOICES,
+)
 from .dashboard_workflow import (
     FILTER_ALL,
     activate_company_for_dashboard,
@@ -166,11 +172,19 @@ def _cleanup_dashboard_files(dashboard: Dashboard) -> None:
 
 
 def _dashboard_cache_fresh(cache_path: Path) -> bool:
-    """Invalidate cached HTML when the dashboard generator module changes."""
+    """Invalidate cached HTML when dashboard generator or embedded assets change."""
     if not cache_path.exists():
         return False
     try:
         gen_mtime = Path(_ai_excel_dashboard_mod.__file__).stat().st_mtime
+        ar_pkg = Path(__file__).resolve().parents[1] / "arabic_compliance_dashboard"
+        ar_gen = ar_pkg / "generator.py"
+        if ar_gen.is_file():
+            gen_mtime = max(gen_mtime, ar_gen.stat().st_mtime)
+        for asset_name in ("assets/dashboard.js", "assets/styles.css", "assets/body.html"):
+            asset_path = ar_pkg / asset_name
+            if asset_path.is_file():
+                gen_mtime = max(gen_mtime, asset_path.stat().st_mtime)
         return cache_path.stat().st_mtime >= gen_mtime
     except OSError:
         return False
@@ -179,12 +193,24 @@ def _dashboard_cache_fresh(cache_path: Path) -> bool:
 # ── Upload form helpers ───────────────────────────────────────────────
 
 
+def _active_upload_template_codes() -> set[str]:
+    codes = set(
+        DashboardTemplateType.objects.filter(
+            is_active=True,
+            is_deleted=False,
+        ).values_list("code", flat=True)
+    )
+    if codes:
+        return codes
+    return {code for code, _ in TEMPLATE_TYPE_CHOICES}
+
+
 def _upload_form_from_post(post) -> dict:
     return {
         "dashboard_name": post.get("dashboard_name", "").strip(),
         "icon": post.get("icon", "").strip(),
         "description": post.get("description", "").strip(),
-        "template_type": post.get("template_type", "ai").strip() or "ai",
+        "template_type": post.get("template_type", "").strip(),
         "resubmit_dashboard_id": post.get("resubmit_dashboard_id", "").strip(),
     }
 
@@ -213,7 +239,6 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
     selected_template = (
         form.get("template_type")
         or (resubmit_dashboard.template_type if resubmit_dashboard else "")
-        or "ai"
     )
     dashboard_name_value = (
         form.get("dashboard_name")
@@ -301,6 +326,11 @@ def analyze(request):
         messages.error(request, ui["upload_err_icon"])
         return _render_upload_page(request, form)
 
+    valid_template_codes = _active_upload_template_codes()
+    if template_type not in valid_template_codes:
+        messages.error(request, ui["upload_err_template"])
+        return _render_upload_page(request, form)
+
     resubmit_dashboard = None
     resubmit_raw = form["resubmit_dashboard_id"]
     was_draft_edit = False
@@ -332,8 +362,9 @@ def analyze(request):
         messages.error(request, err)
         return _render_upload_page(request, form)
 
+    _clear_dashboard_html_cache(dashboard)
+
     if resubmit_dashboard:
-        _clear_dashboard_html_cache(dashboard)
         dashboard.save(update_fields=["html_file"])
         if was_draft_edit:
             messages.success(request, ui.get("wf_edit_draft_success", ui["upload_success"]))

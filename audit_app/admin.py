@@ -29,6 +29,7 @@ from .admin_changelist_v2 import (
     cl_v2_stat_card,
 )
 from .admin_utils import (
+    company_parent_autocomplete_exclude_pk,
     format_admin_active_status_icon,
     format_admin_boolean_icon,
     install_boolean_icon_list_columns,
@@ -1214,16 +1215,32 @@ class CompanyAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
     def get_search_results(self, request, queryset, search_term):
         """Changelist search includes inactive companies; autocomplete keeps active only."""
         if "/autocomplete/" in request.path:
-            queryset = queryset.filter(is_active=True, is_deleted=False)
+            app_label = request.GET.get("app_label")
+            model_name = request.GET.get("model_name")
+            field_name = request.GET.get("field_name")
+
             if (
-                request.GET.get("app_label") == "audit_app"
-                and request.GET.get("model_name") == "workflowtemplate"
-                and request.GET.get("field_name") == "company"
+                app_label == "audit_app"
+                and model_name == "company"
+                and field_name == "parent"
             ):
-                used_company_ids = WorkflowTemplate.objects.values_list(
-                    "company_id", flat=True
-                )
-                queryset = queryset.exclude(pk__in=used_company_ids)
+                from audit_app.company_access import active_main_companies
+
+                queryset = active_main_companies()
+                exclude_pk = company_parent_autocomplete_exclude_pk(request)
+                if exclude_pk is not None:
+                    queryset = queryset.exclude(pk=exclude_pk)
+            else:
+                queryset = queryset.filter(is_active=True, is_deleted=False)
+                if (
+                    app_label == "audit_app"
+                    and model_name == "workflowtemplate"
+                    and field_name == "company"
+                ):
+                    used_company_ids = WorkflowTemplate.objects.values_list(
+                        "company_id", flat=True
+                    )
+                    queryset = queryset.exclude(pk__in=used_company_ids)
         return super().get_search_results(request, queryset, search_term)
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
@@ -1231,6 +1248,15 @@ class CompanyAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
             from audit_app.company_access import active_main_companies
 
             kwargs["queryset"] = active_main_companies().order_by("code")
+            formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+            object_id = (
+                request.resolver_match.kwargs.get("object_id")
+                if request.resolver_match
+                else None
+            )
+            if object_id:
+                formfield.widget.attrs["data-exclude-pk"] = str(unquote(object_id))
+            return formfield
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def save_model(self, request, obj, form, change):
@@ -1325,7 +1351,7 @@ class UploadSessionAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin)
                 _("AI mode"),
                 icon="bi-robot",
                 tone="success",
-                mode="ai",
+                mode=TEMPLATE_CODE_IAD,
             ),
             cl_v2_count_where(
                 queryset,
@@ -1421,10 +1447,17 @@ class DashboardTemplateTypeAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.Mod
     list_display_links = ("code",)
     search_fields = ("code", "name")
     ordering = ("sort_order", "code")
+    readonly_fields = ("icon", "sort_order")
     fieldsets = (
         (None, {"fields": ("code", "name", "icon", "description")}),
         (_("Settings"), {"fields": ("is_active", "sort_order")}),
     )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
     def get_cl_v2_search_placeholder(self, request):
         return _("Search type code or name…")

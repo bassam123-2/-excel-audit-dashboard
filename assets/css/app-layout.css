@@ -90,14 +90,29 @@ html[data-theme="dark"] body {
         padding: 0.65rem 1rem;
     }
 
-    .topbar-title {
+    .topbar-start {
         flex: 1 1 100%;
         order: 1;
     }
 
-    .topbar-actions {
+    .topbar-title {
+        flex: 1 1 auto;
+    }
+
+    .topbar-center {
         flex: 1 1 100%;
         order: 2;
+        padding: 0.35rem 0 0.15rem;
+    }
+
+    .topbar-company-logo {
+        max-height: 36px;
+        max-width: min(180px, 70vw);
+    }
+
+    .topbar-actions {
+        flex: 1 1 100%;
+        order: 3;
         flex-wrap: wrap;
         justify-content: flex-start;
     }

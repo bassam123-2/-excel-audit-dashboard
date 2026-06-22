@@ -21,6 +21,11 @@ from ai_excel_dashboard import (
     resolve_attached_deck_for_workbook_index,
     workbook_dashboard_tab_title,
 )
+from audit_app.dashboard_template_codes import (
+    DEFAULT_DASHBOARD_TEMPLATE_CODE,
+    TEMPLATE_CODE_CD,
+    TEMPLATE_CODE_IAD,
+)
 from audit_app.services.persistence import persist_report_result
 from dashboard_locale import normalize_locale, tr
 from data_io import read_input_file
@@ -342,8 +347,11 @@ def _attachment_path_kwargs(
 
 def report_locale_for_dashboard(dashboard, request) -> str:
     """Locale for generated report HTML (iframe content). AI dashboards are English-only."""
-    if getattr(dashboard, "template_type", None) == "ai":
+    template = getattr(dashboard, "template_type", None)
+    if template == TEMPLATE_CODE_IAD:
         return "en"
+    if template == TEMPLATE_CODE_CD:
+        return "ar"
     return normalize_locale(request.session.get("ui_lang", "en"))
 
 
@@ -366,11 +374,177 @@ def version_payload(module_file: str) -> dict[str, str]:
 # ── New architecture: store-only upload + on-demand generation ────────
 
 
+def _ar_compliance_err(locale: str, ar: str, en: str) -> str:
+    return ar if locale == "ar" else en
+
+
+def _assert_ar_compliance_upload_request(request, uploads, locale: str) -> None:
+    from arabic_compliance_dashboard.schema import EXCEL_EXTENSIONS
+
+    if len(uploads) != 1:
+        raise ValueError(
+            _ar_compliance_err(
+                locale,
+                "قالب الالتزام العربي يقبل ملف Excel واحد فقط.",
+                "Arabic compliance template accepts one Excel file only.",
+            )
+        )
+    ext = Path(uploads[0].name).suffix.lower()
+    if ext not in EXCEL_EXTENSIONS:
+        raise ValueError(
+            _ar_compliance_err(
+                locale,
+                "صيغة الملف غير مدعومة. استخدم .xlsx أو .xls أو .xlsm",
+                "Unsupported file type. Use .xlsx, .xls, or .xlsm.",
+            )
+        )
+    extra_keys = ("file2", "file3", "file4")
+    for key in extra_keys:
+        f = request.FILES.get(key)
+        if f and str(getattr(f, "name", "")).strip():
+            raise ValueError(
+                _ar_compliance_err(
+                    locale,
+                    "قالب الالتزام العربي لا يقبل ملفات Excel إضافية.",
+                    "Arabic compliance template does not accept extra Excel files.",
+                )
+            )
+    for key in request.FILES:
+        if key.startswith("deck") or key.startswith("remove_deck"):
+            raise ValueError(
+                _ar_compliance_err(
+                    locale,
+                    "قالب الالتزام العربي لا يقبل مرفقات PPTX/PDF.",
+                    "Arabic compliance template does not accept deck attachments.",
+                )
+            )
+
+
+def _store_ar_compliance_upload(
+    request,
+    dashboard_name: str,
+    icon: str,
+    description: str,
+    *,
+    resubmit_dashboard: "Dashboard | None",
+    ui_locale: str,
+    active_company,
+) -> "Dashboard":
+    import uuid
+
+    import pandas as pd
+    from audit_app.models import Dashboard, DashboardStatus, UploadSession
+    from audit_app.services.persistence import persist_report_result
+    from arabic_compliance_dashboard.data import (
+        minimal_audit_payload,
+        prepare_upload_dataframe,
+        validate_ar_companies_for_tenant,
+    )
+    from arabic_compliance_dashboard.schema import TEMPLATE_CODE
+    from reports_app.dashboard_workflow import mark_dashboard_draft
+
+    sheet = None
+    uploads = excel_uploads_from_request(request)
+    _assert_ar_compliance_upload_request(request, uploads, ui_locale)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        up = uploads[0]
+        path = _persist_upload(up, tmp_dir)
+        df = read_input_file(path, sheet_name=sheet, locale=ui_locale)
+        if isinstance(df, dict):
+            first_key = next(iter(df.keys()))
+            df = df[first_key]
+        df = df.dropna(how="all").dropna(axis=1, how="all")
+        if df.empty:
+            raise ValueError(tr(ui_locale, "web_err_empty"))
+
+        df = prepare_upload_dataframe(df, locale=ui_locale)
+        validate_ar_companies_for_tenant(df, active_company, locale=ui_locale)
+
+        primary_name = up.name
+        primary_sha256 = content_fingerprint(df, up.name)
+
+        report_id = (
+            resubmit_dashboard.report_id
+            if resubmit_dashboard
+            else str(uuid.uuid4())
+        )
+        primary_audit_payload = minimal_audit_payload(report_id=report_id, df=df)
+
+        if resubmit_dashboard:
+            old_session = resubmit_dashboard.upload_session
+            if old_session:
+                resubmit_dashboard.upload_session = None
+                resubmit_dashboard.save(update_fields=["upload_session"])
+                old_session.delete()
+
+        session = persist_report_result(
+            source_name=primary_name,
+            sheet_name=sheet,
+            locale="ar",
+            mode=TEMPLATE_CODE,
+            content_sha256=primary_sha256,
+            observation_rows=[],
+            audit_payload=primary_audit_payload,
+        )
+
+        entry = json.loads(
+            df.to_json(orient="split", force_ascii=False, default_handler=str)
+        )
+        entry["source_name"] = primary_name
+        if isinstance(session, UploadSession):
+            session.raw_data_json = json.dumps(entry, ensure_ascii=False)
+            session.save(update_fields=["raw_data_json"])
+
+        source_files_info = {"excel": [primary_name]}
+
+        if resubmit_dashboard:
+            resubmit_dashboard.name = dashboard_name
+            resubmit_dashboard.description = description
+            resubmit_dashboard.icon = icon
+            resubmit_dashboard.template_type = TEMPLATE_CODE
+            resubmit_dashboard.html_file = ""
+            resubmit_dashboard.source_files = source_files_info
+            resubmit_dashboard.upload_session = session
+            if not resubmit_dashboard.company_id:
+                resubmit_dashboard.company = active_company
+            mark_dashboard_draft(resubmit_dashboard)
+            resubmit_dashboard.save(
+                update_fields=[
+                    "name",
+                    "description",
+                    "icon",
+                    "template_type",
+                    "html_file",
+                    "source_files",
+                    "upload_session",
+                    "company",
+                    "status",
+                    "published_at",
+                ]
+            )
+            return resubmit_dashboard
+
+        return Dashboard.objects.create(
+            name=dashboard_name,
+            description=description,
+            icon=icon,
+            template_type=TEMPLATE_CODE,
+            report_id=report_id,
+            html_file="",
+            source_files=source_files_info,
+            company=active_company,
+            created_by=request.user if request.user.is_authenticated else None,
+            upload_session=session,
+            status=DashboardStatus.DRAFT,
+        )
+
+
 def store_upload_to_db(
     request,
     dashboard_name: str,
     icon: str,
-    template_type: str = "ai",
+    template_type: str = DEFAULT_DASHBOARD_TEMPLATE_CODE,
     description: str = "",
     *,
     resubmit_dashboard: "Dashboard | None" = None,
@@ -414,6 +588,17 @@ def store_upload_to_db(
     valid_icons = {v for v, _ in ICON_CHOICES}
     if icon not in valid_icons:
         icon = "bi-bar-chart-line-fill"
+
+    if template_type == TEMPLATE_CODE_CD:
+        return _store_ar_compliance_upload(
+            request,
+            dashboard_name,
+            icon,
+            description,
+            resubmit_dashboard=resubmit_dashboard,
+            ui_locale=ui_locale,
+            active_company=active_company,
+        )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         # ── Read all Excel files ──────────────────────────────────────
@@ -586,8 +771,23 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
     if not session or not session.raw_data_json:
         raise ValueError("No stored data for this dashboard.")
 
+    if getattr(dashboard, "template_type", None) == TEMPLATE_CODE_CD:
+        from arabic_compliance_dashboard.data import dataframe_from_dashboard, main_brand_logo_pack
+        from arabic_compliance_dashboard.generator import generate_ar_compliance_report
+
+        df = dataframe_from_dashboard(dashboard)
+        api_base = f"/dashboards/{dashboard.pk}/ar-api"
+        brand_logos, default_brand_code = main_brand_logo_pack(dashboard.company)
+        return generate_ar_compliance_report(
+            df,
+            dashboard_id=dashboard.pk,
+            api_base=api_base,
+            brand_logos=brand_logos,
+            default_brand_code=default_brand_code,
+        )
+
     # AI dashboards are always English; others follow the UI language.
-    if getattr(dashboard, "template_type", None) == "ai":
+    if getattr(dashboard, "template_type", None) == TEMPLATE_CODE_IAD:
         locale = "en"
     elif locale is None:
         locale = request.session.get("ui_lang", session.locale or "en")

@@ -1,0 +1,1 @@
+"""Arabic compliance dashboard package."""

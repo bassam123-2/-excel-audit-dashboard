@@ -56,6 +56,34 @@
                 <input type="hidden" name="resubmit_dashboard_id" value="{{ form.resubmit_dashboard_id }}">
                 {% endif %}
 
+                <!-- ── Template type (choose first) ── -->
+                <div class="form-section">
+                    <div class="section-label">
+                        <i class="bi bi-layout-wtf"></i> {{ ui.upload_template_label }}
+                        <span class="section-label__required">*</span>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for tt in template_types %}
+                        <label class="template-badge" style="cursor:pointer;">
+                            <input type="radio" name="template_type" value="{{ tt.code }}"
+                                   {% if selected_template == tt.code %}checked{% endif %}>
+                            <i class="bi {{ tt.icon|default:'bi-stars' }}"></i>
+                            {{ tt.name }}
+                        </label>
+                        {% empty %}
+                        <span class="template-badge">
+                            <i class="bi bi-stars"></i>
+                            {% if is_rtl %}لوحة تحليلية ذكية{% else %}AI Dashboard{% endif %}
+                        </span>
+                        <input type="hidden" name="template_type" value="IAD">
+                        {% endfor %}
+                        <input type="hidden" name="mode" value="IAD">
+                    </div>
+                    <div class="upload-field-error text-danger mt-1" id="templateError">{{ ui.upload_err_template }}</div>
+                </div>
+
+                <div id="uploadDetailsSection"{% if not selected_template %} style="display:none;"{% endif %}>
+
                 <!-- ── Dashboard Name ── -->
                 <div class="form-section">
                     <div class="section-label">
@@ -117,30 +145,6 @@
                     <div class="upload-field-error text-danger mt-1" id="iconError">{{ ui.upload_err_icon }}</div>
                 </div>
 
-                <!-- ── Template type ── -->
-                <div class="form-section">
-                    <div class="section-label"><i class="bi bi-layout-wtf"></i> {{ ui.upload_template_label }}</div>
-                    <div class="d-flex flex-wrap gap-2">
-                        {% for tt in template_types %}
-                        <label class="template-badge" style="cursor:pointer;">
-                            <input type="radio" name="template_type" value="{{ tt.code }}"
-                                   required
-                                   {% if selected_template == tt.code %}checked
-                                   {% elif not selected_template and forloop.first %}checked{% endif %}>
-                            <i class="bi {{ tt.icon|default:'bi-stars' }}"></i>
-                            {{ tt.name }}
-                        </label>
-                        {% empty %}
-                        <span class="template-badge">
-                            <i class="bi bi-stars"></i>
-                            {% if is_rtl %}لوحة تحليلية ذكية{% else %}AI Dashboard{% endif %}
-                        </span>
-                        <input type="hidden" name="template_type" value="ai">
-                        {% endfor %}
-                        <input type="hidden" name="mode" value="ai">
-                    </div>
-                </div>
-
                 <!-- ── Excel files ── -->
                 <div class="form-section">
                     <div class="section-label">
@@ -160,11 +164,23 @@
                         </div>
                     </div>
                     <div class="upload-field-error text-danger mt-1" id="fileError">{{ ui.upload_err_file }}</div>
+                    <div id="arComplianceHint" class="alert alert-info mt-2 small" style="display:none;">
+                        {% if is_rtl %}
+                        <strong>قالب الالتزام العربي:</strong> ملف Excel واحد (.xlsx / .xls / .xlsm).
+                        <br>أعمدة إلزامية (11): تصنيف المخاطر الكامنة، تصنيف المخاطر المتبقية، الحالة، الإدارة المسؤولة، المشرع، اسم النظام، الهيئة التابعة، اللائحة، النص النظامي، حالة الالتزام، فئة الضوابط الرقابية.
+                        <br>اختيارية (10): السنوات، تاريخ التصحيح المستهدف، تاريخ التصحيح المعدل، الشركة القابضة، الشركة التابعة، مالك المهمة، الشخص المسؤول، الخطة التصحيحية، ملاحظات الإدارة، ملاحظات الإلتزام.
+                        {% else %}
+                        <strong>Arabic compliance template:</strong> one Excel file (.xlsx / .xls / .xlsm).
+                        <br>Required columns (11): inherent/residual risk, status, department, legislator, system name, authority, regulation, legal text, compliance status, control category.
+                        <br>Optional (10): years, target/modified dates, holding/subsidiary company, owners, corrective plan, notes.
+                        {% endif %}
+                    </div>
                 </div>
 
                 <!-- ── Optional attachments (PPTX/PDF) ── -->
+                <div id="attachmentSections">
                 {% for slot in attachment_slots %}
-                <div class="form-section">
+                <div class="form-section js-attachment-slot">
                     <details id="{{ slot.details_id }}"{% if slot.has_existing %} open{% endif %}>
                         <summary>
                             <i class="bi {{ slot.summary_icon }} me-1"></i>
@@ -205,6 +221,7 @@
                     </details>
                 </div>
                 {% endfor %}
+                </div>
 
                 <!-- ── Submit ── -->
                 <div class="d-flex justify-content-end">
@@ -213,6 +230,8 @@
                         {{ ui.upload_submit_btn }}
                     </button>
                 </div>
+
+                </div><!-- /#uploadDetailsSection -->
             </form>
         </div>
     </div>
@@ -258,6 +277,20 @@
 
     form.addEventListener('submit', function (e) {
         var valid = true;
+        var templateChecked = form.querySelector('input[name="template_type"]:checked');
+
+        // Template type
+        if (!templateChecked) {
+            if (templateError) templateError.style.display = 'block';
+            valid = false;
+        } else if (templateError) {
+            templateError.style.display = 'none';
+        }
+
+        if (!templateChecked) {
+            e.preventDefault();
+            return;
+        }
 
         // Name
         if (!nameIn.value.trim()) {
@@ -296,6 +329,35 @@
     nameIn.addEventListener('input', function () {
         this.classList.remove('is-invalid');
     });
+
+    var arHint = document.getElementById('arComplianceHint');
+    var attachmentWrap = document.getElementById('attachmentSections');
+    var templateRadios = form.querySelectorAll('input[name="template_type"]');
+    var detailsSection = document.getElementById('uploadDetailsSection');
+    var templateError = document.getElementById('templateError');
+
+    function syncTemplateUi() {
+        var selected = form.querySelector('input[name="template_type"]:checked');
+        var hasSelection = Boolean(selected);
+        if (detailsSection) {
+            detailsSection.style.display = hasSelection ? '' : 'none';
+        }
+        if (templateError) {
+            templateError.style.display = 'none';
+        }
+        if (!hasSelection) {
+            return;
+        }
+        var code = selected.value;
+        var isAr = code === 'CD';
+        if (arHint) arHint.style.display = isAr ? 'block' : 'none';
+        if (attachmentWrap) attachmentWrap.style.display = isAr ? 'none' : '';
+        if (fileInput) {
+            fileInput.accept = isAr ? '.xlsx,.xls,.xlsm' : '.xlsx,.xls,.xlsm,.csv';
+        }
+    }
+    templateRadios.forEach(function (r) { r.addEventListener('change', syncTemplateUi); });
+    syncTemplateUi();
 })();
 
 // Attachment file zone handler (deck / high risk / …)

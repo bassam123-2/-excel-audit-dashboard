@@ -18,6 +18,17 @@ from .views import (
     favicon,
     index,
 )
+from .ar_compliance_views import (
+    ar_api_aging_summary,
+    ar_api_audit_plan_panel,
+    ar_api_brand_logo,
+    ar_api_export_dashboard_html,
+    ar_api_export_legal_text_pptx,
+    ar_api_legal_text_details,
+    ar_api_legal_text_row_images,
+    ar_api_send_legal_text_email,
+    ar_api_summary,
+)
 
 urlpatterns = [
     path("", dashboard_list, name="dashboard_list"),
@@ -39,4 +50,22 @@ urlpatterns = [
     path("dashboards/<int:pk>/submit/", dashboard_submit, name="dashboard_submit"),
     path("dashboards/<int:pk>/acknowledge/", dashboard_acknowledge, name="dashboard_acknowledge"),
     path("dashboards/<int:pk>/serve/", dashboard_serve, name="dashboard_serve"),
+    path("dashboards/<int:pk>/ar-api/summary", ar_api_summary, name="ar_api_summary"),
+    path("dashboards/<int:pk>/ar-api/summary/", ar_api_summary, name="ar_api_summary_slash"),
+    path("dashboards/<int:pk>/ar-api/aging-summary", ar_api_aging_summary, name="ar_api_aging_summary"),
+    path("dashboards/<int:pk>/ar-api/aging-summary/", ar_api_aging_summary, name="ar_api_aging_slash"),
+    path("dashboards/<int:pk>/ar-api/legal-text-details", ar_api_legal_text_details, name="ar_api_legal_details"),
+    path("dashboards/<int:pk>/ar-api/legal-text-details/", ar_api_legal_text_details, name="ar_api_legal_details_slash"),
+    path("dashboards/<int:pk>/ar-api/legal-text-row-images", ar_api_legal_text_row_images, name="ar_api_legal_images"),
+    path("dashboards/<int:pk>/ar-api/legal-text-row-images/", ar_api_legal_text_row_images, name="ar_api_legal_images_slash"),
+    path("dashboards/<int:pk>/ar-api/send-legal-text-email", ar_api_send_legal_text_email, name="ar_api_send_email"),
+    path("dashboards/<int:pk>/ar-api/send-legal-text-email/", ar_api_send_legal_text_email, name="ar_api_send_email_slash"),
+    path("dashboards/<int:pk>/ar-api/export-legal-text-pptx", ar_api_export_legal_text_pptx, name="ar_api_export_pptx"),
+    path("dashboards/<int:pk>/ar-api/export-legal-text-pptx/", ar_api_export_legal_text_pptx, name="ar_api_export_pptx_slash"),
+    path("dashboards/<int:pk>/ar-api/export-dashboard-html", ar_api_export_dashboard_html, name="ar_api_export_html"),
+    path("dashboards/<int:pk>/ar-api/export-dashboard-html/", ar_api_export_dashboard_html, name="ar_api_export_html_slash"),
+    path("dashboards/<int:pk>/ar-api/brand-logo", ar_api_brand_logo, name="ar_api_brand_logo"),
+    path("dashboards/<int:pk>/ar-api/brand-logo/", ar_api_brand_logo, name="ar_api_brand_logo_slash"),
+    path("dashboards/<int:pk>/ar-api/audit-plan-panel", ar_api_audit_plan_panel, name="ar_api_audit_plan"),
+    path("dashboards/<int:pk>/ar-api/audit-plan-panel/", ar_api_audit_plan_panel, name="ar_api_audit_plan_slash"),
 ]

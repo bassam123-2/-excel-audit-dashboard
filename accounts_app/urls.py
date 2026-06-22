@@ -3,6 +3,7 @@
 from django.urls import path
 
 from .views import (
+    company_logo_view,
     login_view,
     logout_view,
     profile_view,
@@ -24,6 +25,7 @@ urlpatterns = [
     path("setup-required/", setup_required_view, name="setup_required"),
     path("select-company/", select_company_view, name="select_company"),
     path("switch-company/", switch_company_view, name="switch_company"),
+    path("company-logo/<int:company_id>/", company_logo_view, name="company_logo"),
     path("lang/switch/", switch_language, name="switch_language"),
     path("theme/switch/", switch_theme, name="switch_theme"),
 ]
