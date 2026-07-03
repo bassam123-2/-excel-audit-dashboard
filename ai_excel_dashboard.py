@@ -33,6 +33,7 @@ import pandas as pd
 
 from dashboard_locale import AR_MONTH_HINTS, normalize_locale, tr
 from data_io import ATTR_READ_NOTES, read_input_file
+from site_robots import ROBOTS_META_HTML
 
 REPORT_VERSION = "dashboard-v1.0.4"
 ALL_ATTACHMENT_KINDS = frozenset(
@@ -852,6 +853,44 @@ def _json_safe_cell(v: Any) -> Any:
     return str(v).strip()
 
 
+def _json_safe_obs_date_cell(v: Any) -> Any:
+    """Normalize observation date cells to ISO dates or Excel serials for aging."""
+    if v is None:
+        return None
+    try:
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(v, (pd.Timestamp, datetime)):
+        return v.date().isoformat()
+    if isinstance(v, numbers.Real) and not isinstance(v, bool):
+        fv = float(v)
+        if math.isnan(fv):
+            return None
+        if 1000 <= fv <= 80000:
+            return int(fv) if fv == int(fv) else fv
+        return fv
+    if isinstance(v, numbers.Integral) and not isinstance(v, bool):
+        if 1000 <= v <= 80000:
+            return int(v)
+        return int(v)
+    s = str(v).strip()
+    if not s:
+        return None
+    dt = pd.to_datetime(s, errors="coerce", dayfirst=True)
+    if pd.notna(dt):
+        yr = int(dt.year)
+        if 1970 <= yr <= 2100:
+            return dt.date().isoformat()
+    serial = pd.to_numeric(s, errors="coerce")
+    if pd.notna(serial):
+        sv = float(serial)
+        if 1000 <= sv <= 80000:
+            return int(sv) if sv == int(sv) else sv
+    return s
+
+
 def _filter_option_token(v: Any) -> str:
     """Stable string for filter dropdown values so they match _json_safe_cell rows after JSON parse."""
     j = _json_safe_cell(v)
@@ -1204,15 +1243,15 @@ def build_audit_observation_payload(
         else:
             rec["rec"] = None
         if "implementation_due" in colmap:
-            rec["idue"] = _json_safe_cell(r[colmap["implementation_due"]])
+            rec["idue"] = _json_safe_obs_date_cell(r[colmap["implementation_due"]])
         else:
             rec["idue"] = None
         if "target_date" in colmap:
-            rec["tdate"] = _json_safe_cell(r[colmap["target_date"]])
+            rec["tdate"] = _json_safe_obs_date_cell(r[colmap["target_date"]])
         else:
             rec["tdate"] = None
         if "revised_date" in colmap:
-            rec["rdate"] = _json_safe_cell(r[colmap["revised_date"]])
+            rec["rdate"] = _json_safe_obs_date_cell(r[colmap["revised_date"]])
         else:
             rec["rdate"] = None
         if "observation_id" in colmap:
@@ -1823,7 +1862,7 @@ def build_multi_dashboard_shell(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{shell_title}</title>{mail_head}
+{ROBOTS_META_HTML}  <title>{shell_title}</title>{mail_head}
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="{font_link}" rel="stylesheet" />
   <style>
@@ -2409,7 +2448,7 @@ def generate_finance_report(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{page_title}</title>
+{ROBOTS_META_HTML}  <title>{page_title}</title>
   <meta name="excel-dashboard-ui" content="{REPORT_VERSION}" />
   <!-- plan-upload:v4-fetch-only (no FileReader for audit plan file reads) -->
   <script>{_MAIL_API_MARKER}</script>
@@ -6471,20 +6510,26 @@ def generate_finance_report(
         }}
         return rv;
       }}
+      function obsDateCellRaw(v) {{
+        if (v == null) return null;
+        const s = String(v).trim();
+        return s === "" ? null : v;
+      }}
       function rowAgingDateRaw(row) {{
-        if (AO.has_target_date) return row.tdate;
-        return row.idue;
+        const t = obsDateCellRaw(row.tdate);
+        if (t != null) return t;
+        return obsDateCellRaw(row.idue);
       }}
       function rowMatrixCompareDateRaw(row) {{
         if (agingMatrixUseRevised && hasRevisedDateCol) {{
-          const rv = row.rdate;
-          if (rv != null && String(rv).trim() !== "") return rv;
+          const rv = obsDateCellRaw(row.rdate);
+          if (rv != null) return rv;
         }}
         return rowAgingDateRaw(row);
       }}
       function detailAgingDaysText(row) {{
         if (!showDetailAgingChip) return emptyMark;
-        const due = parseObsDate(rowAgingDateRaw(row));
+        const due = parseObsDate(rowMatrixCompareDateRaw(row));
         if (!due) return emptyMark;
         let refDate = null;
         if (revisedDateVal) refDate = parseObsDate(revisedDateVal);
@@ -7056,21 +7101,45 @@ def generate_finance_report(
       }}
       hydratePersistedUserEdits();
 
+      function parseObsDateFromExcelSerial(excelDays) {{
+        if (!Number.isFinite(excelDays)) return null;
+        const days = Math.floor(excelDays);
+        if (days < 1000 || days > 80000) return null;
+        const msUtc = (days - 25569) * 86400 * 1000;
+        const dNum = new Date(msUtc);
+        if (isNaN(dNum.getTime())) return null;
+        return new Date(Date.UTC(dNum.getUTCFullYear(), dNum.getUTCMonth(), dNum.getUTCDate()));
+      }}
       function parseObsDate(value) {{
         if (value == null || value === "") return null;
         if (typeof value === "number" && Number.isFinite(value)) {{
-          const excelDays = Math.floor(value);
-          const msUtc = (excelDays - 25569) * 86400 * 1000;
-          const dNum = new Date(msUtc);
-          if (!isNaN(dNum.getTime())) return new Date(Date.UTC(dNum.getUTCFullYear(), dNum.getUTCMonth(), dNum.getUTCDate()));
+          return parseObsDateFromExcelSerial(value);
         }}
         const s = String(value).trim();
-        const m = s.match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})/);
-        if (m) {{
-          const y = Number(m[1]);
-          const mm = Number(m[2]);
-          const dd = Number(m[3]);
+        const serialM = s.match(/^(\\d+(?:\\.\\d+)?)$/);
+        if (serialM) {{
+          const fromSerial = parseObsDateFromExcelSerial(Number(serialM[1]));
+          if (fromSerial) return fromSerial;
+        }}
+        const iso = s.match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})/);
+        if (iso) {{
+          const y = Number(iso[1]);
+          const mm = Number(iso[2]);
+          const dd = Number(iso[3]);
           if (Number.isFinite(y) && Number.isFinite(mm) && Number.isFinite(dd)) {{
+            return new Date(Date.UTC(y, mm - 1, dd));
+          }}
+        }}
+        const dmy = s.match(/^(\\d{{1,2}})[\\/\\-](\\d{{1,2}})[\\/\\-](\\d{{4}})$/);
+        if (dmy) {{
+          const p1 = Number(dmy[1]);
+          const p2 = Number(dmy[2]);
+          const y = Number(dmy[3]);
+          let dd = p1;
+          let mm = p2;
+          if (p1 > 12 && p2 <= 12) {{ dd = p1; mm = p2; }}
+          else if (p2 > 12 && p1 <= 12) {{ dd = p2; mm = p1; }}
+          if (Number.isFinite(y) && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {{
             return new Date(Date.UTC(y, mm - 1, dd));
           }}
         }}

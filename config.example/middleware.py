@@ -9,6 +9,19 @@ from config.error_logging.context import (
     set_request_context,
 )
 from config.error_logging.tracker import log_error
+from config.robots import ROBOTS_HTTP_HEADER_VALUE
+
+
+class NoSearchIndexMiddleware:
+    """Add X-Robots-Tag on every response so crawlers do not index the private app."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        response["X-Robots-Tag"] = ROBOTS_HTTP_HEADER_VALUE
+        return response
 
 
 class RequestTrackingMiddleware:

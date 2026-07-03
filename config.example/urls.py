@@ -6,7 +6,10 @@ from django.conf.urls.i18n import i18n_patterns
 from django.contrib import admin
 from django.urls import include, path
 
+from config.views import robots_txt
+
 urlpatterns = [
+    path("robots.txt", robots_txt, name="robots_txt"),
     # Django built-in i18n language switcher (/i18n/set_language/)
     path("i18n/", include("django.conf.urls.i18n")),
     path("admin/", admin.site.urls),

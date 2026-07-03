@@ -52,6 +52,7 @@ MIDDLEWARE = [
     "config.middleware.ErrorTrackingMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "config.middleware.NoSearchIndexMiddleware",
     "reports_app.middleware.DashboardVersionHeaderMiddleware",
 ]
 

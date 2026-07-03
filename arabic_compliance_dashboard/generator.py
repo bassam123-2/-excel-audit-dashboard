@@ -7,6 +7,8 @@ from typing import Any
 
 import pandas as pd
 
+from site_robots import ROBOTS_META_HTML
+
 from .engine import build_snapshot_pack
 from .schema import normalize_dataframe, rows_from_dataframe
 
@@ -100,7 +102,7 @@ def generate_ar_compliance_report(
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>نتائج التحليل</title>
+{ROBOTS_META_HTML}    <title>نتائج التحليل</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
