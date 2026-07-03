@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -142,7 +143,7 @@ if _redis_protocol in ("2", "3"):
     _redis_cache_options["protocol"] = int(_redis_protocol)
 
 if _redis_url:
-    _default_cache = {
+    _default_cache: dict[str, Any] = {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
         "LOCATION": _redis_url,
     }

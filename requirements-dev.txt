@@ -4,3 +4,5 @@ pytest-django
 ruff
 black
 pre-commit
+django-stubs[compatible-mypy]
+pyright
