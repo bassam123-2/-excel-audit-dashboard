@@ -113,10 +113,10 @@ def apply_user_profile_form(user, cleaned_data: dict) -> None:
     _save_user_password_expiry(
         user, cleaned_data.get("password_expiry_enabled", True)
     )
-    if user.is_superuser:
-        _save_user_workflow_emails(
-            user, cleaned_data.get("receive_workflow_emails", False)
-        )
+    default_workflow = False if user.is_superuser else True
+    _save_user_workflow_emails(
+        user, cleaned_data.get("receive_workflow_emails", default_workflow)
+    )
 
 
 def _initial_job_title(user) -> str:
@@ -126,12 +126,6 @@ def _initial_job_title(user) -> str:
         return user.profile.job_title
     except UserProfile.DoesNotExist:
         return ""
-
-
-def _form_data_requests_superuser(form: forms.BaseForm) -> bool:
-    if not form.data:
-        return False
-    return form.data.get("is_superuser") in ("on", "true", "1", True)
 
 
 class MandatoryPasswordAdminCreationForm(UserCreationForm):
@@ -244,8 +238,8 @@ class AdminUserChangeForm(UserChangeForm):
         label=_("Receive workflow notification emails"),
         required=False,
         help_text=_(
-            "Superuser accounts only. Enable to receive dashboard workflow emails "
-            "(pending review, publish, etc.) on this support account."
+            "When enabled, the user receives dashboard workflow emails "
+            "(pending review, publish, rejection, assignment)."
         ),
     )
 
@@ -262,15 +256,11 @@ class AdminUserChangeForm(UserChangeForm):
         self.fields["password_expiry_enabled"].initial = (
             profile.password_expiry_enabled if profile else True
         )
-        workflow_field = self.fields.pop("receive_workflow_emails", None)
-        show_workflow_emails = self.instance.is_superuser or _form_data_requests_superuser(
-            self
+        self.fields["receive_workflow_emails"].initial = (
+            profile.receive_workflow_emails
+            if profile
+            else (False if self.instance.is_superuser else True)
         )
-        if show_workflow_emails and workflow_field is not None:
-            self.fields["receive_workflow_emails"] = workflow_field
-            self.fields["receive_workflow_emails"].initial = (
-                profile.receive_workflow_emails if profile else False
-            )
         if "email" in self.fields:
             self.fields["email"].required = True
             self.fields["email"].widget = forms.EmailInput(

@@ -132,9 +132,33 @@ def test_superuser_without_opt_in_does_not_receive_pending_email(btc_company):
     reviewer = make_user("su2_reviewer", email="su2_reviewer@example.com")
     reviewer.is_superuser = True
     reviewer.save(update_fields=["is_superuser"])
+    reviewer.profile.receive_workflow_emails = False
+    reviewer.profile.save(update_fields=["receive_workflow_emails"])
     make_membership(creator, btc_company, can_upload=True)
 
     dashboard = make_dashboard(btc_company, creator, name="No Super Mail", status=DashboardStatus.DRAFT)
+    sent: list[str] = []
+
+    def capture(cfg, *, to_addr, subject, plain, html):
+        sent.append(to_addr)
+
+    with patch("accounts_app.services.workflow_email._load_smtp_cfg", return_value={"host": "x", "from": "a@b.c"}):
+        with patch("accounts_app.services.workflow_email.send_branded_email_smtp", side_effect=capture):
+            notify_reviewers_pending(dashboard, base_url="https://example.com/", submit_kind="new")
+
+    assert sent == []
+
+
+@pytest.mark.django_db
+def test_reviewer_without_workflow_emails_opt_out_does_not_receive(btc_company):
+    creator = make_user("opt_creator", email="opt_creator@example.com")
+    reviewer = make_user("opt_reviewer", email="opt_reviewer@example.com")
+    reviewer.profile.receive_workflow_emails = False
+    reviewer.profile.save(update_fields=["receive_workflow_emails"])
+    make_membership(creator, btc_company, can_upload=True)
+    make_membership(reviewer, btc_company, can_review=True)
+
+    dashboard = make_dashboard(btc_company, creator, name="Opt Out", status=DashboardStatus.DRAFT)
     sent: list[str] = []
 
     def capture(cfg, *, to_addr, subject, plain, html):

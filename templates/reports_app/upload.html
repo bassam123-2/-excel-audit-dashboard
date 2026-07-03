@@ -57,6 +57,7 @@
                 {% endif %}
 
                 <!-- ── Template type (choose first) ── -->
+                {% if template_types|length != 1 %}
                 <div class="form-section">
                     <div class="section-label">
                         <i class="bi bi-layout-wtf"></i> {{ ui.upload_template_label }}
@@ -81,6 +82,21 @@
                     </div>
                     <div class="upload-field-error text-danger mt-1" id="templateError">{{ ui.upload_err_template }}</div>
                 </div>
+                {% else %}
+                <div class="form-section">
+                    <div class="section-label">
+                        <i class="bi bi-layout-wtf"></i> {{ ui.upload_template_label }}
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="template-badge template-badge--locked" aria-current="true">
+                            <i class="bi {{ template_types.0.icon|default:'bi-stars' }}"></i>
+                            {{ template_types.0.name }}
+                        </span>
+                    </div>
+                    <input type="radio" name="template_type" value="{{ template_types.0.code }}" checked class="visually-hidden" aria-hidden="true">
+                    <input type="hidden" name="mode" value="IAD">
+                </div>
+                {% endif %}
 
                 <div id="uploadDetailsSection"{% if not selected_template %} style="display:none;"{% endif %}>
 

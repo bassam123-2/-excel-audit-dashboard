@@ -19,5 +19,6 @@ def ensure_user_profile(sender, instance, created, **kwargs) -> None:
                 "password_changed_at": timezone.now(),
                 "two_factor_enabled": True,
                 "password_expiry_enabled": True,
+                "receive_workflow_emails": not instance.is_superuser,
             },
         )

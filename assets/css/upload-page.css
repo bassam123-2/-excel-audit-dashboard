@@ -170,6 +170,12 @@
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
+.template-badge--locked {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    cursor: default;
+}
+
 /* ── Processing overlay ─────────────────────── */
 #uploadOverlay {
     display: none;

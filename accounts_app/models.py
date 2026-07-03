@@ -101,8 +101,9 @@ class UserProfile(models.Model):
         default=False,
         verbose_name=_("Receive workflow notification emails"),
         help_text=_(
-            "Superuser accounts only. When enabled, this support account receives "
-            "dashboard pending-review, publish, and related workflow emails."
+            "When enabled, the user receives dashboard workflow emails "
+            "(pending review, publish, rejection, assignment). "
+            "Superuser accounts are opt-in; other users are enabled by default."
         ),
     )
     must_change_password_on_login = models.BooleanField(
@@ -175,6 +176,27 @@ class UserProfile(models.Model):
             if profile.two_factor_enabled != enabled:
                 profile.two_factor_enabled = enabled
                 profile.save(update_fields=["two_factor_enabled"])
+                updated += 1
+        return updated
+
+    @classmethod
+    def bulk_set_receive_workflow_emails(
+        cls,
+        *,
+        enabled: bool,
+        users=None,
+    ) -> int:
+        """Enable or disable workflow notification emails; creates missing profiles."""
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        user_qs = users if users is not None else User.objects.all()
+        updated = 0
+        for user in user_qs.iterator():
+            profile, _ = cls.objects.get_or_create(user=user)
+            if profile.receive_workflow_emails != enabled:
+                profile.receive_workflow_emails = enabled
+                profile.save(update_fields=["receive_workflow_emails"])
                 updated += 1
         return updated
 

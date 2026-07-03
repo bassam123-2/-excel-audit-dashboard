@@ -44,14 +44,22 @@ def _user_display(user: User | None) -> str:
     return full or user.username
 
 
-def _eligible_email(user: User | None) -> str | None:
+def _wants_workflow_email(user: User | None) -> bool:
     if user is None or not user.is_active:
+        return False
+    profile = getattr(user, "profile", None)
+    if profile and profile.is_deleted:
+        return False
+    if profile is None:
+        return not user.is_superuser
+    return bool(profile.receive_workflow_emails)
+
+
+def _eligible_email(user: User | None) -> str | None:
+    if not _wants_workflow_email(user):
         return None
     email = (user.email or "").strip()
     if not email:
-        return None
-    profile = getattr(user, "profile", None)
-    if profile and profile.is_deleted:
         return None
     return email
 

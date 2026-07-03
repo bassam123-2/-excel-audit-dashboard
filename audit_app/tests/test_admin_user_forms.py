@@ -69,10 +69,10 @@ def test_new_user_profile_two_factor_default_true():
 
 
 @pytest.mark.django_db
-def test_change_form_non_superuser_excludes_workflow_email_field(btc_company):
+def test_change_form_non_superuser_includes_workflow_email_field(btc_company):
     user = make_user("regular_admin_user", email="regular@example.com")
     form = AdminUserChangeForm(instance=user)
-    assert "receive_workflow_emails" not in form.fields
+    assert "receive_workflow_emails" in form.fields
 
 
 @pytest.mark.django_db
@@ -132,8 +132,8 @@ def test_admin_change_non_superuser_page_loads(admin_client, btc_company):
     response = admin_client.get(reverse("admin:auth_user_change", args=[user.pk]))
     assert response.status_code == 200
     content = response.content.decode()
-    assert 'name="receive_workflow_emails"' not in content
-    assert 'id="id_receive_workflow_emails"' not in content
+    assert 'name="receive_workflow_emails"' in content
+    assert 'id="id_receive_workflow_emails"' in content
 
 
 @pytest.mark.django_db

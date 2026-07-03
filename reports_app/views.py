@@ -240,6 +240,14 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
         form.get("template_type")
         or (resubmit_dashboard.template_type if resubmit_dashboard else "")
     )
+    active_templates = list(
+        DashboardTemplateType.objects.filter(
+            is_active=True,
+            is_deleted=False,
+        )
+    )
+    if not selected_template and len(active_templates) == 1:
+        selected_template = active_templates[0].code
     dashboard_name_value = (
         form.get("dashboard_name")
         or (resubmit_dashboard.name if resubmit_dashboard else "")
@@ -248,10 +256,7 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
     lang = normalize_locale(request.session.get("ui_lang", "en"))
     return {
         "icon_choices": ICON_CHOICES,
-        "template_types": DashboardTemplateType.objects.filter(
-            is_active=True,
-            is_deleted=False,
-        ),
+        "template_types": active_templates,
         "resubmit_dashboard": resubmit_dashboard,
         "is_edit_mode": resubmit_dashboard is not None,
         "attachment_slots": build_attachment_form_slots(
@@ -317,6 +322,10 @@ def analyze(request):
     icon = form["icon"]
     description = form["description"]
     template_type = form["template_type"]
+
+    valid_template_codes = _active_upload_template_codes()
+    if not template_type and len(valid_template_codes) == 1:
+        template_type = next(iter(valid_template_codes))
 
     if not dashboard_name:
         messages.error(request, ui["upload_err_name"])

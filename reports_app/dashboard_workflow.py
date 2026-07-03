@@ -33,6 +33,7 @@ FILTER_PENDING_ACK = "pending_ack"
 FILTER_PUBLISHED = "published"
 FILTER_MINE = "mine"
 FILTER_REJECTED = "rejected"
+FILTER_DRAFT = "draft"
 
 _REVIEWABLE_STATUSES = (
     DashboardStatus.UNDER_REVIEW,
@@ -226,7 +227,7 @@ def dashboards_queryset_for_user(user, company: Company | None = None) -> QueryS
         return Dashboard.objects.none()
 
     qs = _base_dashboards_qs(company)
-    if user.is_superuser and company is None:
+    if user.is_superuser:
         return qs
 
     return qs.filter(_visibility_q(user, company)).distinct()
@@ -254,6 +255,8 @@ def filter_dashboards_queryset(
         return qs.filter(created_by=user)
     if key == FILTER_REJECTED:
         return qs.filter(status=DashboardStatus.REJECTED, created_by=user)
+    if key == FILTER_DRAFT:
+        return qs.filter(status=DashboardStatus.DRAFT)
     return qs
 
 
@@ -327,6 +330,17 @@ def available_dashboard_filters(
                 "count": rejected.count(),
             }
         )
+
+    if user.is_superuser:
+        drafts = qs.filter(status=DashboardStatus.DRAFT)
+        if drafts.exists():
+            filters.append(
+                {
+                    "key": FILTER_DRAFT,
+                    "label_key": "dl_filter_draft",
+                    "count": drafts.count(),
+                }
+            )
 
     if len(filters) <= 1:
         return []

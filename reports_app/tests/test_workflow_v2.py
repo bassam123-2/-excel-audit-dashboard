@@ -183,6 +183,22 @@ class WorkflowV2Tests(TestCase):
         rejected = self._dashboard(status=DashboardStatus.REJECTED)
         self.assertFalse(user_can_see_dashboard(self.reviewer, rejected, self.company))
 
+    def test_superuser_sees_all_drafts_in_company(self):
+        superuser = User.objects.create_superuser(
+            "wf_super", "super@example.com", "Test@1234"
+        )
+        profile = superuser.profile
+        profile.two_factor_enabled = False
+        profile.save(update_fields=["two_factor_enabled"])
+        draft = self._dashboard(status=DashboardStatus.DRAFT)
+        ids = set(
+            dashboards_queryset_for_user(superuser, self.company).values_list(
+                "pk", flat=True
+            )
+        )
+        self.assertIn(draft.pk, ids)
+        self.assertTrue(user_can_see_dashboard(superuser, draft, self.company))
+
     def test_can_review_legacy_draft_when_v2_disabled(self):
         self.company.use_workflow_v2 = False
         self.company.save(update_fields=["use_workflow_v2"])

@@ -182,6 +182,27 @@ class PasswordExpiryFilter(admin.SimpleListFilter):
         return queryset
 
 
+class WorkflowEmailsFilter(admin.SimpleListFilter):
+    title = _("Workflow notification emails")
+    parameter_name = "workflow_emails"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", _("Enabled")),
+            ("no", _("Disabled")),
+        )
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "yes":
+            return queryset.filter(profile__receive_workflow_emails=True)
+        if value == "no":
+            return queryset.filter(
+                Q(profile__receive_workflow_emails=False) | Q(profile__isnull=True)
+            )
+        return queryset
+
+
 class CompanyMembershipInline(admin.TabularInline):
     model = CompanyMembership
     extra = 1
@@ -224,12 +245,16 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
         "disable_two_factor_selected",
         "enable_password_expiry_selected",
         "disable_password_expiry_selected",
+        "enable_workflow_emails_selected",
+        "disable_workflow_emails_selected",
     )
     CL_V2_QUICK_ACTION_ICONS = {
         "enable_two_factor_selected": "bi-shield-lock",
         "disable_two_factor_selected": "bi-shield-slash",
         "enable_password_expiry_selected": "bi-clock-history",
         "disable_password_expiry_selected": "bi-clock",
+        "enable_workflow_emails_selected": "bi-envelope-check",
+        "disable_workflow_emails_selected": "bi-envelope-slash",
     }
     form = AdminUserChangeForm
     add_form = MandatoryPasswordAdminCreationForm
@@ -250,12 +275,17 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
         "disable_password_expiry_selected",
         "enable_password_expiry_all",
         "disable_password_expiry_all",
+        "enable_workflow_emails_selected",
+        "disable_workflow_emails_selected",
+        "enable_workflow_emails_all",
+        "disable_workflow_emails_all",
         "export_users_csv",
     ]
     list_filter = BaseUserAdmin.list_filter + (
         DeletedUserFilter,
         TwoFactorFilter,
         PasswordExpiryFilter,
+        WorkflowEmailsFilter,
     )
 
     class Media:
@@ -275,6 +305,7 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
         "staff_status_display",
         "two_factor_display",
         "password_expiry_display",
+        "workflow_emails_display",
     )
     search_fields = BaseUserAdmin.search_fields + ("profile__job_title",)
 
@@ -398,14 +429,6 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
         if obj is None:
             return self.add_fieldsets
         fieldsets = super().get_fieldsets(request, obj)
-        if obj is not None and not obj.is_superuser:
-            cleaned = []
-            for name, opts in fieldsets:
-                fields = tuple(
-                    f for f in opts.get("fields", ()) if f != "receive_workflow_emails"
-                )
-                cleaned.append((name, {**opts, "fields": fields}))
-            fieldsets = cleaned
         if request.user.is_superuser:
             return fieldsets
         cleaned = []
@@ -687,9 +710,11 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
         if not request.user.is_superuser:
             rf += ["is_superuser", "user_permissions"]
         if not self._can_manage_user_security(request):
-            rf += ["two_factor_enabled", "password_expiry_enabled"]
-            if obj is None or obj.is_superuser:
-                rf += ["receive_workflow_emails"]
+            rf += [
+                "two_factor_enabled",
+                "password_expiry_enabled",
+                "receive_workflow_emails",
+            ]
         if obj is not None and self._is_soft_deleted(obj):
             rf.append("is_active")
         return rf
@@ -729,6 +754,18 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
         profile = getattr(obj, "profile", None)
         return format_admin_boolean_icon(
             bool(profile and profile.password_expiry_enabled),
+            yes_label=_("Enabled"),
+            no_label=_("Disabled"),
+        )
+
+    @admin.display(
+        description=_("Workflow emails"),
+        ordering="profile__receive_workflow_emails",
+    )
+    def workflow_emails_display(self, obj):
+        profile = getattr(obj, "profile", None)
+        return format_admin_boolean_icon(
+            bool(profile and profile.receive_workflow_emails),
             yes_label=_("Enabled"),
             no_label=_("Disabled"),
         )
@@ -846,6 +883,66 @@ class ProtectedUserAdmin(AdminClV2Mixin, BaseUserAdmin):
         self.message_user(
             request,
             _("6-month password expiry disabled for %(count)d user(s).") % {"count": count},
+            messages.SUCCESS,
+        )
+
+    @admin.action(description=_("Enable workflow notification emails for selected users"))
+    def enable_workflow_emails_selected(self, request, queryset):
+        if not self._can_manage_user_security(request):
+            self.message_user(request, _("Permission denied."), messages.ERROR)
+            return
+        count = UserProfile.bulk_set_receive_workflow_emails(enabled=True, users=queryset)
+        self.message_user(
+            request,
+            _("Workflow notification emails enabled for %(count)d user(s).")
+            % {"count": count},
+            messages.SUCCESS,
+        )
+
+    @admin.action(description=_("Disable workflow notification emails for selected users"))
+    def disable_workflow_emails_selected(self, request, queryset):
+        if not self._can_manage_user_security(request):
+            self.message_user(request, _("Permission denied."), messages.ERROR)
+            return
+        count = UserProfile.bulk_set_receive_workflow_emails(enabled=False, users=queryset)
+        self.message_user(
+            request,
+            _("Workflow notification emails disabled for %(count)d user(s).")
+            % {"count": count},
+            messages.SUCCESS,
+        )
+
+    @admin.action(description=_("Enable workflow notification emails for ALL users"))
+    def enable_workflow_emails_all(self, request, queryset):
+        if not request.user.is_superuser:
+            self.message_user(
+                request,
+                _("Only a superuser can change workflow emails for all users."),
+                messages.ERROR,
+            )
+            return
+        count = UserProfile.bulk_set_receive_workflow_emails(enabled=True)
+        self.message_user(
+            request,
+            _("Workflow notification emails enabled for %(count)d user(s).")
+            % {"count": count},
+            messages.SUCCESS,
+        )
+
+    @admin.action(description=_("Disable workflow notification emails for ALL users"))
+    def disable_workflow_emails_all(self, request, queryset):
+        if not request.user.is_superuser:
+            self.message_user(
+                request,
+                _("Only a superuser can change workflow emails for all users."),
+                messages.ERROR,
+            )
+            return
+        count = UserProfile.bulk_set_receive_workflow_emails(enabled=False)
+        self.message_user(
+            request,
+            _("Workflow notification emails disabled for %(count)d user(s).")
+            % {"count": count},
             messages.SUCCESS,
         )
 
