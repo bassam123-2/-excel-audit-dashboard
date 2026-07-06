@@ -275,6 +275,8 @@ def validate_excel_subcompanies_for_tenant(
     allowed_display = ", ".join(allowed_labels) if allowed_labels else str(_("(none registered)"))
 
     for name in excel_subcompany_names:
+        if root.matches_excel_token(name):
+            continue
         matched = find_company_by_excel_token(name, scope)
         if matched is None:
             raise ValueError(

@@ -1,7 +1,9 @@
 """Arabic compliance dashboard — Excel column schema and validation."""
 from __future__ import annotations
 
+import re
 import unicodedata
+from datetime import datetime
 from typing import Any
 
 import pandas as pd
@@ -13,8 +15,6 @@ BLANK = "(blank)"
 
 # Logical key -> canonical Arabic column name + accepted header aliases
 REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
-    "inherent": ("تصنيف المخاطر الكامنة",),
-    "residual": ("تصنيف المخاطر المتبقية",),
     "status": ("الحالة",),
     "department": ("الإدارة المسؤولة",),
     "legislator": ("المشرع",),
@@ -27,6 +27,8 @@ REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 OPTIONAL_COLUMNS: dict[str, tuple[str, ...]] = {
+    "inherent": ("تصنيف المخاطر الكامنة", "مستوى المخاطر الكامنة"),
+    "residual": ("تصنيف المخاطر المتبقية", "مستوى المخاطر المتبقية"),
     "year": ("السنوات", "السنة"),
     "target_date": ("تاريخ التصحيح المستهدف",),
     "modified_date": ("تاريخ التصحيح المعدل",),
@@ -94,7 +96,45 @@ def resolve_columns(df: pd.DataFrame) -> dict[str, str]:
             if key in header_map:
                 resolved[logical] = header_map[key]
                 break
+    modified_prefix = _norm_header("تاريخ التصحيح المعدل")
+    if "modified_date" not in resolved:
+        for key, actual in header_map.items():
+            if key.startswith(modified_prefix):
+                resolved["modified_date"] = actual
+                break
     return resolved
+
+
+def year_from_date_cell(value: Any) -> str:
+    """Extract calendar year from a date cell; return BLANK when missing or unparseable."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return BLANK
+    s = str(value).strip()
+    if not s or s == BLANK:
+        return BLANK
+    try:
+        if "T" in s:
+            return str(datetime.fromisoformat(s.replace("Z", "")).year)
+        if re.fullmatch(r"-?\d+(?:\.\d+)?", s):
+            fv = float(s)
+            if fv >= 1e12:
+                return str(datetime.utcfromtimestamp(fv / 1000.0).year)
+            if 1e9 <= fv < 1e12:
+                return str(datetime.utcfromtimestamp(fv).year)
+        return str(datetime.strptime(s[:10], "%Y-%m-%d").year)
+    except ValueError:
+        return BLANK
+
+
+def enrich_row_year(row: dict[str, str]) -> dict[str, str]:
+    """Fill السنة from تاريخ التصحيح المستهدف when year is absent or blank."""
+    year_col = CANONICAL_NAMES["year"]
+    target_col = CANONICAL_NAMES["target_date"]
+    existing = row.get(year_col, BLANK)
+    if existing and existing != BLANK:
+        return row
+    row[year_col] = year_from_date_cell(row.get(target_col))
+    return row
 
 
 def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -172,5 +212,6 @@ def rows_from_dataframe(df: pd.DataFrame) -> list[dict[str, str]]:
                 row[str(col)] = BLANK
             else:
                 row[str(col)] = str(val).strip()
+        enrich_row_year(row)
         rows.append(row)
     return rows

@@ -528,6 +528,23 @@ class CompanyAccessTests(TestCase):
         with self.assertRaises(ValueError):
             validate_excel_subcompanies_for_tenant(self.btc, names, locale="en")
 
+    def test_excel_subcompany_validation_accepts_main_company_name(self):
+        import pandas as pd
+
+        from audit_app.company_access import (
+            extract_excel_subcompany_names_from_df,
+            validate_excel_subcompanies_for_tenant,
+        )
+
+        df = pd.DataFrame(
+            {
+                "Company": ["BTC"],
+                "Subcompany": ["BTC"],
+            }
+        )
+        names = extract_excel_subcompany_names_from_df(df)
+        validate_excel_subcompanies_for_tenant(self.btc, names, locale="en")
+
     def test_subsidiary_not_selectable_as_active_company(self):
         from audit_app.company_access import set_active_company, user_companies
 

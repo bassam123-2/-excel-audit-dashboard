@@ -13,6 +13,7 @@ COL_TARGET = CANONICAL_NAMES["target_date"]
 COL_MODIFIED = CANONICAL_NAMES["modified_date"]
 COL_STATUS = CANONICAL_NAMES["status"]
 COL_RESIDUAL = CANONICAL_NAMES["residual"]
+COL_INHERENT = CANONICAL_NAMES["inherent"]
 COL_LEGAL = CANONICAL_NAMES["legal_text"]
 
 PARAM_TO_COL: dict[str, str] = {
@@ -50,12 +51,12 @@ DETAIL_FIELDS: list[tuple[str, str]] = [
 
 AGING_CONFIG: dict[str, Any] = {
     "risk_columns": [
-        {"id": "very_low", "label": "متدني"},
-        {"id": "low", "label": "منخفض"},
-        {"id": "medium", "label": "متوسط"},
-        {"id": "high", "label": "مرتفع"},
-        {"id": "very_high", "label": "مرتفع جدا"},
-        {"id": "other", "label": "أخرى"},
+        {"id": "very_high", "label": "مرتفع جداً", "color": "#C00000", "text_color": "#ffffff"},
+        {"id": "high", "label": "مرتفع", "color": "#FF3300", "text_color": "#ffffff"},
+        {"id": "medium", "label": "متوسط", "color": "#FFC000", "text_color": "#ffffff"},
+        {"id": "low", "label": "منخفض", "color": "#70AD47", "text_color": "#ffffff"},
+        {"id": "very_low", "label": "متدني الانخفاض", "color": "#9BBB59", "text_color": "#ffffff"},
+        {"id": "other", "label": "أخرى", "color": "#A6A6A6", "text_color": "#ffffff"},
     ],
     "time_rows": [
         {"id": "not_due", "label": "لم يحن بعد"},
@@ -188,16 +189,31 @@ def legal_details_from_rows(
     }
 
 
-def is_open_status_for_aging(status_text: str) -> bool:
+def is_within_correction_status(status_text: str) -> bool:
     t = norm_nfkc(status_text).replace("\u00a0", " ")
     t = re.sub(r"\s+", " ", t)
     if "مفتوح" not in t:
         return False
-    if "تجاوز" in t and "تاريخ" in t and "التصحيح" in t:
-        return True
-    if "ضمن" in t and "تاريخ" in t and "التصحيح" in t:
-        return True
-    return False
+    return "ضمن" in t and "تاريخ" in t and "التصحيح" in t
+
+
+def is_past_correction_status(status_text: str) -> bool:
+    t = norm_nfkc(status_text).replace("\u00a0", " ")
+    t = re.sub(r"\s+", " ", t)
+    if "مفتوح" not in t:
+        return False
+    return "تجاوز" in t and "تاريخ" in t and "التصحيح" in t
+
+
+def is_open_status_for_aging(status_text: str) -> bool:
+    return is_within_correction_status(status_text) or is_past_correction_status(status_text)
+
+
+def aging_row_risk_text(row: dict[str, str]) -> str:
+    residual = row_value(row, COL_RESIDUAL)
+    if residual != BLANK:
+        return residual
+    return row_value(row, COL_INHERENT)
 
 
 def aging_risk_key(residual_norm: str) -> str | None:
@@ -211,11 +227,14 @@ def aging_risk_key(residual_norm: str) -> str | None:
         ("مرتفاع", "مرتفع"),
         ("مرنفغ", "مرتفع"),
         ("مرتفغ جدا", "مرتفع جدا"),
+        ("عاليه", "عالية"),
     ]:
         t = t.replace(bad, good)
     if "متدني" in t and re.search(r"انخفاض|انخفاظ|انخغاض|انخفاق", t):
         return "very_low"
-    if ("جدا" in t or "جداً" in t or "جدآ" in t) and ("مرتفع" in t or "مرفع" in t):
+    if ("جدا" in t or "جداً" in t or "جدآ" in t) and (
+        "مرتفع" in t or "مرفع" in t or "عالي" in t or "عالية" in t
+    ):
         return "very_high"
     if "متوسط" in t:
         return "medium"
@@ -223,23 +242,30 @@ def aging_risk_key(residual_norm: str) -> str | None:
         return "low"
     if "مرتفع" in t or "مرفع" in t:
         return "high"
+    if re.fullmatch(r"عالي(?:ة)?", t) or re.search(r"(^|\s)عالي(?:ة)?($|\s)", t):
+        return "high"
     return None
 
 
 def parse_date_at_noon(dstr: str) -> date | None:
     if not dstr or dstr == BLANK:
         return None
+    s = str(dstr).strip()
     try:
-        if "T" in dstr:
-            return datetime.fromisoformat(dstr.replace("Z", "")).date()
-        return datetime.strptime(dstr[:10], "%Y-%m-%d").date()
+        if "T" in s:
+            return datetime.fromisoformat(s.replace("Z", "")).date()
+        if re.fullmatch(r"-?\d+(?:\.\d+)?", s):
+            fv = float(s)
+            if fv >= 1e12:
+                return datetime.utcfromtimestamp(fv / 1000.0).date()
+            if 1e9 <= fv < 1e12:
+                return datetime.utcfromtimestamp(fv).date()
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
     except ValueError:
         return None
 
 
-def aging_time_bucket(compare: date, reference: date) -> str | None:
-    if compare > reference:
-        return "not_due"
+def aging_overdue_bucket(compare: date, reference: date) -> str | None:
     overdue_days = (reference - compare).days
     if overdue_days < 183:
         return "lt_6m"
@@ -267,19 +293,22 @@ def compute_aging(
     unknown_time = 0
     for row in apply_filters(rows, selected, None):
         st = row_value(row, COL_STATUS)
-        if not is_open_status_for_aging(st):
-            skipped_other += 1
+        rkey = aging_risk_key(aging_row_risk_text(row)) or "other"
+        if is_within_correction_status(st):
+            matrix["not_due"][rkey] = matrix["not_due"].get(rkey, 0) + 1
             continue
-        rkey = aging_risk_key(row_value(row, COL_RESIDUAL)) or "other"
-        cdt = parse_date_at_noon(row_value(row, date_col))
-        if not cdt:
-            unknown_time += 1
+        if is_past_correction_status(st):
+            cdt = parse_date_at_noon(row_value(row, date_col))
+            if not cdt:
+                unknown_time += 1
+                continue
+            tkey = aging_overdue_bucket(cdt, ref)
+            if not tkey or tkey not in matrix:
+                unknown_time += 1
+                continue
+            matrix[tkey][rkey] = matrix[tkey].get(rkey, 0) + 1
             continue
-        tkey = aging_time_bucket(cdt, ref)
-        if not tkey or tkey not in matrix:
-            unknown_time += 1
-            continue
-        matrix[tkey][rkey] = matrix[tkey].get(rkey, 0) + 1
+        skipped_other += 1
 
     time_rows = []
     for tr in cfg["time_rows"]:

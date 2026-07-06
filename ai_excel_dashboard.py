@@ -870,10 +870,18 @@ def _json_safe_obs_date_cell(v: Any) -> Any:
             return None
         if 1000 <= fv <= 80000:
             return int(fv) if fv == int(fv) else fv
+        if fv >= 1e12:
+            return datetime.utcfromtimestamp(fv / 1000.0).date().isoformat()
+        if 1e9 <= fv < 1e12:
+            return datetime.utcfromtimestamp(fv).date().isoformat()
         return fv
     if isinstance(v, numbers.Integral) and not isinstance(v, bool):
         if 1000 <= v <= 80000:
             return int(v)
+        if v >= int(1e12):
+            return datetime.utcfromtimestamp(v / 1000.0).date().isoformat()
+        if int(1e9) <= v < int(1e12):
+            return datetime.utcfromtimestamp(v).date().isoformat()
         return int(v)
     s = str(v).strip()
     if not s:
@@ -1102,9 +1110,12 @@ def resolve_audit_observation_columns(df: pd.DataFrame) -> dict[str, str] | None
                 targetdatecol = actual
                 break
     reviseddatecol = pick(("revised date", "revised completion date", "revised target date"))
+    if reviseddatecol is not None:
+        if not _norm_audit_header(reviseddatecol).startswith("revised date"):
+            reviseddatecol = None
     if reviseddatecol is None:
         for na, actual in n2c.items():
-            if "revised" in na and "date" in na:
+            if na.startswith("revised date"):
                 reviseddatecol = actual
                 break
     obsidcol = pick(
@@ -6458,7 +6469,7 @@ def generate_finance_report(
       let deckPdfPage = 1;
       const emptyMark = ui.obsDetailEmpty || "—";
       let agingMatrixUseRevised = false;
-      const hasStandardAgingDates = !!(AO.has_target_date || AO.has_implementation_due);
+      const hasStandardAgingDates = AO.has_implementation_due === true;
       const hasRevisedDateCol = AO.has_revised_date === true;
       const hasAgingDateSource = !!(hasStandardAgingDates || hasRevisedDateCol);
       const showDetailAgingChip = hasStandardAgingDates;
@@ -6520,12 +6531,17 @@ def generate_finance_report(
         if (t != null) return t;
         return obsDateCellRaw(row.idue);
       }}
+      function rowAgingMatrixDueDateRaw(row) {{
+        return obsDateCellRaw(row.idue);
+      }}
+      function rowRevisedMatrixDateRaw(row) {{
+        return obsDateCellRaw(row.rdate);
+      }}
       function rowMatrixCompareDateRaw(row) {{
         if (agingMatrixUseRevised && hasRevisedDateCol) {{
-          const rv = obsDateCellRaw(row.rdate);
-          if (rv != null) return rv;
+          return rowRevisedMatrixDateRaw(row);
         }}
-        return rowAgingDateRaw(row);
+        return rowAgingMatrixDueDateRaw(row);
       }}
       function detailAgingDaysText(row) {{
         if (!showDetailAgingChip) return emptyMark;
@@ -7101,6 +7117,16 @@ def generate_finance_report(
       }}
       hydratePersistedUserEdits();
 
+      function parseObsDateFromEpoch(value) {{
+        if (!Number.isFinite(value)) return null;
+        let ms = null;
+        if (value >= 1e12) ms = value;
+        else if (value >= 1e9) ms = value * 1000;
+        else return null;
+        const dNum = new Date(ms);
+        if (isNaN(dNum.getTime())) return null;
+        return new Date(Date.UTC(dNum.getUTCFullYear(), dNum.getUTCMonth(), dNum.getUTCDate()));
+      }}
       function parseObsDateFromExcelSerial(excelDays) {{
         if (!Number.isFinite(excelDays)) return null;
         const days = Math.floor(excelDays);
@@ -7113,12 +7139,17 @@ def generate_finance_report(
       function parseObsDate(value) {{
         if (value == null || value === "") return null;
         if (typeof value === "number" && Number.isFinite(value)) {{
+          const fromEpoch = parseObsDateFromEpoch(value);
+          if (fromEpoch) return fromEpoch;
           return parseObsDateFromExcelSerial(value);
         }}
         const s = String(value).trim();
         const serialM = s.match(/^(\\d+(?:\\.\\d+)?)$/);
         if (serialM) {{
-          const fromSerial = parseObsDateFromExcelSerial(Number(serialM[1]));
+          const n = Number(serialM[1]);
+          const fromEpoch = parseObsDateFromEpoch(n);
+          if (fromEpoch) return fromEpoch;
+          const fromSerial = parseObsDateFromExcelSerial(n);
           if (fromSerial) return fromSerial;
         }}
         const iso = s.match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})/);
@@ -7208,6 +7239,11 @@ def generate_finance_report(
         if (k === "low" || k === "very low" || k === "closed") return "low";
         return "total";
       }}
+      function rowIaStatusKey(row, bl) {{
+        const ik = ffCellKey(row.ia);
+        const label = ik === "" ? bl : ik;
+        return iaStatusColorKey(label);
+      }}
       function computeAgingMatrixRows(rows) {{
         const tfNotDue = ui.agingTfNotDue || "Not Due";
         const tfLt6Months = ui.agingTfLt6Months || "Less than 6 months";
@@ -7220,6 +7256,7 @@ def generate_finance_report(
         const counts = {{}};
         const idSets = {{}};
         const useOid = AO.has_observation_id === true;
+        const bl = ui.statusBlank || "(blank)";
         frames.forEach(function (f) {{
           counts[f] = {{}};
           idSets[f] = {{}};
@@ -7232,20 +7269,23 @@ def generate_finance_report(
         const agingRef = parseObsDate(revisedDateVal) || new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
         const refDay = Math.floor(agingRef.getTime() / 86400000);
         rows.forEach(function (r) {{
-          const target = parseObsDate(rowMatrixCompareDateRaw(r));
-          if (!target) return;
-          const targetDay = Math.floor(target.getTime() / 86400000);
-          let frame = tfNotDue;
-          if (targetDay > refDay) {{
-            frame = tfNotDue;
-          }} else {{
-            const diffDays = refDay - targetDay;
-            if (diffDays > 365) frame = tfOverYear;
-            else if (diffDays < 183) frame = tfLt6Months;
-            else frame = tfLtYear;
-          }}
           const rk = resolveAgingMatrixRatingKey(r.rt);
           if (!rk) return;
+          const iaKey = rowIaStatusKey(r, bl);
+          let frame = null;
+          if (iaKey === "open not due") {{
+            frame = tfNotDue;
+          }} else if (iaKey === "open due") {{
+            const target = parseObsDate(rowMatrixCompareDateRaw(r));
+            if (!target) return;
+            const targetDay = Math.floor(target.getTime() / 86400000);
+            const diffDays = refDay - targetDay;
+            if (diffDays < 183) frame = tfLt6Months;
+            else if (diffDays < 365) frame = tfLtYear;
+            else frame = tfOverYear;
+          }} else {{
+            return;
+          }}
           let idKey = "_idx:" + String(r._idx);
           if (useOid) {{
             const ok = ffCellKey(r.oid);

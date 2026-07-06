@@ -27,6 +27,7 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
             const COL_MODIFIED = "تاريخ التصحيح المعدل";
             const COL_STATUS = "الحالة";
             const COL_RESIDUAL = "تصنيف المخاطر المتبقية";
+            const COL_INHERENT = "تصنيف المخاطر الكامنة";
             const PARAM_TO_COL = {
                 inherent: "تصنيف المخاطر الكامنة",
                 residual: "تصنيف المخاطر المتبقية",
@@ -54,6 +55,30 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
             const rowValue = (row, col) => {
                 const v = row[col];
                 return v === undefined || v === null || v === "" ? BLANK : String(v);
+            };
+            const yearFromDateCell = (value) => {
+                if (!value || value === BLANK) return BLANK;
+                const s = String(value).trim();
+                if (/^-?\d+(?:\.\d+)?$/.test(s)) {
+                    const n = Number(s);
+                    if (Number.isFinite(n)) {
+                        let ms = null;
+                        if (n >= 1e12) ms = n;
+                        else if (n >= 1e9) ms = n * 1000;
+                        if (ms != null) {
+                            const dEpoch = new Date(ms);
+                            if (!Number.isNaN(dEpoch.getTime())) return String(dEpoch.getUTCFullYear());
+                        }
+                    }
+                }
+                const d = new Date(`${s.slice(0, 10)}T12:00:00`);
+                return Number.isNaN(d.getTime()) ? BLANK : String(d.getFullYear());
+            };
+            const enrichRowYear = (row) => {
+                const existing = rowValue(row, COL_YEAR);
+                if (existing !== BLANK) return row;
+                row[COL_YEAR] = yearFromDateCell(rowValue(row, COL_TARGET));
+                return row;
             };
             const applyFilters = (rows, selected, skipCol) =>
                 rows.filter((row) =>
@@ -143,12 +168,22 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
                 };
             };
             const normNFKC = (s) => String(s || "").normalize("NFKC");
-            const isOpenStatusForAging = (statusText) => {
+            const isWithinCorrectionStatus = (statusText) => {
                 const t = normNFKC(statusText).replace(/\s+/g, " ");
                 if (!t.includes("مفتوح")) return false;
-                if (t.includes("تجاوز") && t.includes("تاريخ") && t.includes("التصحيح")) return true;
-                if (t.includes("ضمن") && t.includes("تاريخ") && t.includes("التصحيح")) return true;
-                return false;
+                return t.includes("ضمن") && t.includes("تاريخ") && t.includes("التصحيح");
+            };
+            const isPastCorrectionStatus = (statusText) => {
+                const t = normNFKC(statusText).replace(/\s+/g, " ");
+                if (!t.includes("مفتوح")) return false;
+                return t.includes("تجاوز") && t.includes("تاريخ") && t.includes("التصحيح");
+            };
+            const isOpenStatusForAging = (statusText) =>
+                isWithinCorrectionStatus(statusText) || isPastCorrectionStatus(statusText);
+            const agingRowRiskText = (row) => {
+                const residual = rowValue(row, COL_RESIDUAL);
+                if (residual !== BLANK) return residual;
+                return rowValue(row, COL_INHERENT);
             };
             const agingRiskKey = (residualNorm) => {
                 if (residualNorm === BLANK) return null;
@@ -160,25 +195,41 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
                     ["مرتفغ", "مرتفع"],
                     ["مرتفاع", "مرتفع"],
                     ["مرنفغ", "مرتفع"],
-                    ["مرتفغ جدا", "مرتفع جدا"]
+                    ["مرتفغ جدا", "مرتفع جدا"],
+                    ["عاليه", "عالية"]
                 ].forEach(([bad, good]) => (t = t.split(bad).join(good)));
                 if (t.includes("متدني") && /انخفاض|انخفاظ|انخغاض|انخفاق/.test(t)) return "very_low";
-                if ((t.includes("جدا") || t.includes("جداً") || t.includes("جدآ")) && (t.includes("مرتفع") || t.includes("مرفع"))) return "very_high";
+                if ((t.includes("جدا") || t.includes("جداً") || t.includes("جدآ")) && (t.includes("مرتفع") || t.includes("مرفع") || t.includes("عالي") || t.includes("عالية"))) return "very_high";
                 if (t.includes("متوسط")) return "medium";
                 if (t.includes("منخفض") && !t.includes("متدني")) return "low";
                 if (t.includes("مرتفع") || t.includes("مرفع")) return "high";
+                if (/^(عالي|عالية)$/.test(t) || /(^|\s)عالي(?:ة)?($|\s)/.test(t)) return "high";
                 return null;
             };
             const parseDateAtNoon = (dstr) => {
                 if (!dstr || dstr === BLANK) return null;
-                const d = new Date(`${dstr}T12:00:00`);
+                const s = String(dstr).trim();
+                if (/^-?\d+(?:\.\d+)?$/.test(s)) {
+                    const n = Number(s);
+                    if (Number.isFinite(n)) {
+                        let ms = null;
+                        if (n >= 1e12) ms = n;
+                        else if (n >= 1e9) ms = n * 1000;
+                        if (ms != null) {
+                            const dEpoch = new Date(ms);
+                            if (!Number.isNaN(dEpoch.getTime())) {
+                                return new Date(dEpoch.getFullYear(), dEpoch.getMonth(), dEpoch.getDate());
+                            }
+                        }
+                    }
+                }
+                const d = new Date(`${s.slice(0, 10)}T12:00:00`);
                 return Number.isNaN(d.getTime()) ? null : d;
             };
-            const agingTimeBucket = (compare, reference) => {
+            const agingOverdueBucket = (compare, reference) => {
                 if (!compare || !reference) return null;
                 const cref = new Date(compare.getFullYear(), compare.getMonth(), compare.getDate());
                 const rref = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
-                if (cref > rref) return "not_due";
                 const overdueDays = Math.floor((rref - cref) / (1000 * 60 * 60 * 24));
                 if (overdueDays < 183) return "lt_6m";
                 if (overdueDays < 365) return "lt_1y";
@@ -199,22 +250,26 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
                 let unknownTime = 0;
                 applyFilters(rows, selected, null).forEach((row) => {
                     const st = rowValue(row, COL_STATUS);
-                    if (!isOpenStatusForAging(st)) {
-                        skippedOther += 1;
+                    const rkey = agingRiskKey(agingRowRiskText(row)) || "other";
+                    if (isWithinCorrectionStatus(st)) {
+                        if (matrix.not_due) matrix.not_due[rkey] = (matrix.not_due[rkey] || 0) + 1;
                         return;
                     }
-                    const rkey = agingRiskKey(rowValue(row, COL_RESIDUAL)) || "other";
-                    const cdt = parseDateAtNoon(rowValue(row, dateCol));
-                    if (!cdt) {
-                        unknownTime += 1;
+                    if (isPastCorrectionStatus(st)) {
+                        const cdt = parseDateAtNoon(rowValue(row, dateCol));
+                        if (!cdt) {
+                            unknownTime += 1;
+                            return;
+                        }
+                        const tkey = agingOverdueBucket(cdt, ref);
+                        if (!tkey || !matrix[tkey]) {
+                            unknownTime += 1;
+                            return;
+                        }
+                        matrix[tkey][rkey] = (matrix[tkey][rkey] || 0) + 1;
                         return;
                     }
-                    const tkey = agingTimeBucket(cdt, ref);
-                    if (!tkey) {
-                        unknownTime += 1;
-                        return;
-                    }
-                    if (matrix[tkey]) matrix[tkey][rkey] = (matrix[tkey][rkey] || 0) + 1;
+                    skippedOther += 1;
                 });
                 const time_rows = (cfg.time_rows || []).map((tr) => {
                     const cells = matrix[tr.id] || {};
@@ -249,7 +304,7 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
             };
             const jsonResponse = (obj, code = 200) =>
                 Promise.resolve(new Response(JSON.stringify(obj), { status: code, headers: { "Content-Type": "application/json" } }));
-            const rows = pack.rows || [];
+            const rows = (pack.rows || []).map((row) => enrichRowYear({ ...row }));
             const OFFLINE_SERVER_BASE =
                 localStorage.getItem("excelArabicServerBase") ||
                 "http://127.0.0.1:8765";
@@ -1596,7 +1651,7 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
                 renderStandaloneSelect(stateKey, data.groups[standaloneSelectMeta[stateKey].apiKey] || []);
             });
             clearBtn.disabled = false;
-            if (document.getElementById("agingToggle").checked) {
+            if (document.getElementById("agingToggle")?.checked && isAgingModalOpen()) {
                 await refreshAgingSummary();
             }
             // no-op: compliance plan editor is local (no server refresh required)
@@ -1880,10 +1935,20 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
         const agingModalBody = document.getElementById("agingModalBody");
         const agingModalTitle = document.getElementById("agingModalTitle");
 
+        function isAgingModalOpen() {
+            return agingModal && agingModal.style.display === "flex";
+        }
+
+        function selectedAgingDateSource() {
+            const checked = document.querySelector('input[name="agingDateSource"]:checked');
+            return checked ? checked.value : "";
+        }
+
         function closeAgingModal() {
             agingModal.style.display = "none";
             agingModalBody.innerHTML = "";
-            document.getElementById("agingToggle").checked = false;
+            const toggle = document.getElementById("agingToggle");
+            if (toggle) toggle.checked = false;
         }
 
         function renderAgingMatrix(data) {
@@ -1893,7 +1958,11 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
 
             let head = `<th class="time-col">الفترة الزمنية</th>`;
             riskCols.forEach((rc) => {
-                head += `<th style="background:${rc.color};color:#fff;">${escapeHtml(rc.label)}</th>`;
+                const bg = rc.color || "";
+                const fg = rc.text_color || "#ffffff";
+                const cls = `aging-risk-${rc.id}`;
+                const style = bg ? ` style="background:${bg};color:${fg};"` : "";
+                head += `<th class="${cls}"${style}>${escapeHtml(rc.label)}</th>`;
             });
             head += `<th class="total-col">المجموع</th>`;
 
@@ -1920,13 +1989,14 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
         async function refreshAgingSummary() {
             const refInput = document.getElementById("agingReferenceDate");
             const ref = refInput.value;
-            if (!ref) {
+            const source = selectedAgingDateSource();
+            if (!ref || !source) {
                 return;
             }
             agingModalBody.innerHTML = `<div class="empty-hint">جاري التحميل...</div>`;
             const qs = buildFilterQueryString(state);
             qs.set("reference", ref);
-            qs.set("aging_date_source", document.querySelector('input[name="agingDateSource"]:checked').value);
+            qs.set("aging_date_source", source);
             const response = await fetch(`${arApiUrl('/aging-summary')}?${qs.toString()}`);
             const data = await response.json();
             if (!response.ok) {
@@ -1936,7 +2006,7 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
             window.lastAgingExport = data;
             agingModalTitle.textContent = `ملخص التقادم (حتى ${data.reference})`;
             const modeLabel = data.date_source === "modified" ? "تاريخ التصحيح المعدل" : "تاريخ التصحيح المستهدف";
-            const intro = `<p class="aging-intro">يُحسب الملخص فقط لصفوف الحالة: <strong>مفتوح ( تجاوز تاريخ التصحيح)</strong> أو <strong>مفتوح ( ضمن تاريخ التصحيح)</strong>. يُقارَن <strong>${escapeHtml(modeLabel)}</strong> مع <strong>تاريخ المرجع</strong>. الصفوف: لم يحن بعد، ثم فترات التأخر. الأعمدة: تصنيف المخاطر المتبقية.</p>`;
+            const intro = `<p class="aging-intro">صف <strong>لم يحن بعد</strong> يعدّ الحالة <strong>مفتوح ( ضمن تاريخ التصحيح)</strong> حسب <strong>مستوى المخاطر المتبقية</strong> أو <strong>مستوى المخاطر الكامنة</strong> عند غياب الأول. صفوف <strong>أقل من 6 أشهر</strong> و<strong>6 أشهر – سنة</strong> و<strong>أكثر من سنة</strong> تعدّ الحالة <strong>مفتوح ( تجاوز تاريخ التصحيح)</strong> حيث يُطرح <strong>${escapeHtml(modeLabel)}</strong> من <strong>تاريخ المرجع</strong> (#agingReferenceDate) وتُصنَّف حسب الفترة.</p>`;
             const otherCol = (data.column_totals && data.column_totals.other) || 0;
             const footnote = `<p class="aging-footnote">تخطّي لحالة غير المفتوح (النوعين أعلاه): ${toEnglishNumber(data.skipped_other_status || 0)} — تصنيف «أخرى» (نص خطورة غير مطابق للمستويات الخمسة أو فارغ): ${toEnglishNumber(otherCol)} — تخطّي لعدم وجود تاريخ صالح: ${toEnglishNumber(data.skipped_unknown_time || 0)}</p>`;
             agingModalBody.innerHTML =
@@ -1959,6 +2029,11 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
 
         document.getElementById("agingToggle").addEventListener("change", async (event) => {
             if (event.target.checked) {
+                if (!selectedAgingDateSource()) {
+                    event.target.checked = false;
+                    window.alert("يرجى اختيار تاريخ التصحيح المستهدف أو تاريخ التصحيح المعدل أولاً.");
+                    return;
+                }
                 agingModal.style.display = "flex";
                 await refreshAgingSummary();
             } else {
@@ -1966,18 +2041,20 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
             }
         });
 
-        document.getElementById("agingReferenceDate").addEventListener("change", async () => {
-            if (document.getElementById("agingToggle").checked) {
-                await refreshAgingSummary();
-            }
-        });
-
         document.querySelectorAll('input[name="agingDateSource"]').forEach((radio) => {
             radio.addEventListener("change", async () => {
-                if (document.getElementById("agingToggle").checked) {
+                const toggle = document.getElementById("agingToggle");
+                if (toggle && toggle.checked && isAgingModalOpen()) {
                     await refreshAgingSummary();
                 }
             });
+        });
+
+        document.getElementById("agingReferenceDate").addEventListener("change", async () => {
+            const toggle = document.getElementById("agingToggle");
+            if (toggle && toggle.checked && isAgingModalOpen()) {
+                await refreshAgingSummary();
+            }
         });
 
         const legalDetailsCache = new Map();
@@ -2120,7 +2197,6 @@ const __arCfg = window.__AR_DASHBOARD__ || {};
             state.legal_text.length = 0;
             activeFieldKey = "";
             closeLegalModal();
-            document.getElementById("agingToggle").checked = false;
             closeAgingModal();
             closeCompliancePlanModal();
             fetchSummary();

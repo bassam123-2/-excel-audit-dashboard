@@ -8,6 +8,7 @@ config/
 .cursor/
 scripts/deploy.sh
 .vscode/
+media/
 
 # Generated / local runtime
 audit_logs/*.json
