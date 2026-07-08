@@ -22,7 +22,6 @@ from reports_app.dashboard_workflow import (
     has_delete_draft_perm,
     has_review_perm,
     has_upload_perm,
-    has_view_perm,
 )
 from django.urls import reverse
 from web_strings import get_ui

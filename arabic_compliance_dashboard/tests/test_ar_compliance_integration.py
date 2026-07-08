@@ -129,7 +129,7 @@ def test_ar_compliance_summary_api_with_uploader_membership(client, btc_company)
     btc_company.save(update_fields=["company_kind"])
 
     user = make_user("ar_uploader", email="ar_uploader@example.com")
-    make_membership(user, btc_company, can_upload=True, can_view=True)
+    make_membership(user, btc_company, can_upload=True)
     client.force_login(user)
     session = client.session
     session[SESSION_ACTIVE_COMPANY_KEY] = btc_company.pk

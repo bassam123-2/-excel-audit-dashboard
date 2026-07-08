@@ -1,0 +1,104 @@
+"""API tests for per-dashboard viewer assignment."""
+from __future__ import annotations
+
+from django.contrib.auth.models import User
+from django.test import Client, TestCase
+
+from audit_app.models import (
+    Company,
+    CompanyMembership,
+    Dashboard,
+    DashboardStatus,
+    DashboardViewer,
+)
+
+
+class DashboardViewersApiTests(TestCase):
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            code="BTC",
+            defaults={"name": "BTC", "excel_company_names": ["BTC"]},
+        )
+        self.assigner = self._user("dv_assigner", "assigner@example.com")
+        self.viewer = self._user("dv_viewer", "viewer@example.com")
+        self.creator = self._user("dv_creator", "creator@example.com")
+
+        CompanyMembership.objects.create(
+            user=self.assigner,
+            company=self.company,
+            can_assign_dashboard_viewers=True,
+        )
+        CompanyMembership.objects.create(user=self.viewer, company=self.company)
+        CompanyMembership.objects.create(
+            user=self.creator,
+            company=self.company,
+            can_upload=True,
+        )
+
+        self.dashboard = Dashboard.objects.create(
+            name="Published Dash",
+            report_id="rid-dv-api-1",
+            company=self.company,
+            created_by=self.creator,
+            status=DashboardStatus.PUBLISHED,
+        )
+
+        self.client = Client()
+        self.client.post("/login/", {"username": "dv_assigner", "password": "Test@1234"})
+        self.client.post("/select-company/", {"company_id": self.company.pk})
+
+    def _user(self, username: str, email: str) -> User:
+        user = User.objects.create_user(username, password="Test@1234", email=email)
+        profile = user.profile
+        profile.two_factor_enabled = False
+        profile.save(update_fields=["two_factor_enabled"])
+        return user
+
+    def test_get_viewers_lists_company_members(self):
+        response = self.client.get(
+            f"/dashboards/{self.dashboard.pk}/viewers/",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        member_ids = {item["id"] for item in data["members"]}
+        self.assertIn(self.viewer.pk, member_ids)
+        self.assertIn(self.creator.pk, member_ids)
+
+    def test_post_viewers_saves_assignments(self):
+        response = self.client.post(
+            f"/dashboards/{self.dashboard.pk}/viewers/",
+            data={"user_ids": [self.viewer.pk]},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            DashboardViewer.objects.filter(
+                dashboard=self.dashboard,
+                user=self.viewer,
+            ).exists()
+        )
+
+    def test_forbidden_for_user_without_assign_perm(self):
+        client = Client()
+        client.post("/login/", {"username": "dv_viewer", "password": "Test@1234"})
+        client.post("/select-company/", {"company_id": self.company.pk})
+        response = client.get(
+            f"/dashboards/{self.dashboard.pk}/viewers/",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_forbidden_when_not_published(self):
+        draft = Dashboard.objects.create(
+            name="Draft",
+            report_id="rid-dv-draft",
+            company=self.company,
+            created_by=self.creator,
+            status=DashboardStatus.DRAFT,
+        )
+        response = self.client.get(
+            f"/dashboards/{draft.pk}/viewers/",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 403)

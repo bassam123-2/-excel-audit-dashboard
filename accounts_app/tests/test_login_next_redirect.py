@@ -21,7 +21,7 @@ def test_authenticated_login_with_next_redirects_to_target(btc_company, viewer_u
 @pytest.mark.django_db
 def test_failed_login_preserves_next_in_form(btc_company):
     user = make_user("next_fail_user", email="next_fail@example.com", password="Test@1234")
-    make_membership(user, btc_company, can_view=True)
+    make_membership(user, btc_company, can_upload=True)
     client = Client()
     target = reverse("dashboard_list")
     response = client.post(
@@ -39,7 +39,7 @@ def test_failed_login_preserves_next_in_form(btc_company):
 @pytest.mark.django_db
 def test_login_success_with_next_redirects(btc_company):
     user = make_user("next_ok_user", email="next_ok@example.com", password="Test@1234")
-    make_membership(user, btc_company, can_view=True)
+    make_membership(user, btc_company, can_upload=True)
     user.profile.two_factor_enabled = False
     user.profile.save(update_fields=["two_factor_enabled"])
     client = Client()

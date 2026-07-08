@@ -10,6 +10,7 @@ from accounts_app.services.workflow_email import (
     build_auth_link,
     notify_creator_rejected,
     notify_reviewers_pending,
+    notify_viewers_assigned,
     notify_viewers_published,
 )
 from audit_app.models import DashboardStatus
@@ -50,10 +51,13 @@ def test_viewer_emails_exclude_reviewer(btc_company):
     reviewer = make_user("pub_reviewer", email="pub_reviewer@example.com")
     viewer = make_user("pub_viewer", email="pub_viewer@example.com")
     make_membership(creator, btc_company, can_upload=True)
-    make_membership(reviewer, btc_company, can_review=True, can_view=True)
-    make_membership(viewer, btc_company, can_view=True)
+    make_membership(reviewer, btc_company, can_review=True)
+    make_membership(viewer, btc_company)
 
     dashboard = make_dashboard(btc_company, creator, name="Published", status=DashboardStatus.PUBLISHED)
+    from audit_app.models import DashboardViewer
+
+    DashboardViewer.objects.create(dashboard=dashboard, user=viewer, granted_by=reviewer)
     sent: list[str] = []
 
     def capture(cfg, *, to_addr, subject, plain, html):
@@ -69,6 +73,44 @@ def test_viewer_emails_exclude_reviewer(btc_company):
 
     assert sent == ["pub_viewer@example.com"]
     assert "pub_reviewer@example.com" not in sent
+
+
+@pytest.mark.django_db
+def test_viewer_assigned_email_bilingual(btc_company):
+    assigner = make_user("asg_assigner", email="asg_assigner@example.com")
+    viewer = make_user("asg_viewer", email="asg_viewer@example.com")
+    creator = make_user("asg_creator", email="asg_creator@example.com")
+    make_membership(creator, btc_company, can_upload=True)
+    make_membership(assigner, btc_company, can_assign_dashboard_viewers=True)
+    make_membership(viewer, btc_company)
+
+    dashboard = make_dashboard(btc_company, creator, name="Assigned Dash", status=DashboardStatus.PUBLISHED)
+    captured: dict = {}
+
+    def capture(cfg, *, to_addr, subject, plain, html):
+        captured["to"] = to_addr
+        captured["subject"] = subject
+        captured["html"] = html
+        captured["plain"] = plain
+
+    with patch("accounts_app.services.workflow_email._load_smtp_cfg", return_value={"host": "x", "from": "a@b.c"}):
+        with patch("accounts_app.services.workflow_email.send_branded_email_smtp", side_effect=capture):
+            notify_viewers_assigned(
+                dashboard,
+                user_ids=[viewer.pk],
+                base_url="https://example.com/",
+                granted_by=assigner,
+            )
+
+    assert captured["to"] == "asg_viewer@example.com"
+    assert "New Dashboard Available" in captured["subject"]
+    assert "لوحة تحكم جديدة متاحة لك" in captured["subject"]
+    assert "Assigned Dash" in captured["html"]
+    assert "عرض اللوحة" in captured["html"]
+    assert "View Dashboard" in captured["html"]
+    assert f"/dashboards/{dashboard.pk}/" in captured["html"]
+    assert BRAND_BLUE in captured["html"]
+    assert "تم نشر لوحة تحكم جديدة" in captured["plain"]
 
 
 @pytest.mark.django_db

@@ -34,14 +34,6 @@
     <span class="badge badge-status-draft"><i class="bi bi-pencil-square me-1"></i>{{ ui.wf_status_draft }}</span>
     {% elif dashboard.status == "under_review" %}
     <span class="badge badge-status-review"><i class="bi bi-hourglass-split me-1"></i>{{ ui.wf_status_under_review }}</span>
-    {% elif dashboard.status == "in_workflow" %}
-    <span class="badge badge-status-workflow"><i class="bi bi-diagram-3 me-1"></i>{{ ui.wf_status_in_workflow }}</span>
-    {% if workflow_progress %}
-    <span class="meta-pill"><i class="bi bi-list-ol"></i> {{ workflow_progress }}</span>
-    {% endif %}
-    {% if workflow_assignee_name %}
-    <span class="meta-pill"><i class="bi bi-person-check"></i> {{ workflow_assignee_name }}</span>
-    {% endif %}
     {% elif dashboard.status == "rejected" %}
     <span class="badge badge-status-rejected"><i class="bi bi-x-circle me-1"></i>{{ ui.wf_status_rejected }}</span>
     {% else %}
@@ -49,10 +41,11 @@
     {% endif %}
 
     <div class="toolbar-actions {% if is_rtl %}me-auto{% else %}ms-auto{% endif %}">
-        {% if can_acknowledge %}
-        <button type="button" class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                data-bs-toggle="modal" data-bs-target="#ackModal">
-            <i class="bi bi-eye-fill"></i> {{ ui.wf_ack_btn }}
+        {% if can_manage_dashboard_viewers %}
+        <button type="button" class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1 js-viewers-btn"
+                data-viewers-url="{% url 'dashboard_viewers' dashboard.pk %}"
+                data-bs-toggle="modal" data-bs-target="#viewersModal">
+            <i class="bi bi-people-fill"></i> {{ ui.dv_btn }}
         </button>
         {% endif %}
         {% if can_submit_for_review %}
@@ -66,12 +59,6 @@
                 data-bs-toggle="modal" data-bs-target="#approveModal">
             <i class="bi bi-check-lg"></i> {{ ui.wf_approve_btn }}
         </button>
-        <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
-                data-bs-toggle="modal" data-bs-target="#rejectModal">
-            <i class="bi bi-x-lg"></i> {{ ui.wf_reject_btn }}
-        </button>
-        {% endif %}
-        {% if can_approve_reject and dashboard.status == "in_workflow" %}
         <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
                 data-bs-toggle="modal" data-bs-target="#rejectModal">
             <i class="bi bi-x-lg"></i> {{ ui.wf_reject_btn }}
@@ -96,29 +83,10 @@
     </div>
 </div>
 
-{% if can_acknowledge %}
-<div class="modal fade" id="ackModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <form method="post" action="{% url 'dashboard_acknowledge' dashboard.pk %}" id="ackDetailForm">
-                {% csrf_token %}
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-eye-fill me-1 text-primary"></i>{{ ui.wf_ack_title }}</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ ui.wf_cancel }}"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="fw-semibold mb-2">{{ dashboard.name }}</p>
-                    <p class="mb-0">{{ ui.wf_ack_confirm }}</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
-                    <button type="submit" class="btn btn-primary">{{ ui.wf_ack_submit }}</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+{% if can_manage_dashboard_viewers %}
+{% include "reports_app/_dashboard_viewers_modal.html" %}
 {% endif %}
+
 {% if can_submit_for_review %}
 <div class="modal fade" id="submitModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -165,9 +133,6 @@
         </div>
     </div>
 </div>
-{% endif %}
-{% if can_approve_reject %}
-{% if dashboard.status == "under_review" or dashboard.status == "in_workflow" %}
 <div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -190,7 +155,6 @@
         </div>
     </div>
 </div>
-{% endif %}
 {% endif %}
 
 <iframe id="dashFrame"
@@ -221,6 +185,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/dashboard_viewers.js' %}"></script>
 <script>
 (function () {
     var f = document.getElementById('dashFrame');
@@ -254,11 +219,15 @@
         });
     }
 
-    var ackForm = document.getElementById('ackDetailForm');
-    if (ackForm) {
-        ackForm.addEventListener('submit', function () {
-            var btn = ackForm.querySelector('button[type="submit"]');
-            if (btn) btn.disabled = true;
+    if (window.initDashboardViewersModal) {
+        window.initDashboardViewersModal({
+            modalId: 'viewersModal',
+            saveBtnId: 'viewersSaveBtn',
+            errorId: 'viewersError',
+            triggerSelector: '.js-viewers-btn',
+            emptyText: '{{ ui.dv_empty|escapejs }}',
+            errorText: '{{ ui.dv_error|escapejs }}',
+            csrfToken: '{{ csrf_token }}'
         });
     }
 })();

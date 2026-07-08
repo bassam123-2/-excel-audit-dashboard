@@ -13,12 +13,9 @@ ADMIN_V2_CHANGE_LISTS = (
     ("admin:audit_app_observationrecord_changelist", {"deleted": "active"}, True),
     ("admin:audit_app_dashboardrejectionlog_changelist", {"deleted": "active"}, True),
     ("admin:audit_app_dashboardtemplatetype_changelist", {"deleted": "active"}, False),
-    ("admin:audit_app_dashboardworkflowinstance_changelist", {"deleted": "active"}, True),
     ("admin:audit_app_dashboard_changelist", {"deleted": "active"}, True),
     ("admin:audit_app_reportartifact_changelist", {"deleted": "active"}, True),
     ("admin:audit_app_uploadsession_changelist", {"deleted": "active"}, True),
-    ("admin:audit_app_dashboardworkflowsteplog_changelist", {"deleted": "active"}, True),
-    ("admin:audit_app_workflowtemplate_changelist", {"deleted": "active"}, True),
 )
 
 

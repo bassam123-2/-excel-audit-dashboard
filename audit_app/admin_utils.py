@@ -4,9 +4,7 @@ from __future__ import annotations
 import re
 
 from django.contrib import admin
-from django.contrib.admin.widgets import AutocompleteSelect
 from django.contrib.auth.models import User
-from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.translation import gettext as _
 
@@ -82,23 +80,6 @@ def install_boolean_icon_list_columns(
         display_names.append(method_name)
 
     return tuple(display_names)
-
-
-class WorkflowAssigneeAutocompleteWidget(AutocompleteSelect):
-    """Workflow step assignee search with custom labels and duplicate exclusion."""
-
-    def get_url(self):
-        return reverse("admin:audit_app_workflowtemplate_assignee_autocomplete")
-
-    def build_attrs(self, base_attrs, extra_attrs=None):
-        built = super().build_attrs(base_attrs, extra_attrs=extra_attrs)
-        built["data-ajax--cache"] = "false"
-        css_class = built.get("class", "")
-        css_class = " ".join(
-            token for token in css_class.split() if token != "admin-autocomplete"
-        )
-        built["class"] = (css_class + " wf-assignee-autocomplete").strip()
-        return built
 
 
 def company_parent_autocomplete_exclude_pk(request) -> int | None:

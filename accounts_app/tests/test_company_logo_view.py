@@ -23,7 +23,7 @@ def _attach_logo(company) -> None:
 def test_company_logo_view_returns_logo_for_member(client, btc_company):
     _attach_logo(btc_company)
     user = make_user("logo_user", email="logo@example.com")
-    make_membership(user, btc_company, can_view=True)
+    make_membership(user, btc_company, can_upload=True)
     login_and_select_company(client, "logo_user", btc_company)
 
     url = reverse("company_logo", args=[btc_company.pk])
@@ -38,7 +38,7 @@ def test_company_logo_view_returns_logo_for_member(client, btc_company):
 def test_company_logo_view_forbidden_for_other_company(client, btc_company, nat_company):
     _attach_logo(nat_company)
     user = make_user("btc_only", email="btc@example.com")
-    make_membership(user, btc_company, can_view=True)
+    make_membership(user, btc_company, can_upload=True)
     login_and_select_company(client, "btc_only", btc_company)
 
     response = client.get(reverse("company_logo", args=[nat_company.pk]))
@@ -50,7 +50,7 @@ def test_company_logo_view_forbidden_for_other_company(client, btc_company, nat_
 def test_topbar_shows_company_logo_on_profile(client, btc_company):
     _attach_logo(btc_company)
     user = make_user("profile_logo", email="profile@example.com")
-    make_membership(user, btc_company, can_view=True)
+    make_membership(user, btc_company, can_upload=True)
     login_and_select_company(client, "profile_logo", btc_company)
 
     response = client.get(reverse("profile"))
@@ -64,8 +64,8 @@ def test_topbar_shows_company_logo_on_profile(client, btc_company):
 @pytest.mark.django_db
 def test_topbar_empty_company_until_selection(client, btc_company, nat_company):
     user = make_user("pending_select", email="pending@example.com")
-    make_membership(user, btc_company, can_view=True)
-    make_membership(user, nat_company, can_view=True)
+    make_membership(user, btc_company, can_upload=True)
+    make_membership(user, nat_company, can_upload=True)
     client.force_login(user)
 
     response = client.get(reverse("profile"))
@@ -83,8 +83,8 @@ def test_topbar_logo_url_follows_active_company(client, btc_company, nat_company
     _attach_logo(btc_company)
     _attach_logo(nat_company)
     user = make_user("multi_logo", email="multi@example.com")
-    make_membership(user, btc_company, can_view=True, can_upload=True)
-    make_membership(user, nat_company, can_view=True, can_upload=True)
+    make_membership(user, btc_company, can_upload=True)
+    make_membership(user, nat_company, can_upload=True)
     client.force_login(user)
 
     session = client.session

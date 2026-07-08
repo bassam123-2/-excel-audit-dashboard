@@ -202,6 +202,98 @@ html[dir="rtl"] #content-start .admin-cl-v2-form__panel select {
     max-width: 100%;
 }
 
+/* Django filter_horizontal (groups, permissions) — full-width dual lists */
+#content-start .admin-cl-v2-form__panel .form-row:has(.selector) > div {
+    width: 100%;
+    max-width: 100%;
+}
+
+#content-start .admin-cl-v2-form__panel .form-row:has(.selector) .flex-container {
+    max-width: 100%;
+    width: 100%;
+}
+
+#content-start .admin-cl-v2-form__panel .selector {
+    width: 100%;
+    max-width: 100%;
+    gap: 0.75rem;
+    align-items: stretch;
+}
+
+#content-start .admin-cl-v2-form__panel .selector-available,
+#content-start .admin-cl-v2-form__panel .selector-chosen {
+    flex: 1 1 calc(50% - 2rem);
+    min-width: 0;
+    width: auto;
+    max-width: none;
+}
+
+#content-start .admin-cl-v2-form__panel .selector select,
+#content-start .admin-cl-v2-form__panel .selector select.filtered {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 15rem !important;
+    height: 15rem !important;
+    box-sizing: border-box !important;
+    font-size: 0.9rem !important;
+    line-height: 1.4 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    padding: 0.35rem 0.5rem !important;
+    border-radius: 0 0 0.75rem 0.75rem !important;
+}
+
+#content-start .admin-cl-v2-form__panel .selector select option {
+    padding: 0.4rem 0.5rem;
+    white-space: normal;
+    word-break: break-word;
+}
+
+#content-start .admin-cl-v2-form__panel .selector .selector-filter input {
+    width: 100% !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+    font-size: 0.85rem !important;
+    min-height: 2.25rem !important;
+    padding: 0.5rem 0.65rem !important;
+    border-radius: 0 !important;
+}
+
+#content-start .admin-cl-v2-form__panel .selector .selector-filter {
+    padding: 0.5rem 0.65rem;
+}
+
+#content-start .admin-cl-v2-form__panel .selector ul.selector-chooser {
+    transform: none;
+    flex-shrink: 0;
+    align-self: center;
+    width: 2.25rem;
+}
+
+#content-start .admin-cl-v2-form__panel .selector-available-title,
+#content-start .admin-cl-v2-form__panel .selector-chosen-title {
+    border-radius: 0.75rem 0.75rem 0 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+#content-start .admin-cl-v2-form__panel .selector .helptext {
+    font-size: 0.75rem;
+    line-height: 1.4;
+    padding: 0 0.15rem;
+}
+
+#content-start .admin-cl-v2-form__panel .selector-chooseall,
+#content-start .admin-cl-v2-form__panel .selector-clearall {
+    font-size: 0.78rem;
+    line-height: 1.35;
+    height: auto;
+    white-space: normal;
+    word-break: break-word;
+}
+
 /* Autocomplete (Select2) — match native select sizing in v2 forms */
 #content-start .admin-cl-v2-form__panel .flex-container .related-widget-wrapper {
     display: flex;
@@ -738,6 +830,23 @@ html[dir="rtl"] #content-start .admin-cl-v2-form__panel .select2-container .sele
     #content-start .admin-cl-v2-form__panel select {
         max-width: 100%;
         width: 100%;
+    }
+
+    #content-start .admin-cl-v2-form__panel .selector {
+        flex-direction: column;
+    }
+
+    #content-start .admin-cl-v2-form__panel .selector-available,
+    #content-start .admin-cl-v2-form__panel .selector-chosen {
+        flex: 1 1 auto;
+        width: 100%;
+    }
+
+    #content-start .admin-cl-v2-form__panel .selector ul.selector-chooser {
+        flex-direction: row;
+        width: auto;
+        align-self: center;
+        transform: none;
     }
 }
 

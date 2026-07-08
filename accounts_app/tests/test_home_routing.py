@@ -24,6 +24,6 @@ def test_resolve_default_home_no_permissions(btc_company, no_perm_user):
 @pytest.mark.django_db
 def test_resolve_default_home_multi_company(btc_company, nat_company):
     user = make_user("multi_home")
-    make_membership(user, btc_company, can_view=True)
-    make_membership(user, nat_company, can_view=True)
+    make_membership(user, btc_company, can_upload=True)
+    make_membership(user, nat_company, can_upload=True)
     assert resolve_default_home(user) == reverse("select_company")

@@ -13,7 +13,6 @@ ADMIN_V2_FORM_PAGES = (
     ("admin:auth_group_add", {}),
     ("admin:audit_app_company_add", {}),
     ("admin:audit_app_dashboard_add", {}),
-    ("admin:audit_app_workflowtemplate_add", {}),
 )
 
 

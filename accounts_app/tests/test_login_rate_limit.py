@@ -42,7 +42,7 @@ def test_failed_login_attempts_block_user():
 @pytest.mark.django_db
 def test_concurrent_login_post_rejected(btc_company):
     user = make_user("rate_user")
-    make_membership(user, btc_company, can_upload=True, can_view=True)
+    make_membership(user, btc_company, can_upload=True)
 
     cache.set("login_inflight:rate_user", 1, 30)
     client = Client()

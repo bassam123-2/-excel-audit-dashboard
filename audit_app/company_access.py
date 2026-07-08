@@ -114,7 +114,7 @@ def user_membership(user, company: Company | None) -> CompanyMembership | None:
             user=user,
             company=company,
             can_upload=True,
-            can_view=True,
+            can_assign_dashboard_viewers=True,
             can_view_own_only=False,
             can_review=True,
             can_delete_drafts=True,
@@ -149,8 +149,8 @@ def has_company_perm(user, company: Company | None, perm: str) -> bool:
         return False
     if perm == "upload":
         return membership.can_upload
-    if perm == "view":
-        return membership.can_view
+    if perm == "assign_viewers":
+        return membership.can_assign_dashboard_viewers
     if perm == "view_own":
         return membership.can_view_own_only
     if perm == "review":

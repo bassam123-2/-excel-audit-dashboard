@@ -34,7 +34,6 @@ class IdleSessionMiddlewareTests(TestCase):
             user=self.user,
             company=company,
             can_upload=True,
-            can_view=True,
         )
 
     def test_recent_activity_keeps_session(self):
