@@ -61,6 +61,8 @@ _ATTACHMENT_TOGGLE_SPECS = (
 # Injected into generated HTML; replaced with Django API URLs via report_generation.inject_web_mail_api.
 _MAIL_API_MARKER = "window.__AI_EXCEL_MAIL_API__=null;"
 _PLAN_PARSE_API_MARKER = "window.__AI_EXCEL_PLAN_PARSE_URL__=null;"
+_USER_EDITS_SAVE_MARKER = "window.__AI_EXCEL_USER_EDITS_SAVE_URL__=null;"
+_CAN_SAVE_USER_EDITS_MARKER = "window.__AI_EXCEL_CAN_SAVE_USER_EDITS__=false;"
 _SMTP_HELPER_HOST = "127.0.0.1"
 _SMTP_HELPER_PORT = 51977
 _MAIL_API_FALLBACK_MARKER = (
@@ -736,7 +738,9 @@ def build_finance_trends_payload(
         if ycol:
             work["_by"] = work[ycol].astype(str).str.strip()
         else:
-            work["_by"] = str(datetime.now().year)
+            from accounts_app.services.project_timezone import project_local_now
+
+            work["_by"] = str(project_local_now().year)
 
     fcat = "__category__"
     uncat = tr(loc, "val_uncategorized")
@@ -1414,6 +1418,8 @@ def build_audit_observation_payload(
             "planUploadBadType": tr(loc, "audit_plan_upload_bad_type"),
             "planUploadNoRows": tr(loc, "audit_plan_upload_no_rows"),
             "planUploadPptxFail": tr(loc, "audit_plan_upload_pptx_fail"),
+            "planSaveSuccess": tr(loc, "audit_plan_save_success"),
+            "planSaveFailed": tr(loc, "audit_plan_save_failed"),
             "companyLabel": tr(loc, "audit_company_label"),
             "subcompanyLabel": tr(loc, "audit_subcompany_label"),
             "brandCompaniesInFilterTitle": tr(loc, "audit_brand_companies_in_filter"),
@@ -2363,7 +2369,9 @@ def generate_finance_report(
     logo_catalog = build_company_logo_catalog(company_entity)
     chart_payload["brand_logo_catalog"] = logo_catalog
 
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    from accounts_app.services.project_timezone import project_local_now
+
+    generated_at = project_local_now().strftime("%Y-%m-%d %H:%M:%S")
     stat_tiles = "".join(
         f'<div class="stat-tile st-{(i + layout_spin) % 6}"><span class="st-label">{html.escape(lab)}</span>'
         f'<span class="st-val">{val}</span></div>'
@@ -2464,6 +2472,8 @@ def generate_finance_report(
   <!-- plan-upload:v4-fetch-only (no FileReader for audit plan file reads) -->
   <script>{_MAIL_API_MARKER}</script>
   <script>{_PLAN_PARSE_API_MARKER}</script>
+  <script>{_USER_EDITS_SAVE_MARKER}</script>
+  <script>{_CAN_SAVE_USER_EDITS_MARKER}</script>
   <script>{_MAIL_API_FALLBACK_MARKER}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -4858,6 +4868,55 @@ def generate_finance_report(
       accent-color: #166534;
       cursor: pointer;
     }}
+    .audit-plan-save-toast {{
+      position: absolute;
+      top: 0.72rem;
+      inset-inline-end: 3.25rem;
+      z-index: 4;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      max-width: min(18rem, calc(100% - 5rem));
+      padding: 0.42rem 0.72rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      line-height: 1.2;
+      color: #ffffff;
+      background: hsl(var(--dyn-h2), 74%, 38%);
+      border: 1px solid hsla(var(--dyn-h2), 78%, 28%, 0.35);
+      box-shadow: 0 10px 24px hsla(var(--dyn-h2), 70%, 24%, 0.28);
+      opacity: 0;
+      transform: translateY(-8px);
+      pointer-events: none;
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }}
+    .audit-plan-save-toast::before {{
+      content: "✓";
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.05rem;
+      height: 1.05rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.2);
+      font-size: 0.72rem;
+    }}
+    .audit-plan-save-toast.audit-plan-save-toast--visible {{
+      opacity: 1;
+      transform: translateY(0);
+    }}
+    .audit-plan-save-toast.audit-plan-save-toast--error {{
+      background: #dc2626;
+      border-color: rgba(127, 29, 29, 0.35);
+      box-shadow: 0 10px 24px rgba(220, 38, 38, 0.22);
+    }}
+    .audit-plan-save-toast.audit-plan-save-toast--error::before {{
+      content: "!";
+    }}
+    #audit-plan-panel .audit-aging-head {{
+      position: relative;
+    }}
     .audit-obs-names-open {{
       flex: 1;
       display: flex;
@@ -5829,6 +5888,7 @@ def generate_finance_report(
       <div class="audit-aging-inner">
         <div class="audit-aging-head">
           <h3 class="audit-aging-title" id="audit-plan-title"></h3>
+          <div class="audit-plan-save-toast" id="audit-plan-save-toast" role="status" aria-live="polite" hidden></div>
           <button type="button" class="audit-aging-close" id="audit-plan-close" aria-label="Close">×</button>
         </div>
         <div class="audit-aging-body">
@@ -6293,6 +6353,108 @@ def generate_finance_report(
         try {{
           writeAuditPersistScript(planDraftRows || [], planCellBgHex || [], snapshotReviewsForExport());
         }} catch (_e1) {{}}
+        try {{ scheduleSaveUserEditsToServer(); }} catch (_e2) {{}}
+      }}
+      let userEditsSaveTimer = null;
+      let userEditsSaveInFlight = false;
+      let userEditsSaveQueued = false;
+      let planSaveToastTimer = null;
+      function showPlanSaveToast(message, isError) {{
+        const toast = document.getElementById("audit-plan-save-toast");
+        if (!toast) return;
+        if (planSaveToastTimer) {{
+          clearTimeout(planSaveToastTimer);
+          planSaveToastTimer = null;
+        }}
+        toast.textContent = String(message || "");
+        toast.hidden = false;
+        toast.classList.remove("audit-plan-save-toast--error");
+        toast.classList.toggle("audit-plan-save-toast--error", !!isError);
+        toast.classList.add("audit-plan-save-toast--visible");
+        planSaveToastTimer = setTimeout(function () {{
+          toast.classList.remove("audit-plan-save-toast--visible");
+          planSaveToastTimer = setTimeout(function () {{
+            toast.hidden = true;
+            toast.textContent = "";
+          }}, 240);
+        }}, isError ? 3200 : 2200);
+      }}
+      function getDashboardCsrfToken() {{
+        try {{
+          const m = document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/);
+          return m ? decodeURIComponent(m[1]) : "";
+        }} catch (_c) {{
+          return "";
+        }}
+      }}
+      function canSaveUserEditsToServer() {{
+        try {{
+          if (window.__AI_EXCEL_CAN_SAVE_USER_EDITS__ !== true) return false;
+          const url = window.__AI_EXCEL_USER_EDITS_SAVE_URL__;
+          return !!(url && typeof url === "string" && String(url).trim());
+        }} catch (_x) {{
+          return false;
+        }}
+      }}
+      function saveUserEditsToServer() {{
+        if (!canSaveUserEditsToServer()) return Promise.resolve(false);
+        const url = window.__AI_EXCEL_USER_EDITS_SAVE_URL__;
+        if (userEditsSaveInFlight) {{
+          userEditsSaveQueued = true;
+          return Promise.resolve(false);
+        }}
+        userEditsSaveInFlight = true;
+        try {{ capturePlanDraftRows(); }} catch (_cap) {{}}
+        const payload = {{
+          v: 1,
+          planRows: planDraftRows || [],
+          planCellBg: planCellBgHex || [],
+          reviewsNote: snapshotReviewsForExport(),
+        }};
+        return fetch(url, {{
+          method: "POST",
+          headers: {{
+            "Content-Type": "application/json",
+            "X-CSRFToken": getDashboardCsrfToken(),
+            "X-Requested-With": "XMLHttpRequest",
+          }},
+          credentials: "same-origin",
+          body: JSON.stringify(payload),
+        }})
+          .then(function (resp) {{
+            if (!resp.ok) {{
+              showPlanSaveToast(ui.planSaveFailed || "Could not save changes", true);
+              return false;
+            }}
+            return resp.json().then(function (j) {{
+              const ok = !!(j && j.ok);
+              if (ok) showPlanSaveToast(ui.planSaveSuccess || "Changes saved", false);
+              else showPlanSaveToast(ui.planSaveFailed || "Could not save changes", true);
+              return ok;
+            }}).catch(function () {{
+              showPlanSaveToast(ui.planSaveFailed || "Could not save changes", true);
+              return false;
+            }});
+          }})
+          .catch(function () {{
+            showPlanSaveToast(ui.planSaveFailed || "Could not save changes", true);
+            return false;
+          }})
+          .finally(function () {{
+            userEditsSaveInFlight = false;
+            if (userEditsSaveQueued) {{
+              userEditsSaveQueued = false;
+              scheduleSaveUserEditsToServer(120);
+            }}
+          }});
+      }}
+      function scheduleSaveUserEditsToServer(delayMs) {{
+        if (!canSaveUserEditsToServer()) return;
+        if (userEditsSaveTimer) clearTimeout(userEditsSaveTimer);
+        userEditsSaveTimer = setTimeout(function () {{
+          userEditsSaveTimer = null;
+          saveUserEditsToServer();
+        }}, typeof delayMs === "number" ? delayMs : 700);
       }}
       const defGrid = document.getElementById("default-stat-grid");
       const topBar = document.getElementById("audit-top-bar");
@@ -7440,24 +7602,39 @@ def generate_finance_report(
       }};
       function normalizePlanHeader(h) {{
         return String(h || "")
+          .replace(/^\\ufeff/, "")
+          .replace(/\\u00a0/g, " ")
           .trim()
           .toLowerCase()
           .replace(/[%_\\-]/g, " ")
           .replace(/\\s+/g, " ")
           .trim();
       }}
+      function planPositionalValues(rec) {{
+        if (!rec || typeof rec !== "object") return [];
+        if (Array.isArray(rec)) return rec.slice(0, 7);
+        try {{
+          return Object.keys(rec).map(function (k) {{ return rec[k]; }});
+        }} catch (_e) {{
+          return [];
+        }}
+      }}
       function mapPlanRowFromRecord(rec) {{
         const keyMap = {{
-          project: ["project name", "project"],
-          auditable: ["auditable function", "auditable"],
-          resource: ["resource allocated", "resource"],
-          status: ["project status", "status"],
-          planning: ["planning %", "planning"],
-          field: ["field work %", "field work", "fieldwork"],
-          reporting: ["reporting %", "reporting"],
+          project: ["project name", "project", "اسم المشروع", "اسم مشروع"],
+          auditable: ["auditable function", "auditable", "الوظيفة القابلة للتدقيق", "وظيفة قابلة للتدقيق"],
+          resource: ["resource allocated", "resource", "الموارد المخصصة", "موارد مخصصة"],
+          status: ["project status", "status", "حالة المشروع"],
+          planning: ["planning %", "planning", "planning percent", "نسبة التخطيط", "التخطيط"],
+          field: ["field work %", "field work", "fieldwork", "field work percent", "نسبة العمل الميداني", "العمل الميداني"],
+          reporting: ["reporting %", "reporting", "reporting percent", "نسبة التقرير", "التقرير"],
         }};
         const normRec = {{}};
-        Object.keys(rec || {{}}).forEach(function (k) {{ normRec[normalizePlanHeader(k)] = rec[k]; }});
+        Object.keys(rec || {{}}).forEach(function (k) {{
+          const nk = normalizePlanHeader(k);
+          if (!nk || nk === "__empty" || nk === "empty") return;
+          normRec[nk] = rec[k];
+        }});
         function pick(keys) {{
           for (let i = 0; i < keys.length; i++) {{
             const nk = normalizePlanHeader(keys[i]);
@@ -7465,7 +7642,7 @@ def generate_finance_report(
           }}
           return "";
         }}
-        return [
+        const mapped = [
           String(pick(keyMap.project) ?? ""),
           String(pick(keyMap.auditable) ?? ""),
           String(pick(keyMap.resource) ?? ""),
@@ -7474,6 +7651,39 @@ def generate_finance_report(
           String(pick(keyMap.field) ?? ""),
           String(pick(keyMap.reporting) ?? ""),
         ];
+        const pos = planPositionalValues(rec);
+        for (let i = 0; i < 7 && i < pos.length; i++) {{
+          if (!String(mapped[i] || "").trim() && pos[i] != null && String(pos[i]).trim() !== "") {{
+            mapped[i] = String(pos[i]);
+          }}
+        }}
+        return mapped;
+      }}
+      function matrixToPlanRecords(matrix) {{
+        if (!matrix || !matrix.length) return [];
+        let hdrIdx = 0;
+        for (let i = 0; i < Math.min(5, matrix.length); i++) {{
+          const joined = (matrix[i] || []).map(function (x) {{ return normalizePlanHeader(x); }}).join(" ");
+          if (/project|auditable|planning|field|reporting|resource|status|مشروع|تدقيق|تخطيط|ميداني|تقرير/.test(joined)) {{
+            hdrIdx = i;
+            break;
+          }}
+        }}
+        const hdr = matrix[hdrIdx] || [];
+        const dataRows = matrix.slice(hdrIdx + 1);
+        return dataRows.map(function (vals) {{
+          const rec = {{}};
+          hdr.forEach(function (h, j) {{
+            const key = String(h != null ? h : "").trim();
+            rec[key || ("__col" + j)] = vals[j] !== undefined ? vals[j] : "";
+          }});
+          return rec;
+        }});
+      }}
+      function parseExcelPlanWorksheet(ws) {{
+        if (!ws || typeof XLSX === "undefined") return [];
+        const matrix = XLSX.utils.sheet_to_json(ws, {{ header: 1, defval: "" }});
+        return matrixToPlanRecords(matrix);
       }}
       function fillPlanFromRecords(records) {{
         if (!Array.isArray(records) || !records.length) return false;
@@ -7810,7 +8020,9 @@ def generate_finance_report(
         }}
         if (planCellApplyBtn) {{
           planCellApplyBtn.addEventListener("click", function () {{
+            try {{ capturePlanDraftRows(); }} catch (_pc) {{}}
             applyPickedColor();
+            saveUserEditsToServer();
           }});
         }}
       }}
@@ -7882,6 +8094,7 @@ def generate_finance_report(
           planPanel.setAttribute("aria-hidden", "true");
         }}
         document.body.style.overflow = "";
+        try {{ saveUserEditsToServer(); }} catch (_sv) {{}}
         try {{
           if (window.parent && window.parent !== window) {{
             window.parent.postMessage({{ type: "deck-modal-state", open: false }}, "*");
@@ -9912,7 +10125,10 @@ def generate_finance_report(
                   const data = new Uint8Array(ab);
                   const wb = XLSX.read(data, {{ type: "array" }});
                   const ws = wb.Sheets[wb.SheetNames[0]];
-                  const rows = XLSX.utils.sheet_to_json(ws, {{ defval: "" }});
+                  let rows = parseExcelPlanWorksheet(ws);
+                  if (!rows.length) {{
+                    rows = XLSX.utils.sheet_to_json(ws, {{ defval: "" }});
+                  }}
                   if (!fillPlanFromRecords(rows)) warn(noRowsMsg);
                 }} finally {{
                   resetPlanUploadInput();

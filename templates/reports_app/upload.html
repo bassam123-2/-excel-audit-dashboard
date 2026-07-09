@@ -169,9 +169,30 @@
                         <span class="section-label__hint"> — {{ ui.upload_file_hint }}</span>
                     </div>
 
-                    <!-- Primary file (required) -->
+                    <!-- Primary file (required on new upload; optional in edit when Excel already stored) -->
+                    {% if is_edit_mode and has_existing_excel %}
+                    <div class="attach-existing" id="excelExistingPanel">
+                        <i class="bi bi-file-earmark-spreadsheet text-success"></i>
+                        <span>{{ ui.upload_attach_current }}:</span>
+                        <span class="attach-existing__name" id="excelExistingName">
+                            {% for n in existing_excel_names %}{% if not forloop.first %}, {% endif %}{{ n }}{% endfor %}
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-danger ms-auto"
+                                onclick="markExcelRemove()">
+                            <i class="bi bi-trash me-1"></i>{{ ui.upload_attach_remove_btn }}
+                        </button>
+                        <p class="attach-existing__meta mb-0">{{ ui.upload_attach_keep_hint }}</p>
+                        <input type="hidden" name="remove_excel" id="remove-excel" value="0">
+                    </div>
+                    <div class="attach-removed-notice" id="excelRemovedNotice">
+                        <i class="bi bi-exclamation-circle me-1"></i>{{ ui.upload_attach_removed }}
+                    </div>
+                    <p class="attach-replace-hint" id="excelReplaceHint">
+                        <i class="bi bi-arrow-repeat me-1"></i>{{ ui.upload_attach_replace_hint }}
+                    </p>
+                    {% endif %}
                     <div class="file-zone" id="fileZone">
-                        <input type="file" name="file1" id="id_file" accept=".xlsx,.xls,.xlsm,.csv" required>
+                        <input type="file" name="file1" id="id_file" accept=".xlsx,.xls,.xlsm,.csv"{% if not is_edit_mode or not has_existing_excel %} required{% endif %}>
                         <div class="fz-icon"><i class="bi bi-file-earmark-spreadsheet"></i></div>
                         <div class="fz-text">{{ ui.upload_file_drop }}</div>
                         <div class="fz-hint">{{ ui.upload_file_hint }}</div>
@@ -264,9 +285,22 @@
     var fileNameEl = document.getElementById('fileName');
     var fileSelected = document.getElementById('fileSelected');
     var fileError = document.getElementById('fileError');
+    var isEditMode = {{ is_edit_mode|yesno:"true,false" }};
+    var hasExistingExcel = {{ has_existing_excel|yesno:"true,false" }};
+    var excelRemoved = false;
 
     fileInput.addEventListener('change', function () {
         if (this.files.length) {
+            var removeExcelIn = document.getElementById('remove-excel');
+            var excelRemovedNotice = document.getElementById('excelRemovedNotice');
+            var excelExistingPanel = document.getElementById('excelExistingPanel');
+            var excelReplaceHint = document.getElementById('excelReplaceHint');
+            var hadRemove = removeExcelIn && removeExcelIn.value === '1';
+            if (removeExcelIn) removeExcelIn.value = '0';
+            excelRemoved = false;
+            if (excelRemovedNotice) excelRemovedNotice.style.display = 'none';
+            if (excelExistingPanel) excelExistingPanel.style.display = hadRemove ? 'none' : '';
+            if (excelReplaceHint) excelReplaceHint.style.display = (!hadRemove && excelExistingPanel) ? 'block' : 'none';
             fileNameEl.textContent = this.files[0].name;
             fileSelected.style.display = 'block';
             fileError.style.display = 'none';
@@ -325,8 +359,9 @@
             iconErr.style.display = 'none';
         }
 
-        // File
-        if (!fileInput.files.length) {
+        // File — required on new upload; in edit mode keep existing Excel unless removed
+        var needsExcel = !hasExistingExcel || excelRemoved || (window.__uploadExcelRemoved === true);
+        if (!fileInput.files.length && needsExcel) {
             fileError.style.display = 'block';
             fileZone.classList.add('is-invalid-zone');
             fileZone.classList.remove('is-filled');
@@ -375,6 +410,32 @@
     templateRadios.forEach(function (r) { r.addEventListener('change', syncTemplateUi); });
     syncTemplateUi();
 })();
+
+function markExcelRemove() {
+    var removeIn = document.getElementById('remove-excel');
+    var panel = document.getElementById('excelExistingPanel');
+    var notice = document.getElementById('excelRemovedNotice');
+    var replaceHint = document.getElementById('excelReplaceHint');
+    var selected = document.getElementById('fileSelected');
+    var zone = document.getElementById('fileZone');
+    var fileIn = document.getElementById('id_file');
+    if (removeIn) removeIn.value = '1';
+    if (panel) panel.style.display = 'none';
+    if (notice) notice.style.display = 'block';
+    if (replaceHint) replaceHint.style.display = 'none';
+    if (selected) selected.style.display = 'none';
+    if (zone) {
+        zone.classList.remove('is-filled');
+        zone.classList.remove('is-invalid-zone');
+    }
+    if (fileIn) {
+        fileIn.value = '';
+        fileIn.required = true;
+    }
+    if (typeof window !== 'undefined') {
+        window.__uploadExcelRemoved = true;
+    }
+}
 
 // Attachment file zone handler (deck / high risk / …)
 function markAttachmentRemove(kind, fieldPrefix) {

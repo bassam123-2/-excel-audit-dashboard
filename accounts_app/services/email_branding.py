@@ -71,9 +71,11 @@ def enrich_message_headers(
     from_addr: str,
     to_addr: str,
 ) -> None:
-    from email.utils import formatdate, make_msgid
+    from email.utils import format_datetime, make_msgid
 
-    msg["Date"] = formatdate(localtime=True)
+    from accounts_app.services.project_timezone import project_local_now
+
+    msg["Date"] = format_datetime(project_local_now())
     msg["Message-ID"] = make_msgid(domain=_message_id_domain(from_addr))
     msg["MIME-Version"] = "1.0"
     reply_to = str(cfg.get("reply_to") or "").strip()
@@ -214,7 +216,9 @@ def load_logo_attachment() -> tuple[bytes, str] | None:
 
 
 def bilingual_footer_html() -> str:
-    year = datetime.now().year
+    from accounts_app.services.project_timezone import project_local_now
+
+    year = project_local_now().year
     return (
         f"© {year} {BRAND_NAME_EN}. جميع الحقوق محفوظة.<br>"
         f"© {year} {BRAND_NAME_EN}. All rights reserved."
@@ -222,7 +226,9 @@ def bilingual_footer_html() -> str:
 
 
 def bilingual_footer_plain() -> str:
-    year = datetime.now().year
+    from accounts_app.services.project_timezone import project_local_now
+
+    year = project_local_now().year
     return (
         f"© {year} {BRAND_NAME_EN}. جميع الحقوق محفوظة.\n"
         f"© {year} {BRAND_NAME_EN}. All rights reserved."

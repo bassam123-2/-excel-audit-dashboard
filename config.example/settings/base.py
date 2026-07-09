@@ -45,6 +45,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "accounts_app.middleware.ProjectTimezoneMiddleware",
     "config.middleware.UserLanguageMiddleware",
     "config.middleware.UserThemeMiddleware",
     "accounts_app.middleware.PasswordExpiryMiddleware",

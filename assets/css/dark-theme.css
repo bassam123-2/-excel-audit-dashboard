@@ -872,3 +872,31 @@ html[data-theme="dark"] .upload-card .btn-outline-danger:hover {
     color: #fecaca !important;
 }
 
+html[data-theme="dark"] .review-attach-card {
+    border-color: rgba(251, 191, 36, 0.45);
+    background: var(--surface);
+}
+
+html[data-theme="dark"] .review-attach-card > .review-attach-card__summary.card-header {
+    background: rgba(245, 158, 11, 0.18);
+    color: #fde68a;
+    border-bottom-color: transparent;
+}
+
+html[data-theme="dark"] .review-attach-card[open] > .review-attach-card__summary.card-header {
+    border-bottom-color: rgba(251, 191, 36, 0.35);
+}
+
+html[data-theme="dark"] .review-attach-card__title {
+    color: #fde68a;
+}
+
+html[data-theme="dark"] .review-attach-card__icon,
+html[data-theme="dark"] .review-attach-card__chevron {
+    color: #fbbf24;
+}
+
+html[data-theme="dark"] .review-attach-card > .review-attach-card__summary.card-header:hover {
+    background: rgba(245, 158, 11, 0.28);
+}
+

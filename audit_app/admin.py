@@ -1312,17 +1312,17 @@ class CompanyAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
             model_name = request.GET.get("model_name")
             field_name = request.GET.get("field_name")
 
-            if (
-                app_label == "audit_app"
-                and model_name == "company"
-                and field_name == "parent"
+            if app_label == "audit_app" and (
+                (model_name == "company" and field_name == "parent")
+                or (model_name == "companymembership" and field_name == "company")
             ):
                 from audit_app.company_access import active_main_companies
 
                 queryset = active_main_companies()
-                exclude_pk = company_parent_autocomplete_exclude_pk(request)
-                if exclude_pk is not None:
-                    queryset = queryset.exclude(pk=exclude_pk)
+                if model_name == "company" and field_name == "parent":
+                    exclude_pk = company_parent_autocomplete_exclude_pk(request)
+                    if exclude_pk is not None:
+                        queryset = queryset.exclude(pk=exclude_pk)
             else:
                 queryset = queryset.filter(is_active=True, is_deleted=False)
         return super().get_search_results(request, queryset, search_term)

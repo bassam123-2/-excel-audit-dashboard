@@ -39,8 +39,10 @@ from .dashboard_workflow import (
     available_dashboard_filters,
     can_user_delete_dashboard,
     can_user_manage_dashboard_viewers,
+    can_user_manage_review_attachments,
     can_user_resubmit,
     can_user_review,
+    can_user_save_dashboard_user_edits,
     can_user_submit,
     company_members_for_viewer_assignment,
     dashboards_queryset_for_user,
@@ -63,9 +65,12 @@ from .services.report_generation import (
     build_attachment_form_slots,
     version_payload,
     generate_from_db_data,
-    inject_web_mail_api,
+    inject_dashboard_serve_context,
     report_locale_for_dashboard,
     store_upload_to_db,
+    update_dashboard_review_attachments,
+    validate_dashboard_user_edits_payload,
+    _existing_excel_names,
 )
 
 logger = logging.getLogger(__name__)
@@ -251,11 +256,23 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
         or ""
     )
     lang = normalize_locale(request.session.get("ui_lang", "en"))
+    existing_excel_names: list[str] = []
+    has_existing_excel = False
+    if resubmit_dashboard:
+        existing_excel_names = _existing_excel_names(resubmit_dashboard)
+        session = resubmit_dashboard.upload_session
+        has_existing_excel = bool(
+            existing_excel_names
+            and session
+            and session.raw_data_json
+        )
     return {
         "icon_choices": ICON_CHOICES,
         "template_types": active_templates,
         "resubmit_dashboard": resubmit_dashboard,
         "is_edit_mode": resubmit_dashboard is not None,
+        "existing_excel_names": existing_excel_names,
+        "has_existing_excel": has_existing_excel,
         "attachment_slots": build_attachment_form_slots(
             resubmit_dashboard,
             locale=lang,
@@ -407,7 +424,21 @@ def _inject_served_dashboard_html(
 ) -> str:
     mail_url = request.build_absolute_uri("/api/send-obs-email")
     plan_url = request.build_absolute_uri("/api/parse-audit-plan-pptx")
-    return inject_web_mail_api(html_content, mail_url, plan_url)
+    company = _active_company(request)
+    can_save = can_user_save_dashboard_user_edits(request.user, dashboard, company)
+    save_url = (
+        request.build_absolute_uri(reverse("dashboard_user_edits", args=[dashboard.pk]))
+        if can_save
+        else ""
+    )
+    return inject_dashboard_serve_context(
+        html_content,
+        mail_url=mail_url,
+        plan_url=plan_url,
+        user_edits_save_url=save_url,
+        can_save_user_edits=can_save,
+        user_edits_json=dashboard.user_edits_json or "",
+    )
 
 
 def _send_publish_notifications(request, dashboard, reviewer):
@@ -505,6 +536,9 @@ def dashboard_detail(request, pk: int):
         return render_page_not_found(request)
     rejection_logs = dashboard.rejection_logs.select_related("rejected_by").all()
     company = _active_company(request)
+    can_manage_review_attachments = can_user_manage_review_attachments(
+        request.user, dashboard, company
+    )
     return render(
         request,
         "reports_app/dashboard_detail.html",
@@ -515,6 +549,12 @@ def dashboard_detail(request, pk: int):
             "can_resubmit": can_user_resubmit(request.user, dashboard, company),
             "can_submit_for_review": can_user_submit(request.user, dashboard, company),
             "can_approve_reject": can_user_review(request.user, dashboard, company),
+            "can_manage_review_attachments": can_manage_review_attachments,
+            "review_attachment_slots": (
+                build_attachment_form_slots(dashboard, locale=request.session.get("ui_lang", "en"), company=company)
+                if can_manage_review_attachments
+                else []
+            ),
             "can_manage_dashboard_viewers": can_user_manage_dashboard_viewers(
                 request.user, dashboard, company
             ),
@@ -556,6 +596,66 @@ def dashboard_delete(request, pk: int):
 @require_http_methods(["POST"])
 def dashboard_restore(request, pk: int):
     return render_page_not_found(request)
+
+
+@login_required
+@require_http_methods(["POST"])
+def dashboard_user_edits(request, pk: int):
+    """Persist audit-plan table edits and review notes for a dashboard."""
+    import json
+
+    dashboard = _resolve_dashboard_request(request, pk)
+    if not dashboard:
+        return JsonResponse({"ok": False, "error": "not_found"}, status=404)
+
+    company = _active_company(request)
+    if not can_user_save_dashboard_user_edits(request.user, dashboard, company):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    try:
+        raw = request.body.decode("utf-8") if request.body else ""
+        data = json.loads(raw or "{}")
+        payload = validate_dashboard_user_edits_payload(data)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return JsonResponse({"ok": False, "error": "invalid_payload"}, status=400)
+
+    dashboard.user_edits_json = json.dumps(payload, ensure_ascii=False)
+    dashboard.save(update_fields=["user_edits_json"])
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_http_methods(["POST"])
+def dashboard_review_attachments(request, pk: int):
+    """Allow reviewer to add/replace/remove deck attachments before publish."""
+    lang = request.session.get("ui_lang", "en")
+    ui = get_ui(lang)
+
+    dashboard = _resolve_dashboard_request(request, pk)
+    if not dashboard:
+        messages.error(request, ui.get("wf_dashboard_not_found", "Dashboard not found."))
+        return redirect("dashboard_list")
+
+    company = _active_company(request)
+    if not can_user_manage_review_attachments(request.user, dashboard, company):
+        messages.error(request, ui.get("wf_review_attach_forbidden", "Cannot edit attachments."))
+        return redirect("dashboard_detail", pk=pk)
+
+    try:
+        update_dashboard_review_attachments(request, dashboard, company=company)
+        _clear_dashboard_html_cache(dashboard)
+        dashboard.save(update_fields=["html_file"])
+        messages.success(request, ui.get("wf_review_attach_saved", "Attachments updated."))
+    except ValueError as exc:
+        if str(exc) == "not_under_review":
+            messages.error(request, ui.get("wf_review_not_pending", "This dashboard is not pending review."))
+        else:
+            messages.error(request, str(exc))
+    except Exception:
+        logger.exception("Failed to update review attachments for dashboard %s", dashboard.pk)
+        messages.error(request, ui.get("wf_review_attach_error", "Could not update attachments."))
+
+    return redirect(f"{reverse('dashboard_detail', args=[pk])}?attachments_updated=1")
 
 
 @login_required

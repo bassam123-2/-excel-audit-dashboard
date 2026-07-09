@@ -528,6 +528,29 @@ def can_user_resubmit(user, dashboard: Dashboard, company: Company | None = None
     )
 
 
+def can_user_save_dashboard_user_edits(
+    user,
+    dashboard: Dashboard,
+    company: Company | None = None,
+) -> bool:
+    """Allow persisting audit-plan / review-note edits until publish."""
+    if dashboard.is_deleted or dashboard.status == DashboardStatus.PUBLISHED:
+        return False
+    return user_can_see_dashboard(user, dashboard, company)
+
+
+def can_user_manage_review_attachments(
+    user,
+    dashboard: Dashboard,
+    company: Company | None = None,
+) -> bool:
+    """Reviewer may add/replace/remove deck attachments while pending approval."""
+    return (
+        can_user_review(user, dashboard, company)
+        and dashboard.status == DashboardStatus.UNDER_REVIEW
+    )
+
+
 def can_user_review(user, dashboard: Dashboard, company: Company | None = None) -> bool:
     active = company or dashboard.company
     if not has_review_perm(user, active) or dashboard.is_deleted:

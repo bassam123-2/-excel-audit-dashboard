@@ -748,6 +748,54 @@ html[dir="rtl"] {
     text-decoration: underline;
 }
 
+/* ── Review attachments panel (detail page) ──────── */
+.review-attach-card {
+    border: 1px solid #fcd34d;
+    background: var(--surface);
+    overflow: hidden;
+}
+
+.review-attach-card__summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+    background: #fffbeb;
+    border-bottom: 1px solid transparent;
+    color: #92400e;
+}
+
+.review-attach-card__summary::-webkit-details-marker {
+    display: none;
+}
+
+.review-attach-card[open] > .review-attach-card__summary {
+    border-bottom-color: #fcd34d;
+}
+
+.review-attach-card__icon {
+    color: #d97706;
+    flex-shrink: 0;
+}
+
+.review-attach-card__title {
+    color: #92400e;
+}
+
+.review-attach-card__chevron {
+    color: #b45309;
+    font-size: 0.85rem;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.review-attach-card[open] > .review-attach-card__summary .review-attach-card__chevron {
+    transform: rotate(180deg);
+}
+
+.review-attach-card__summary:hover {
+    background: #fef3c7;
+}
+
 @media (max-width: 767.98px) {
     .dv-transfer {
         flex-direction: column;

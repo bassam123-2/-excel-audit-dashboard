@@ -457,6 +457,12 @@ class Dashboard(models.Model):
         max_length=512, blank=True, default="", verbose_name=_("Cached HTML file")
     )
     source_files = models.JSONField(default=list, blank=True, verbose_name=_("Source files"))
+    user_edits_json = models.TextField(
+        blank=True,
+        default="",
+        verbose_name=_("Dashboard user edits (JSON)"),
+        help_text=_("Persisted audit plan table, cell colors, and review notes."),
+    )
     company = models.ForeignKey(
         Company,
         on_delete=models.PROTECT,

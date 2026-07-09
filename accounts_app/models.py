@@ -13,6 +13,7 @@ PASSWORD_MAX_AGE_DAYS = 180
 DEFAULT_OTP_TTL_SECONDS = 600
 MIN_OTP_TTL_SECONDS = 60
 MAX_OTP_TTL_SECONDS = 3600
+DEFAULT_PROJECT_TIMEZONE = "UTC"
 
 
 class ProjectSecuritySettings(models.Model):
@@ -27,10 +28,25 @@ class ProjectSecuritySettings(models.Model):
             f"Allowed range: {MIN_OTP_TTL_SECONDS}–{MAX_OTP_TTL_SECONDS} seconds."
         ),
     )
+    timezone = models.CharField(
+        max_length=63,
+        default=DEFAULT_PROJECT_TIMEZONE,
+        verbose_name=_("Project timezone"),
+        help_text=_(
+            "All dates and times shown in the application, admin panel, "
+            "and generated reports use this timezone."
+        ),
+    )
 
     class Meta:
         verbose_name = _("Project security settings")
         verbose_name_plural = _("Project security settings")
+        permissions = [
+            (
+                "manage_project_timezone",
+                _("Can change project timezone"),
+            ),
+        ]
 
     def __str__(self) -> str:
         minutes = max(1, self.otp_ttl_seconds // 60)
@@ -40,14 +56,19 @@ class ProjectSecuritySettings(models.Model):
         self.pk = 1
         super().save(*args, **kwargs)
         from accounts_app.services.otp_settings import invalidate_otp_settings_cache
+        from accounts_app.services.project_timezone import invalidate_project_timezone_cache
 
         invalidate_otp_settings_cache()
+        invalidate_project_timezone_cache()
 
     @classmethod
     def load(cls) -> ProjectSecuritySettings:
         obj, _ = cls.objects.get_or_create(
             pk=1,
-            defaults={"otp_ttl_seconds": DEFAULT_OTP_TTL_SECONDS},
+            defaults={
+                "otp_ttl_seconds": DEFAULT_OTP_TTL_SECONDS,
+                "timezone": DEFAULT_PROJECT_TIMEZONE,
+            },
         )
         return obj
 

@@ -37,6 +37,48 @@ def test_parent_autocomplete_lists_main_companies_only(admin_client, btc_company
 
 
 @pytest.mark.django_db
+def test_user_membership_company_autocomplete_lists_main_companies_only(
+    btc_company
+):
+    from django.contrib import admin
+
+    from audit_app.admin import CompanyAdmin
+
+    main = Company.objects.create(code="MAINCO", name="Main Co", company_kind=COMPANY_KIND_MAIN)
+    subsidiary = Company.objects.create(
+        code="SUBCO",
+        name="Sub Co",
+        company_kind=COMPANY_KIND_SUBSIDIARY,
+        parent=btc_company,
+    )
+
+    request = type(
+        "Request",
+        (),
+        {
+            "path": "/admin/autocomplete/",
+            "GET": {
+                "term": "",
+                "app_label": "audit_app",
+                "model_name": "companymembership",
+                "field_name": "company",
+            },
+        },
+    )()
+    model_admin = CompanyAdmin(Company, admin.site)
+    queryset, may_have_duplicates = model_admin.get_search_results(
+        request,
+        Company.objects.all(),
+        "",
+    )
+
+    result_ids = set(queryset.values_list("pk", flat=True))
+    assert main.pk in result_ids
+    assert btc_company.pk in result_ids
+    assert subsidiary.pk not in result_ids
+    assert may_have_duplicates is False
+
+@pytest.mark.django_db
 def test_parent_autocomplete_excludes_current_company(admin_client, btc_company):
     main = Company.objects.create(code="MAINCO", name="Main Co", company_kind=COMPANY_KIND_MAIN)
 

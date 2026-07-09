@@ -25,3 +25,6 @@ def test_admin_security_settings_renders_v2_form_layout(admin_client):
     assert "Project security settings" in html
     assert "Configure email OTP validity" in html
     assert "otp_ttl_minutes" in html
+    assert "timezone" in html
+    assert "admin_security_settings_form.js" in html
+    assert "admin-tz-combobox" not in html

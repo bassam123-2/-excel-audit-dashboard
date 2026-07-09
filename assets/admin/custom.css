@@ -449,6 +449,10 @@ html[dir="rtl"] .main-wrap {
     overflow: hidden !important;
     margin-bottom: 1.25rem !important;
 }
+
+#content-start .admin-cl-v2-form__panel fieldset.module {
+    overflow: visible !important;
+}
 .page-body .module h2,
 .page-body .module caption,
 .main-wrap .module h2,
