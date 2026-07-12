@@ -12,6 +12,7 @@ from accounts_app.services.email_branding import (
     render_bilingual_block,
     render_bilingual_plain,
     render_cta_button,
+    render_username_box,
 )
 
 
@@ -23,33 +24,31 @@ def build_credentials_email_content(
 ) -> dict[str, str]:
     """Return subject, plain, and HTML for a new/reset password email."""
     subject = format_bilingual_subject(
-        text_ar="تعيين كلمة المرور",
-        text_en="Set Your Password",
+        text_ar=f"تعيين كلمة المرور — {username}",
+        text_en=f"Set Your Password — {username}",
     )
 
-    safe_username = escape(username)
     safe_set_password_url = escape(set_password_url, quote=True)
     hours = PASSWORD_SET_TOKEN_TTL_HOURS
 
     text_ar = (
         "<p style='margin:0 0 10px;'>السلام عليكم،</p>"
-        "<p style='margin:0 0 16px;'>تم إنشاء/تحديث حسابك. استخدم اسم المستخدم أدناه "
-        "ثم اضغط الزر لتعيين كلمة المرور.</p>"
-        f"<p style='margin:0 0 16px;'><strong>اسم المستخدم:</strong> {safe_username}</p>"
+        "<p style='margin:0 0 16px;'>تم إنشاء/تحديث حسابك. استخدم اسم المستخدم الظاهر "
+        "أدناه ثم اضغط الزر لتعيين كلمة المرور.</p>"
         f"<p style='margin:0 0 8px;color:{TEXT_MUTED};'>"
         f"الرابط صالح لمدة {hours} ساعة ويُستخدم مرة واحدة فقط.</p>"
     )
     text_en = (
         "<p style='margin:0 0 10px;'>Hello,</p>"
         "<p style='margin:0 0 16px;'>Your account was created or updated. "
-        "Use the username below, then click the button to set your password.</p>"
-        f"<p style='margin:0 0 16px;'><strong>Username:</strong> {safe_username}</p>"
+        "Use the username shown below, then click the button to set your password.</p>"
         f"<p style='margin:0 0 8px;color:{TEXT_MUTED};'>"
         f"This link is valid for {hours} hours and can only be used once.</p>"
     )
 
     body_html = (
         render_bilingual_block(text_ar=text_ar, text_en=text_en)
+        + f'<div style="margin:0 0 20px;">{render_username_box(username)}</div>'
         + render_cta_button(
             set_password_url,
             label_ar="تعيين كلمة المرور",

@@ -951,8 +951,8 @@ msgstr "اسم العائلة"
 
 #: .\audit_app\admin_forms.py:164 .\audit_app\admin_forms.py:325
 #: .\templates\admin\auth\user\send_credentials_checkbox.html:6
-msgid "Send new password by email"
-msgstr "إرسال كلمة المرور الجديدة بالبريد"
+msgid "Send reset link"
+msgstr "إرسال رابط إعادة تعيين"
 
 #: .\audit_app\admin_forms.py:168 .\audit_app\admin_forms.py:329
 #: .\templates\admin\auth\user\send_credentials_checkbox.html:8

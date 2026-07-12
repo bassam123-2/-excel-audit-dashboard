@@ -154,7 +154,7 @@ class MandatoryPasswordAdminCreationForm(UserCreationForm):
         help_text=_("The user's job title or position."),
     )
     send_credentials_email = forms.BooleanField(
-        label=_("Send new password by email"),
+        label=_("Send reset link"),
         required=False,
         initial=False,
         help_text=_(
@@ -311,7 +311,7 @@ class MandatoryPasswordAdminChangeForm(SetPasswordMixin, forms.Form):
     required_css_class = "required"
     password1, password2 = SetPasswordMixin.create_password_fields()
     send_credentials_email = forms.BooleanField(
-        label=_("Send new password by email"),
+        label=_("Send reset link"),
         required=False,
         initial=False,
         help_text=_(

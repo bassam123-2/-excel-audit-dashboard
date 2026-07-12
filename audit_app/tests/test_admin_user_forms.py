@@ -243,7 +243,7 @@ def test_admin_add_user_page_shows_send_credentials_checkbox(admin_client):
     assert response.status_code == 200
     html = response.content.decode()
     assert "send_credentials_email" in html
-    assert "Send new password by email" in html or "إرسال" in html
+    assert "Send reset link" in html or "إرسال رابط إعادة تعيين" in html
 
 
 @pytest.mark.regression

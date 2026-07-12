@@ -277,6 +277,19 @@ def render_otp_code(code: str) -> str:
     )
 
 
+def render_username_box(username: str) -> str:
+    """Prominent bilingual username display for credentials / set-password emails."""
+    safe_username = escape(username)
+    return render_info_box(
+        f'<p dir="rtl" style="margin:0 0 4px;font-size:13px;color:{TEXT_MUTED};">'
+        f"اسم المستخدم</p>"
+        f'<p dir="ltr" style="margin:0 0 12px;font-size:13px;color:{TEXT_MUTED};">'
+        f"Username</p>"
+        f'<span style="font-size:24px;font-weight:bold;color:{BRAND_BLUE};'
+        f'font-family:Arial,Helvetica,sans-serif;">{safe_username}</span>'
+    )
+
+
 def render_bilingual_header(*, header_ar: str, header_en: str) -> str:
     """Table-based header rows — Outlook ignores display:block on inline spans."""
     return (
