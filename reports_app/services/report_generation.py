@@ -6,6 +6,7 @@ import os
 import re
 import tempfile
 import uuid
+from html import escape as html_escape
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +14,11 @@ from django.utils.text import slugify
 
 from ai_excel_dashboard import (
     _CAN_SAVE_USER_EDITS_MARKER,
+    _CAN_SAVE_USER_EDITS_META_MARKER,
     _MAIL_API_MARKER,
     _PLAN_PARSE_API_MARKER,
     _USER_EDITS_SAVE_MARKER,
+    _USER_EDITS_SAVE_META_MARKER,
     AUDIT_BUNDLE_MAX_FILES,
     REPORT_VERSION,
     build_multi_dashboard_shell,
@@ -241,6 +244,19 @@ def inject_user_edits_persist_script(html_out: str, user_edits_json: str) -> str
     return script + cleaned
 
 
+def _inject_before_head_close(html_out: str, snippet: str) -> str:
+    """Append HTML snippet before </head> (or prefix if no head tag)."""
+    if re.search(r"</head>", html_out, flags=re.IGNORECASE):
+        return re.sub(
+            r"</head>",
+            snippet + "\n</head>",
+            html_out,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+    return snippet + html_out
+
+
 def inject_dashboard_serve_context(
     html_out: str,
     *,
@@ -251,15 +267,24 @@ def inject_dashboard_serve_context(
     user_edits_json: str = "",
 ) -> str:
     h = inject_web_mail_api(html_out, mail_url, plan_url)
+    save_js = f"window.__AI_EXCEL_USER_EDITS_SAVE_URL__={json.dumps(user_edits_save_url or '')};"
+    can_js = (
+        f"window.__AI_EXCEL_CAN_SAVE_USER_EDITS__="
+        f"{'true' if can_save_user_edits else 'false'};"
+    )
+    save_meta = html_escape(user_edits_save_url or "", quote=True)
+    can_meta = "true" if can_save_user_edits else "false"
     try:
-        h = h.replace(
-            _USER_EDITS_SAVE_MARKER,
-            f"window.__AI_EXCEL_USER_EDITS_SAVE_URL__={json.dumps(user_edits_save_url or '')};",
-        )
-        h = h.replace(
-            _CAN_SAVE_USER_EDITS_MARKER,
-            f"window.__AI_EXCEL_CAN_SAVE_USER_EDITS__={'true' if can_save_user_edits else 'false'};",
-        )
+        if _USER_EDITS_SAVE_MARKER in h:
+            h = h.replace(_USER_EDITS_SAVE_MARKER, save_js)
+        elif "window.__AI_EXCEL_USER_EDITS_SAVE_URL__" not in h:
+            h = _inject_before_head_close(h, f"<script>{save_js}\n{can_js}</script>")
+        if _CAN_SAVE_USER_EDITS_MARKER in h:
+            h = h.replace(_CAN_SAVE_USER_EDITS_MARKER, can_js)
+        if _USER_EDITS_SAVE_META_MARKER in h:
+            h = h.replace(_USER_EDITS_SAVE_META_MARKER, save_meta)
+        if _CAN_SAVE_USER_EDITS_META_MARKER in h:
+            h = h.replace(_CAN_SAVE_USER_EDITS_META_MARKER, can_meta)
         if user_edits_json and str(user_edits_json).strip():
             h = inject_user_edits_persist_script(h, user_edits_json)
         return h

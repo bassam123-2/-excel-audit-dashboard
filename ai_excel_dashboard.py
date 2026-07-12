@@ -65,6 +65,8 @@ _MAIL_API_MARKER = "window.__AI_EXCEL_MAIL_API__=null;"
 _PLAN_PARSE_API_MARKER = "window.__AI_EXCEL_PLAN_PARSE_URL__=null;"
 _USER_EDITS_SAVE_MARKER = "window.__AI_EXCEL_USER_EDITS_SAVE_URL__=null;"
 _CAN_SAVE_USER_EDITS_MARKER = "window.__AI_EXCEL_CAN_SAVE_USER_EDITS__=false;"
+_USER_EDITS_SAVE_META_MARKER = "__AI_EXCEL_USER_EDITS_SAVE_META__"
+_CAN_SAVE_USER_EDITS_META_MARKER = "__AI_EXCEL_CAN_SAVE_USER_EDITS_META__"
 _SMTP_HELPER_HOST = "127.0.0.1"
 _SMTP_HELPER_PORT = 51977
 _MAIL_API_FALLBACK_MARKER = (
@@ -921,6 +923,14 @@ def _filter_option_token(v: Any) -> str:
     return str(j).strip()
 
 
+def _df_column_as_series(df: pd.DataFrame, column: str) -> pd.Series:
+    """DataFrame column access with a stable Series type for pandas accessors."""
+    series = df[column]
+    if isinstance(series, pd.Series):
+        return series
+    return pd.Series(series, index=df.index)
+
+
 def _audit_observation_row_is_usable(row: pd.Series, colmap: dict[str, str]) -> bool:
     """Ignore trailing spacer rows (e.g. only IA Status filled, no year or observation)."""
     year = _filter_option_token(row[colmap["audit_year"]])
@@ -1170,14 +1180,15 @@ def build_audit_observation_payload(
 ) -> dict[str, Any]:
     loc = normalize_locale(locale)
     all_token = "__ALL__"
-    df_obs = df[df.apply(lambda r: _audit_observation_row_is_usable(r, colmap), axis=1)]
+    usable_mask = df.apply(lambda r: _audit_observation_row_is_usable(r, colmap), axis=1)
+    df_obs = df.loc[usable_mask].copy()
     fk_order: list[str] = ["audit_year", "audit_cycle", "department"]
     has_co_dim = False
     if "company" in colmap:
         c_co = colmap["company"]
         co_tokens = {
             _filter_option_token(x)
-            for x in df_obs[c_co].dropna().unique()
+            for x in _df_column_as_series(df_obs, c_co).dropna().unique()
             if _filter_option_token(x) != ""
         }
         if co_tokens:
@@ -1187,7 +1198,7 @@ def build_audit_observation_payload(
         s_col = colmap["subcompany"]
         sc_tokens = {
             _filter_option_token(x)
-            for x in df_obs[s_col].dropna().unique()
+            for x in _df_column_as_series(df_obs, s_col).dropna().unique()
             if _filter_option_token(x) != ""
         }
         if sc_tokens:
@@ -1195,7 +1206,7 @@ def build_audit_observation_payload(
     filter_dims: list[dict[str, Any]] = []
     for logical in fk_order:
         c = colmap[logical]
-        sub = df_obs[c]
+        sub = _df_column_as_series(df_obs, c)
         tokens = {
             _filter_option_token(x)
             for x in sub.dropna().unique()
@@ -1215,7 +1226,7 @@ def build_audit_observation_payload(
     has_observation_type = "observation_type" in colmap
     obs_type_order: list[str] = []
     if has_observation_type:
-        ot_s = df_obs[colmap["observation_type"]]
+        ot_s = _df_column_as_series(df_obs, colmap["observation_type"])
         file_order: list[str] = []
         seen_ot: set[str] = set()
         for x in ot_s.dropna().unique():
@@ -2484,6 +2495,8 @@ def generate_finance_report(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 {ROBOTS_META_HTML}  <title>{page_title}</title>
   <meta name="excel-dashboard-ui" content="{REPORT_VERSION}" />
+  <meta name="ai-excel-user-edits-save-url" content="{_USER_EDITS_SAVE_META_MARKER}" />
+  <meta name="ai-excel-can-save-user-edits" content="{_CAN_SAVE_USER_EDITS_META_MARKER}" />
   <!-- plan-upload:v4-fetch-only (no FileReader for audit plan file reads) -->
   <script>{_MAIL_API_MARKER}</script>
   <script>{_PLAN_PARSE_API_MARKER}</script>
@@ -6387,20 +6400,69 @@ def generate_finance_report(
           return "";
         }}
       }}
+      function resolveDashboardPkFromPath() {{
+        try {{
+          const m = String(window.location.pathname || "").match(/\\/dashboards\\/(\\d+)\\//);
+          return m ? parseInt(m[1], 10) : null;
+        }} catch (_pk) {{
+          return null;
+        }}
+      }}
+      function resolveUserEditsSaveUrl() {{
+        try {{
+          let url = window.__AI_EXCEL_USER_EDITS_SAVE_URL__;
+          if (url && typeof url === "string") {{
+            url = String(url).trim();
+            if (url && url !== "null") return url;
+          }}
+          const meta = document.querySelector('meta[name="ai-excel-user-edits-save-url"]');
+          if (meta) {{
+            const mv = String(meta.getAttribute("content") || "").trim();
+            if (mv && mv !== "__AI_EXCEL_USER_EDITS_SAVE_META__" && mv !== "null") return mv;
+          }}
+          const pk = resolveDashboardPkFromPath();
+          if (!pk) return "";
+          const path = String(window.location.pathname || "");
+          const base = path.replace(/\\/serve\\/?.*$/, "");
+          if (!base || base === path) return "";
+          return base.replace(/\\/+$/, "") + "/api/user-edits/";
+        }} catch (_u) {{
+          return "";
+        }}
+      }}
+      function readCanSaveUserEditsFlag() {{
+        try {{
+          const flag = window.__AI_EXCEL_CAN_SAVE_USER_EDITS__;
+          if (flag === true || flag === "true") return true;
+          if (flag === false || flag === "false") return false;
+          const meta = document.querySelector('meta[name="ai-excel-can-save-user-edits"]');
+          if (meta) {{
+            const mv = String(meta.getAttribute("content") || "").trim().toLowerCase();
+            if (mv === "true" || mv === "1") return true;
+            if (mv === "false" || mv === "0") return false;
+            if (mv === "__ai_excel_can_save_user_edits_meta__") return false;
+          }}
+          return resolveUserEditsSaveUrl() !== "";
+        }} catch (_f) {{
+          return false;
+        }}
+      }}
       function canSaveUserEditsToServer() {{
         try {{
-          if (window.__AI_EXCEL_CAN_SAVE_USER_EDITS__ !== true) return false;
-          const url = window.__AI_EXCEL_USER_EDITS_SAVE_URL__;
-          return !!(url && typeof url === "string" && String(url).trim());
+          if (!readCanSaveUserEditsFlag()) return false;
+          return !!resolveUserEditsSaveUrl();
         }} catch (_x) {{
           return false;
         }}
       }}
       function saveUserEditsToServer(opts) {{
         opts = opts || {{}};
-        const successMsg = opts.successMsg || ui.planSaveSuccess || "Changes saved";
-        if (!canSaveUserEditsToServer()) return Promise.resolve(false);
-        const url = window.__AI_EXCEL_USER_EDITS_SAVE_URL__;
+        const successMsg = opts.successMsg || (typeof ui !== "undefined" && ui && ui.planSaveSuccess) || "Changes saved";
+        if (!canSaveUserEditsToServer()) {{
+          showPlanSaveToast((typeof ui !== "undefined" && ui && ui.planSaveFailed) || "Could not save changes", true);
+          return Promise.resolve(false);
+        }}
+        const url = resolveUserEditsSaveUrl();
         if (userEditsSaveInFlight) {{
           userEditsSaveQueued = true;
           return Promise.resolve(false);
@@ -7278,7 +7340,6 @@ def generate_finance_report(
           }}
         }} catch (_e) {{}}
       }}
-      hydratePersistedUserEdits();
 
       function parseObsDateFromEpoch(value) {{
         if (!Number.isFinite(value)) return null;
@@ -7663,12 +7724,9 @@ def generate_finance_report(
           writeAuditPersistScript(planDraftRows || [], planCellBgHex || [], snapshotReviewsForExport());
         }} catch (_w) {{}}
         const applyMsg = ui.planApplySuccess || ui.planSaveSuccess || "Applied successfully";
-        if (canSaveUserEditsToServer()) {{
-          saveUserEditsToServer({{ successMsg: applyMsg }});
-        }} else {{
-          showPlanSaveToast(applyMsg, false);
-        }}
+        saveUserEditsToServer({{ successMsg: applyMsg }});
       }}
+      hydratePersistedUserEdits();
       function planPositionalValues(rec) {{
         if (!rec || typeof rec !== "object") return [];
         if (Array.isArray(rec)) return rec.slice(0, 7);
