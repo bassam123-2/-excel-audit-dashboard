@@ -13,10 +13,12 @@ class AuditAppConfig(AppConfig):
         from audit_app.admin_site import (
             patch_admin_site_app_index,
             patch_admin_site_index_stats,
+            patch_admin_site_sidebar_order,
         )
 
         patch_admin_site_app_index()
         patch_admin_site_index_stats()
+        patch_admin_site_sidebar_order()
 
         from django.db.models.signals import post_delete, post_save
         from django.dispatch import receiver

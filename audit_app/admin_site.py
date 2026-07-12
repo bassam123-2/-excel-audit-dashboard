@@ -6,6 +6,39 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 
+# Fixed admin sidebar order: auth → audit_app → accounts_app → others (alpha).
+ADMIN_SIDEBAR_APP_ORDER = ("auth", "audit_app", "accounts_app")
+
+
+def _sort_admin_app_list(app_list: list[dict]) -> list[dict]:
+    order = {label: index for index, label in enumerate(ADMIN_SIDEBAR_APP_ORDER)}
+
+    def sort_key(app: dict) -> tuple[int, str]:
+        label = str(app.get("app_label") or "")
+        if label in order:
+            return (0, str(order[label]).zfill(3))
+        return (1, label)
+
+    return sorted(app_list, key=sort_key)
+
+
+def patch_admin_site_sidebar_order() -> None:
+    """Keep sidebar sections in auth → Excel Audit → Accounts order."""
+
+    if getattr(admin.site, "_sidebar_order_patched", False):
+        return
+
+    original_get_app_list = admin.site.get_app_list
+
+    def get_app_list(request, app_label=None):
+        app_list = original_get_app_list(request, app_label=app_label)
+        if app_label is not None:
+            return app_list
+        return _sort_admin_app_list(app_list)
+
+    admin.site.get_app_list = get_app_list
+    admin.site._sidebar_order_patched = True
+
 
 def patch_admin_site_app_index() -> None:
     """Redirect /admin/<app_label>/ to the main admin dashboard."""
@@ -31,16 +64,11 @@ def patch_admin_site_index_stats() -> None:
     original_index = admin.site.index
 
     def index_with_stats(request, extra_context=None):
-        from django.contrib.auth import get_user_model
-
-        from audit_app.models import Company
+        from audit_app.admin_index_stats import build_admin_index_stat_groups
 
         extra_context = dict(extra_context or {})
-        extra_context["index_companies_count"] = Company.objects.filter(
-            is_deleted=False
-        ).count()
-        extra_context["index_users_count"] = (
-            get_user_model().objects.exclude(profile__is_deleted=True).count()
+        extra_context["index_stat_groups"] = build_admin_index_stat_groups(
+            request.user
         )
         return original_index(request, extra_context=extra_context)
 

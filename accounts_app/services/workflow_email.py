@@ -26,6 +26,7 @@ SUBMIT_KIND_LABELS = {
     "new": ("طلب جديد", "New submission"),
     "edit": ("تعديل مسودة", "Draft edit"),
     "resubmit": ("إعادة إرسال", "Resubmission"),
+    "return_to_review": ("إرجاع من منشورة", "Returned from published"),
 }
 
 

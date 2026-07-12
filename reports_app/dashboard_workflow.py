@@ -509,6 +509,19 @@ def reject_dashboard(dashboard: Dashboard, reviewer, reason: str) -> DashboardRe
     return log
 
 
+@transaction.atomic
+def return_published_to_review(dashboard: Dashboard, reviewer) -> None:
+    """Move a published dashboard back to pending approval/rejection."""
+    DashboardViewer.objects.filter(dashboard=dashboard).delete()
+    dashboard.status = DashboardStatus.UNDER_REVIEW
+    dashboard.published_at = None
+    dashboard.submitted_at = timezone.now()
+    dashboard.reviewed_by = reviewer
+    dashboard.save(
+        update_fields=["status", "published_at", "submitted_at", "reviewed_by"]
+    )
+
+
 def mark_dashboard_draft(dashboard: Dashboard) -> None:
     DashboardViewer.objects.filter(dashboard=dashboard).delete()
     dashboard.status = DashboardStatus.DRAFT
@@ -562,6 +575,32 @@ def can_user_review(user, dashboard: Dashboard, company: Company | None = None) 
     if company_v2:
         return dashboard.status in _REVIEWABLE_STATUSES
     return dashboard.status == DashboardStatus.DRAFT
+
+
+def can_user_return_published_to_review(
+    user,
+    dashboard: Dashboard,
+    company: Company | None = None,
+) -> bool:
+    """Reviewer may return a published dashboard to pending approval/rejection."""
+    active = company or dashboard.company
+    if not has_review_perm(user, active) or dashboard.is_deleted:
+        return False
+    if active is not None and dashboard.company_id != active.id and not user.is_superuser:
+        return False
+    if not _uses_v2(active):
+        return False
+    return dashboard.status == DashboardStatus.PUBLISHED
+
+
+def return_published_dashboard_to_review(
+    user,
+    dashboard: Dashboard,
+    company: Company | None = None,
+) -> None:
+    if not can_user_return_published_to_review(user, dashboard, company):
+        raise PermissionError("return_to_review_forbidden")
+    return_published_to_review(dashboard, reviewer=user)
 
 
 def can_user_manage_dashboard_viewers(

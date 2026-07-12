@@ -106,6 +106,18 @@ ATTACHMENT_SPECS: list[dict[str, str]] = [
         "zone_icon": "bi-file-earmark-person",
         "details_id": "specialAssignmentDeckDetails",
     },
+    {
+        "kind": "accApprovedMoM",
+        "source_key": "acc_approved_mom_decks",
+        "field_prefix": "acc_approved_mom_deck",
+        "file_stem_prefix": "acc_approved_mom_deck",
+        "ui_label": "upload_acc_approved_mom_label",
+        "ui_hint": "upload_acc_approved_mom_hint",
+        "ui_drop": "upload_acc_approved_mom_drop",
+        "summary_icon": "bi-journal-check",
+        "zone_icon": "bi-file-earmark-check",
+        "details_id": "accApprovedMoMDeckDetails",
+    },
 ]
 
 
@@ -530,6 +542,7 @@ def _attachment_path_kwargs(
         "missingVehicle": source_files.get("missing_vehicle_decks") or [],
         "internalAuditQuarterly": source_files.get("internal_audit_quarterly_decks") or [],
         "specialAssignment": source_files.get("special_assignment_decks") or [],
+        "accApprovedMoM": source_files.get("acc_approved_mom_decks") or [],
     }
     param_by_kind = {
         "deck": "attached_deck_path",
@@ -538,6 +551,7 @@ def _attachment_path_kwargs(
         "missingVehicle": "attached_missing_vehicle_deck_path",
         "internalAuditQuarterly": "attached_internal_audit_quarterly_deck_path",
         "specialAssignment": "attached_special_assignment_deck_path",
+        "accApprovedMoM": "attached_acc_approved_mom_deck_path",
     }
     kwargs: dict[str, str | None] = {}
     for kind, param in param_by_kind.items():
@@ -782,7 +796,7 @@ def store_upload_to_db(
     a Dashboard record.
 
     Deck/plan files (deck1, high_risk_deck1, tga_violations_deck1, missing_vehicle_deck1,
-    internal_audit_quarterly_deck1, special_assignment_deck1)
+    internal_audit_quarterly_deck1, special_assignment_deck1, acc_approved_mom_deck1)
     are saved to media/decks/<report_id>/
     and embedded in the dashboard HTML when it is generated on view.
 

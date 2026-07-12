@@ -17,11 +17,13 @@ from reports_app.dashboard_workflow import (
     available_dashboard_filters,
     can_user_delete_dashboard,
     can_user_manage_dashboard_viewers,
+    can_user_return_published_to_review,
     can_user_review,
     can_user_submit,
     dashboards_queryset_for_user,
     filter_dashboards_queryset,
     reject_dashboard,
+    return_published_dashboard_to_review,
     set_dashboard_viewers,
     submit_dashboard,
     user_can_see_dashboard,
@@ -216,3 +218,46 @@ class WorkflowV2Tests(TestCase):
         self.company.save(update_fields=["use_workflow_v2"])
         draft = self._dashboard()
         self.assertTrue(can_user_review(self.reviewer, draft, self.company))
+
+    def test_return_published_to_review(self):
+        dash = self._dashboard(status=DashboardStatus.PUBLISHED)
+        dash.submitted_at = dash.created_at
+        dash.published_at = dash.created_at
+        dash.save(update_fields=["submitted_at", "published_at"])
+        DashboardViewer.objects.create(
+            dashboard=dash,
+            user=self.viewer,
+            granted_by=self.assigner,
+        )
+        self.assertTrue(
+            can_user_return_published_to_review(self.reviewer, dash, self.company)
+        )
+        return_published_dashboard_to_review(self.reviewer, dash, self.company)
+        dash.refresh_from_db()
+        self.assertEqual(dash.status, DashboardStatus.UNDER_REVIEW)
+        self.assertIsNone(dash.published_at)
+        self.assertIsNotNone(dash.submitted_at)
+        self.assertFalse(DashboardViewer.objects.filter(dashboard=dash).exists())
+        self.assertFalse(user_can_see_dashboard(self.viewer, dash, self.company))
+
+        qs = dashboards_queryset_for_user(self.reviewer, self.company)
+        filtered = filter_dashboards_queryset(
+            qs, self.reviewer, self.company, FILTER_PENDING_REVIEW
+        )
+        self.assertIn(dash.pk, set(filtered.values_list("pk", flat=True)))
+
+    def test_return_published_to_review_forbidden_for_viewer(self):
+        published = self._dashboard(status=DashboardStatus.PUBLISHED)
+        self.assertFalse(
+            can_user_return_published_to_review(self.viewer, published, self.company)
+        )
+
+    def test_return_published_to_review_endpoint(self):
+        dash = self._dashboard(status=DashboardStatus.PUBLISHED)
+        client = Client()
+        client.post("/login/", {"username": "wf_reviewer", "password": "Test@1234"})
+        client.post("/select-company/", {"company_id": self.company.pk})
+        response = client.post(f"/dashboards/{dash.pk}/return-to-review/")
+        self.assertEqual(response.status_code, 302)
+        dash.refresh_from_db()
+        self.assertEqual(dash.status, DashboardStatus.UNDER_REVIEW)

@@ -26,6 +26,7 @@ ATTACHMENT_KIND_CHOICES = [
     ("missingVehicle", _("Missing Vehicle Report")),
     ("internalAuditQuarterly", _("Internal Audit Quarterly Report")),
     ("specialAssignment", _("Special Assignment Report")),
+    ("accApprovedMoM", _("ACC Aproved MoM")),
 ]
 
 ATTACHMENT_KIND_CODES = [code for code, _ in ATTACHMENT_KIND_CHOICES]

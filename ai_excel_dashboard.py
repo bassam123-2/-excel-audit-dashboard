@@ -44,6 +44,7 @@ ALL_ATTACHMENT_KINDS = frozenset(
         "missingVehicle",
         "internalAuditQuarterly",
         "specialAssignment",
+        "accApprovedMoM",
     }
 )
 _ATTACHMENT_TOGGLE_SPECS = (
@@ -57,6 +58,7 @@ _ATTACHMENT_TOGGLE_SPECS = (
         "audit-internal-audit-quarterly-label",
     ),
     ("specialAssignment", "audit-special-assignment-cb", "audit-special-assignment-label"),
+    ("accApprovedMoM", "audit-acc-approved-mom-cb", "audit-acc-approved-mom-label"),
 )
 # Injected into generated HTML; replaced with Django API URLs via report_generation.inject_web_mail_api.
 _MAIL_API_MARKER = "window.__AI_EXCEL_MAIL_API__=null;"
@@ -1480,6 +1482,9 @@ def build_audit_observation_payload(
                     "specialAssignmentToggleLabel": tr("en", "audit_special_assignment_toggle_label"),
                     "specialAssignmentUploadTitle": tr("en", "audit_special_assignment_upload_title"),
                     "specialAssignmentUploadHint": tr("en", "audit_special_assignment_upload_hint"),
+                    "accApprovedMoMToggleLabel": tr("en", "audit_acc_approved_mom_toggle_label"),
+                    "accApprovedMoMUploadTitle": tr("en", "audit_acc_approved_mom_upload_title"),
+                    "accApprovedMoMUploadHint": tr("en", "audit_acc_approved_mom_upload_hint"),
                 }
                 if loc == "en"
                 else {}
@@ -2149,6 +2154,8 @@ def generate_finance_report(
     embedded_internal_audit_quarterly_decks_by_company_path: dict[str, str] | None = None,
     attached_special_assignment_deck_path: str | None = None,
     embedded_special_assignment_decks_by_company_path: dict[str, str] | None = None,
+    attached_acc_approved_mom_deck_path: str | None = None,
+    embedded_acc_approved_mom_decks_by_company_path: dict[str, str] | None = None,
     allow_multiple_audit_companies: bool = False,
     enabled_attachment_kinds: set[str] | frozenset[str] | None = None,
     company_entity=None,
@@ -2366,6 +2373,14 @@ def generate_finance_report(
             )
             if sa_embedded:
                 chart_payload["embedded_special_assignment_slide_deck"] = sa_embedded
+        if "accApprovedMoM" in enabled_kinds:
+            acc_mom_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_acc_approved_mom_deck_path,
+                by_company_paths=embedded_acc_approved_mom_decks_by_company_path,
+                locale=loc,
+            )
+            if acc_mom_embedded:
+                chart_payload["embedded_acc_approved_mom_slide_deck"] = acc_mom_embedded
     logo_catalog = build_company_logo_catalog(company_entity)
     chart_payload["brand_logo_catalog"] = logo_catalog
 
@@ -3548,6 +3563,7 @@ def generate_finance_report(
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-missing-vehicle-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-internal-audit-quarterly-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-special-assignment-cb,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-acc-approved-mom-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-additional-notes-cb {{
       -webkit-appearance: none;
       appearance: none;
@@ -3573,6 +3589,7 @@ def generate_finance_report(
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-missing-vehicle-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-internal-audit-quarterly-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-special-assignment-cb:checked,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-acc-approved-mom-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-additional-notes-cb:checked {{
       border-radius: 0 !important;
       -webkit-border-radius: 0;
@@ -3585,6 +3602,7 @@ def generate_finance_report(
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-missing-vehicle-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-internal-audit-quarterly-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-special-assignment-cb:focus-visible),
+    .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-acc-approved-mom-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-additional-notes-cb:focus-visible) {{
       box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45);
     }}
@@ -6592,13 +6610,15 @@ def generate_finance_report(
       const internalAuditQuarterlyLbl = document.getElementById("audit-internal-audit-quarterly-label");
       const specialAssignmentCb = document.getElementById("audit-special-assignment-cb");
       const specialAssignmentLbl = document.getElementById("audit-special-assignment-label");
+      const accApprovedMoMCb = document.getElementById("audit-acc-approved-mom-cb");
+      const accApprovedMoMLbl = document.getElementById("audit-acc-approved-mom-label");
       const deckUploadLayer = document.getElementById("audit-deck-upload-layer");
       const deckUploadLayerTitle = document.getElementById("audit-deck-upload-layer-title");
       const deckUploadLayerHint = document.getElementById("audit-deck-upload-layer-hint");
       const deckUploadLayerBrowse = document.getElementById("audit-deck-upload-layer-browse");
       let deckPanelMode = "committee";
-      const deckFilesByMode = {{ committee: null, highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null }};
-      const deckAttachToggles = [deckAttachCb, highRiskCb, tgaViolationsCb, missingVehicleCb, internalAuditQuarterlyCb, specialAssignmentCb];
+      const deckFilesByMode = {{ committee: null, highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null, accApprovedMoM: null }};
+      const deckAttachToggles = [deckAttachCb, highRiskCb, tgaViolationsCb, missingVehicleCb, internalAuditQuarterlyCb, specialAssignmentCb, accApprovedMoMCb];
       const deckBackdrop = document.getElementById("audit-deck-backdrop");
       const deckModal = document.getElementById("audit-deck-modal");
       const deckModalClose = document.getElementById("audit-deck-modal-close");
@@ -6620,7 +6640,7 @@ def generate_finance_report(
       let deckBlobUrls = [];
       let deckLastFile = null;
       let embeddedDeckLoadSig = null;
-      const embeddedAltDeckLoadSig = {{ highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null }};
+      const embeddedAltDeckLoadSig = {{ highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null, accApprovedMoM: null }};
       let deckLastObjectUrl = null;
       let deckPptxViewer = null;
       let deckPptxSvgViewer = null;
@@ -8390,6 +8410,7 @@ def generate_finance_report(
       if (missingVehicleLbl) missingVehicleLbl.textContent = ui.missingVehicleToggleLabel || "Missing Vehicle Report";
       if (internalAuditQuarterlyLbl) internalAuditQuarterlyLbl.textContent = ui.internalAuditQuarterlyToggleLabel || "Internal Audit Quarterly Report";
       if (specialAssignmentLbl) specialAssignmentLbl.textContent = ui.specialAssignmentToggleLabel || "Special Assignment Report";
+      if (accApprovedMoMLbl) accApprovedMoMLbl.textContent = ui.accApprovedMoMToggleLabel || "ACC Aproved MoM";
       if (deckUploadLayerTitle) {{
         deckUploadLayerTitle.textContent = ui.deckUploadTitle || "Upload document";
       }}
@@ -8436,6 +8457,12 @@ def generate_finance_report(
           uploadTitle: function () {{ return ui.specialAssignmentUploadTitle || ui.deckUploadTitle || "Upload document"; }},
           uploadHint: function () {{ return ui.specialAssignmentUploadHint || ui.deckUploadHint || ""; }},
         }},
+        accApprovedMoM: {{
+          title: function () {{ return ui.accApprovedMoMToggleLabel || "ACC Aproved MoM"; }},
+          hint: function () {{ return ui.accApprovedMoMUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.accApprovedMoMUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.accApprovedMoMUploadHint || ui.deckUploadHint || ""; }},
+        }},
       }};
       function deckIsAltMode(mode) {{
         const m = mode != null ? mode : deckPanelMode;
@@ -8450,6 +8477,7 @@ def generate_finance_report(
         if (mode === "missingVehicle") return payload.embedded_missing_vehicle_slide_deck;
         if (mode === "internalAuditQuarterly") return payload.embedded_internal_audit_quarterly_slide_deck;
         if (mode === "specialAssignment") return payload.embedded_special_assignment_slide_deck;
+        if (mode === "accApprovedMoM") return payload.embedded_acc_approved_mom_slide_deck;
         return null;
       }}
       function deckUncheckOtherAttachToggles(activeCb) {{
@@ -8629,6 +8657,7 @@ def generate_finance_report(
           : mode === "missingVehicle" ? "missing-vehicle-report.pptx"
           : mode === "internalAuditQuarterly" ? "internal-audit-quarterly-report.pptx"
           : mode === "specialAssignment" ? "special-assignment-report.pptx"
+          : mode === "accApprovedMoM" ? "acc-approved-mom.pptx"
           : "slides.pptx";
         return loadEmbeddedDeckBundleEntry(entry, defaultName);
       }}
@@ -8640,6 +8669,7 @@ def generate_finance_report(
           missingVehicle: missingVehicleCb,
           internalAuditQuarterly: internalAuditQuarterlyCb,
           specialAssignment: specialAssignmentCb,
+          accApprovedMoM: accApprovedMoMCb,
         }};
         const cb = cbByMode[deckPanelMode];
         if (!cb || !cb.checked) return;
@@ -9697,6 +9727,7 @@ def generate_finance_report(
         if (missingVehicleCb) missingVehicleCb.checked = false;
         if (internalAuditQuarterlyCb) internalAuditQuarterlyCb.checked = false;
         if (specialAssignmentCb) specialAssignmentCb.checked = false;
+        if (accApprovedMoMCb) accApprovedMoMCb.checked = false;
         if (deckFileInput) deckFileInput.value = "";
         deckSetUploadFirstMode(false);
         deckClearViewer();
@@ -9828,6 +9859,7 @@ def generate_finance_report(
       const missingVehicleDeckSyncPanel = makeAltDeckSyncPanel(missingVehicleCb, "missingVehicle");
       const internalAuditQuarterlyDeckSyncPanel = makeAltDeckSyncPanel(internalAuditQuarterlyCb, "internalAuditQuarterly");
       const specialAssignmentDeckSyncPanel = makeAltDeckSyncPanel(specialAssignmentCb, "specialAssignment");
+      const accApprovedMoMDeckSyncPanel = makeAltDeckSyncPanel(accApprovedMoMCb, "accApprovedMoM");
       function deckShowPdf(file) {{
         if (!deckPdfFrame) return;
         deckDestroyPptxViewer();
@@ -9904,6 +9936,7 @@ def generate_finance_report(
       bindAltDeckToggle(missingVehicleCb, missingVehicleDeckSyncPanel);
       bindAltDeckToggle(internalAuditQuarterlyCb, internalAuditQuarterlyDeckSyncPanel);
       bindAltDeckToggle(specialAssignmentCb, specialAssignmentDeckSyncPanel);
+      bindAltDeckToggle(accApprovedMoMCb, accApprovedMoMDeckSyncPanel);
       if (deckMissingOk) deckMissingOk.addEventListener("click", deckCloseNoAttachmentNotice);
       if (deckMissingBackdrop) deckMissingBackdrop.addEventListener("click", deckCloseNoAttachmentNotice);
       document.addEventListener("keydown", function (ev) {{

@@ -542,6 +542,21 @@ msgstr "ابحث برمز الشركة أو الاسم…"
 msgid "Total companies"
 msgstr "إجمالي الشركات"
 
+msgid "Active main companies"
+msgstr "الشركات الرئيسية النشطة"
+
+msgid "Active subsidiaries"
+msgstr "الشركات التابعة النشطة"
+
+msgid "Inactive users"
+msgstr "المستخدمون غير النشطين"
+
+msgid "Users without 2FA"
+msgstr "مستخدمون بدون مصادقة ثنائية"
+
+msgid "Users"
+msgstr "المستخدمون"
+
 #: .\audit_app\admin.py:1175
 msgid "Main companies"
 msgstr "الشركات الرئيسية"
@@ -1046,6 +1061,10 @@ msgstr "إزالة %(name)s"
 msgid "Excel Audit"
 msgstr "تدقيق Excel"
 
+#: .\accounts_app\apps.py:10
+msgid "Authentication & Accounts"
+msgstr "المصادقة والحسابات"
+
 #: .\audit_app\company_access.py:275
 msgid "(none registered)"
 msgstr "(لا يوجد مسجّل)"
@@ -1081,6 +1100,10 @@ msgstr "تقرير التدقيق الداخلي الربع سنوي"
 #: .\audit_app\models.py:23
 msgid "Special Assignment Report"
 msgstr "تقرير المهمة الخاصة"
+
+#: .\audit_app\models.py:24
+msgid "ACC Aproved MoM"
+msgstr "ACC Aproved MoM"
 
 #: .\audit_app\models.py:48 .\audit_app\models.py:515
 msgid "Deleted by"

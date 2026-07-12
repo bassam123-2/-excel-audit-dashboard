@@ -41,6 +41,7 @@ from .dashboard_workflow import (
     can_user_manage_dashboard_viewers,
     can_user_manage_review_attachments,
     can_user_resubmit,
+    can_user_return_published_to_review,
     can_user_review,
     can_user_save_dashboard_user_edits,
     can_user_submit,
@@ -56,6 +57,7 @@ from .dashboard_workflow import (
     has_dashboard_list_perm,
     load_dashboard_cross_company,
     reject_dashboard,
+    return_published_dashboard_to_review,
     set_dashboard_viewers,
     soft_delete_dashboard,
     submit_dashboard,
@@ -503,6 +505,11 @@ def dashboard_list(request):
         for dashboard in dashboards
         if can_user_manage_dashboard_viewers(request.user, dashboard, company)
     }
+    returnable_dashboard_ids = {
+        dashboard.pk
+        for dashboard in dashboards
+        if can_user_return_published_to_review(request.user, dashboard, company)
+    }
     undo_deleted_pk = None
     undo_deleted_name = ""
     return render(
@@ -512,6 +519,7 @@ def dashboard_list(request):
             "dashboards": dashboards,
             "deletable_dashboard_ids": deletable_dashboard_ids,
             "manageable_viewer_dashboard_ids": manageable_viewer_dashboard_ids,
+            "returnable_dashboard_ids": returnable_dashboard_ids,
             "can_review_dashboards": has_review_perm(
                 request.user, company
             ),
@@ -549,6 +557,9 @@ def dashboard_detail(request, pk: int):
             "can_resubmit": can_user_resubmit(request.user, dashboard, company),
             "can_submit_for_review": can_user_submit(request.user, dashboard, company),
             "can_approve_reject": can_user_review(request.user, dashboard, company),
+            "can_return_to_review": can_user_return_published_to_review(
+                request.user, dashboard, company
+            ),
             "can_manage_review_attachments": can_manage_review_attachments,
             "review_attachment_slots": (
                 build_attachment_form_slots(dashboard, locale=request.session.get("ui_lang", "en"), company=company)
@@ -817,6 +828,54 @@ def dashboard_reject(request, pk: int):
         )
     except Exception:
         logger.exception("Failed to send rejection notification for dashboard %s", dashboard.pk)
+
+    return redirect("dashboard_list")
+
+
+@login_required
+@require_http_methods(["POST"])
+def dashboard_return_to_review(request, pk: int):
+    lang = request.session.get("ui_lang", "en")
+    ui = get_ui(lang)
+    dashboard = _resolve_dashboard_request(request, pk)
+    if not dashboard:
+        messages.error(request, ui.get("wf_dashboard_not_found", "Dashboard not found."))
+        return redirect("dashboard_list")
+
+    company = _active_company(request)
+    if not can_user_return_published_to_review(request.user, dashboard, company):
+        messages.error(
+            request,
+            ui.get(
+                "wf_return_to_review_forbidden",
+                "You cannot return this dashboard to review.",
+            ),
+        )
+        return redirect("dashboard_detail", pk=pk)
+
+    return_published_dashboard_to_review(request.user, dashboard, company)
+    _clear_dashboard_html_cache(dashboard)
+    messages.success(
+        request,
+        ui.get(
+            "wf_return_to_review_success",
+            "Dashboard returned to pending review.",
+        ),
+    )
+
+    from accounts_app.services.workflow_email import notify_reviewers_pending
+
+    try:
+        notify_reviewers_pending(
+            dashboard,
+            base_url=request.build_absolute_uri("/"),
+            submit_kind="return_to_review",
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send return-to-review notification for dashboard %s",
+            dashboard.pk,
+        )
 
     return redirect("dashboard_list")
 

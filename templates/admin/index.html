@@ -22,24 +22,26 @@
   </header>
 
   <section class="admin-index-v2__stats" aria-label="{% translate 'Summary' %}">
-    <article class="admin-index-v2__stat-card admin-index-v2__stat-card--companies">
-      <div class="admin-index-v2__stat-icon" aria-hidden="true">
-        <i class="bi bi-building-fill"></i>
+    {% for group in index_stat_groups %}
+    <article class="admin-index-v2__stat-group admin-index-v2__stat-group--{{ group.tone }}">
+      <div class="admin-index-v2__stat-group-head">
+        <div class="admin-index-v2__stat-icon" aria-hidden="true">
+          <i class="bi {{ group.icon }}"></i>
+        </div>
+        <h2 class="admin-index-v2__stat-group-title">{{ group.title }}</h2>
       </div>
-      <div class="admin-index-v2__stat-body">
-        <p class="admin-index-v2__stat-label">{% translate "Total companies" %}</p>
-        <p class="admin-index-v2__stat-value">{{ index_companies_count }}</p>
-      </div>
+      <ul class="admin-index-v2__stat-list">
+        {% for item in group.items %}
+        <li>
+          <a class="admin-index-v2__stat-row" href="{{ item.url }}">
+            <span class="admin-index-v2__stat-row-label">{{ item.label }}</span>
+            <span class="admin-index-v2__stat-row-value">{{ item.value }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
     </article>
-    <article class="admin-index-v2__stat-card admin-index-v2__stat-card--users">
-      <div class="admin-index-v2__stat-icon" aria-hidden="true">
-        <i class="bi bi-people-fill"></i>
-      </div>
-      <div class="admin-index-v2__stat-body">
-        <p class="admin-index-v2__stat-label">{% translate "Total users" %}</p>
-        <p class="admin-index-v2__stat-value">{{ index_users_count }}</p>
-      </div>
-    </article>
+    {% endfor %}
   </section>
 </div>
 {% endblock %}

@@ -57,6 +57,12 @@
             <i class="bi bi-send-fill"></i> {{ ui.wf_submit_btn }}
         </button>
         {% endif %}
+        {% if can_return_to_review and dashboard.status == "published" %}
+        <button type="button" class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1"
+                data-bs-toggle="modal" data-bs-target="#returnToReviewModal">
+            <i class="bi bi-arrow-counterclockwise"></i> {{ ui.wf_return_to_review_btn }}
+        </button>
+        {% endif %}
         {% if can_approve_reject and dashboard.status == "under_review" %}
         <button type="button" class="btn btn-sm btn-success d-flex align-items-center gap-1"
                 data-bs-toggle="modal" data-bs-target="#approveModal">
@@ -107,6 +113,30 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
                     <button type="submit" class="btn btn-info">{{ ui.wf_submit_submit }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if can_return_to_review and dashboard.status == "published" %}
+<div class="modal fade" id="returnToReviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{% url 'dashboard_return_to_review' dashboard.pk %}" id="returnToReviewDetailForm">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-arrow-counterclockwise me-1 text-warning"></i>{{ ui.wf_return_to_review_title }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ ui.wf_cancel }}"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fw-semibold mb-2">{{ dashboard.name }}</p>
+                    <p class="mb-0">{{ ui.wf_return_to_review_confirm }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
+                    <button type="submit" class="btn btn-warning">{{ ui.wf_return_to_review_submit }}</button>
                 </div>
             </form>
         </div>
@@ -275,6 +305,14 @@
     if (approveForm) {
         approveForm.addEventListener('submit', function () {
             var btn = approveForm.querySelector('button[type="submit"]');
+            if (btn) btn.disabled = true;
+        });
+    }
+
+    var returnToReviewForm = document.getElementById('returnToReviewDetailForm');
+    if (returnToReviewForm) {
+        returnToReviewForm.addEventListener('submit', function () {
+            var btn = returnToReviewForm.querySelector('button[type="submit"]');
             if (btn) btn.disabled = true;
         });
     }
