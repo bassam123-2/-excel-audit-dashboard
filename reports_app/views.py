@@ -720,7 +720,8 @@ def dashboard_serve(request, pk: int):
             dashboard.html_file = f"dashboards/{cache_filename}"
             dashboard.save(update_fields=["html_file"])
 
-        resp = HttpResponse(html_out, content_type="text/html; charset=utf-8")
+        content = _inject_served_dashboard_html(request, dashboard, html_out)
+        resp = HttpResponse(content, content_type="text/html; charset=utf-8")
         resp["X-Frame-Options"] = "SAMEORIGIN"
         return resp
 

@@ -267,6 +267,41 @@ def inject_dashboard_serve_context(
         return h
 
 
+def _format_plan_pct_cell(value) -> str:
+    """Normalize audit-plan percentage cells to a display value like 50%."""
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        n = float(value)
+        if n > 0 and n <= 1:
+            n *= 100
+        rounded = round(n, 2)
+        disp = str(int(rounded)) if rounded == int(rounded) else str(rounded)
+        return f"{disp}%"
+    s = str(value).strip()
+    if not s:
+        return ""
+    if "%" in s:
+        m = re.match(r"^([\d.,]+)\s*%?\s*$", s)
+        if m:
+            num = float(m.group(1).replace(",", "."))
+            if num > 0 and num <= 1:
+                num *= 100
+            rounded = round(num, 2)
+            disp = str(int(rounded)) if rounded == int(rounded) else str(rounded)
+            return f"{disp}%"
+        return re.sub(r"\s+", "", s)
+    m2 = re.match(r"^([\d.,]+)$", s)
+    if m2:
+        num = float(m2.group(1).replace(",", "."))
+        if num > 0 and num <= 1:
+            num *= 100
+        rounded = round(num, 2)
+        disp = str(int(rounded)) if rounded == int(rounded) else str(rounded)
+        return f"{disp}%"
+    return s
+
+
 def validate_dashboard_user_edits_payload(data: dict) -> dict:
     """Normalize client audit-plan persistence payload."""
     if not isinstance(data, dict):
@@ -282,6 +317,8 @@ def validate_dashboard_user_edits_payload(data: dict) -> dict:
         cells = [str(c if c is not None else "").strip() for c in row[:7]]
         while len(cells) < 7:
             cells.append("")
+        for idx in (4, 5, 6):
+            cells[idx] = _format_plan_pct_cell(cells[idx])
         plan_rows_out.append(cells)
 
     plan_bg_out: list[list[str]] = []

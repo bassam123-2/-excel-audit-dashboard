@@ -1410,7 +1410,6 @@ def build_audit_observation_payload(
             "planUploadFile": tr(loc, "audit_plan_upload_file"),
             "planAddRow": tr(loc, "audit_plan_add_row"),
             "planColColorsLabel": tr(loc, "audit_plan_col_colors_label"),
-            "planColColorsReset": tr(loc, "audit_plan_col_colors_reset"),
             "planCellColorsHint": tr(loc, "audit_plan_cell_colors_hint"),
             "planCellFillLabel": tr(loc, "audit_plan_cell_fill_label"),
             "planClearAllDataLabel": tr(loc, "audit_plan_clear_all_data"),
@@ -1421,6 +1420,7 @@ def build_audit_observation_payload(
             "planUploadNoRows": tr(loc, "audit_plan_upload_no_rows"),
             "planUploadPptxFail": tr(loc, "audit_plan_upload_pptx_fail"),
             "planSaveSuccess": tr(loc, "audit_plan_save_success"),
+            "planApplySuccess": tr(loc, "audit_plan_apply_success"),
             "planSaveFailed": tr(loc, "audit_plan_save_failed"),
             "companyLabel": tr(loc, "audit_company_label"),
             "subcompanyLabel": tr(loc, "audit_subcompany_label"),
@@ -4872,20 +4872,6 @@ def generate_finance_report(
       outline: 2px solid #0f172a;
       outline-offset: -2px;
     }}
-    .audit-plan-clear-all-wrap {{
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      cursor: pointer;
-      font-size: 0.78rem;
-      font-weight: 600;
-      color: var(--text);
-      user-select: none;
-    }}
-    .audit-plan-clear-all-wrap input {{
-      accent-color: #166534;
-      cursor: pointer;
-    }}
     .audit-plan-save-toast {{
       position: absolute;
       top: 0.72rem;
@@ -5913,14 +5899,10 @@ def generate_finance_report(
           <div class="audit-plan-toolbar" style="display:flex;justify-content:space-between;gap:0.45rem;align-items:center;margin-bottom:0.55rem;flex-wrap:wrap;">
             <div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;">
             <button type="button" class="nav-btn audit-plan-add-row-btn" id="audit-plan-add-row"></button>
-            <label class="audit-plan-clear-all-wrap" id="audit-plan-clear-all-wrap">
-              <input type="checkbox" id="audit-plan-clear-all-cb" />
-              <span id="audit-plan-clear-all-label"></span>
-            </label>
             </div>
             <div style="display:flex;gap:0.45rem;align-items:center;flex-wrap:wrap;">
               <button type="button" class="nav-btn" id="audit-plan-upload-btn"></button>
-              <input type="file" id="audit-plan-upload-file" accept=".csv,.xlsx,.xls,.xlsm,.json,.pptx" style="display:none" aria-hidden="true" />
+              <input type="file" id="audit-plan-upload-file" accept=".xlsx,.xls,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none" aria-hidden="true" />
               <button type="button" class="nav-btn" id="audit-plan-download-ppt"></button>
             </div>
           </div>
@@ -6414,7 +6396,9 @@ def generate_finance_report(
           return false;
         }}
       }}
-      function saveUserEditsToServer() {{
+      function saveUserEditsToServer(opts) {{
+        opts = opts || {{}};
+        const successMsg = opts.successMsg || ui.planSaveSuccess || "Changes saved";
         if (!canSaveUserEditsToServer()) return Promise.resolve(false);
         const url = window.__AI_EXCEL_USER_EDITS_SAVE_URL__;
         if (userEditsSaveInFlight) {{
@@ -6446,7 +6430,7 @@ def generate_finance_report(
             }}
             return resp.json().then(function (j) {{
               const ok = !!(j && j.ok);
-              if (ok) showPlanSaveToast(ui.planSaveSuccess || "Changes saved", false);
+              if (ok) showPlanSaveToast(successMsg, false);
               else showPlanSaveToast(ui.planSaveFailed || "Could not save changes", true);
               return ok;
             }}).catch(function () {{
@@ -6595,9 +6579,6 @@ def generate_finance_report(
       const planCellColorInput = document.getElementById("audit-plan-cell-color");
       const planCellApplyBtn = document.getElementById("audit-plan-cell-apply");
       const planColResetBtn = document.getElementById("audit-plan-col-reset");
-      const planClearAllCb = document.getElementById("audit-plan-clear-all-cb");
-      const planClearAllLabel = document.getElementById("audit-plan-clear-all-label");
-      const planClearAllWrap = document.getElementById("audit-plan-clear-all-wrap");
       const deckAttachCb = document.getElementById("audit-deck-attach-cb");
       const deckAttachLbl = document.getElementById("audit-deck-attach-label");
       const highRiskCb = document.getElementById("audit-high-risk-cb");
@@ -7278,7 +7259,7 @@ def generate_finance_report(
             planDraftRows = o.planRows.map(function (r) {{
               const row = Array.isArray(r) ? r.slice(0, 7) : [];
               while (row.length < 7) row.push("");
-              return row.map(function (c) {{ return String(c != null ? c : ""); }});
+              return formatPlanPctInRow(row.map(function (c) {{ return String(c != null ? c : ""); }}));
             }});
           }}
           if (Array.isArray(o.planCellBg) && o.planCellBg.length) {{
@@ -7630,6 +7611,64 @@ def generate_finance_report(
           .replace(/\\s+/g, " ")
           .trim();
       }}
+      function formatPlanPctCell(value) {{
+        if (value == null || value === "") return "";
+        if (typeof value === "number" && Number.isFinite(value)) {{
+          let n = value;
+          if (n > 0 && n <= 1) n = n * 100;
+          const rounded = Math.round(n * 100) / 100;
+          const disp = (rounded % 1 === 0) ? String(Math.round(rounded)) : String(rounded);
+          return disp + "%";
+        }}
+        let s = String(value).trim();
+        if (!s) return "";
+        if (/%/.test(s)) {{
+          const m = s.match(/^([\\d.,]+)\\s*%?\\s*$/);
+          if (m) {{
+            let num = parseFloat(m[1].replace(/,/g, "."));
+            if (Number.isFinite(num)) {{
+              if (num > 0 && num <= 1) num = num * 100;
+              const rounded = Math.round(num * 100) / 100;
+              const disp = (rounded % 1 === 0) ? String(Math.round(rounded)) : String(rounded);
+              return disp + "%";
+            }}
+          }}
+          return s.replace(/\\s+/g, "");
+        }}
+        const m2 = s.match(/^([\\d.,]+)$/);
+        if (m2) {{
+          let num = parseFloat(m2[1].replace(/,/g, "."));
+          if (!Number.isFinite(num)) return s;
+          if (num > 0 && num <= 1) num = num * 100;
+          const rounded = Math.round(num * 100) / 100;
+          const disp = (rounded % 1 === 0) ? String(Math.round(rounded)) : String(rounded);
+          return disp + "%";
+        }}
+        return s;
+      }}
+      function formatPlanPctInRow(row) {{
+        const r = Array.isArray(row) ? row.slice(0, 7) : [];
+        while (r.length < 7) r.push("");
+        for (let i = 4; i < 7; i++) r[i] = formatPlanPctCell(r[i]);
+        return r;
+      }}
+      function formatPlanPctInRows(rows) {{
+        return (rows || []).map(formatPlanPctInRow);
+      }}
+      function applyPlanPanelChanges() {{
+        try {{ capturePlanDraftRows(); }} catch (_pc) {{}}
+        planDraftRows = formatPlanPctInRows(planDraftRows);
+        renderPlanStatusTable();
+        try {{
+          writeAuditPersistScript(planDraftRows || [], planCellBgHex || [], snapshotReviewsForExport());
+        }} catch (_w) {{}}
+        const applyMsg = ui.planApplySuccess || ui.planSaveSuccess || "Applied successfully";
+        if (canSaveUserEditsToServer()) {{
+          saveUserEditsToServer({{ successMsg: applyMsg }});
+        }} else {{
+          showPlanSaveToast(applyMsg, false);
+        }}
+      }}
       function planPositionalValues(rec) {{
         if (!rec || typeof rec !== "object") return [];
         if (Array.isArray(rec)) return rec.slice(0, 7);
@@ -7677,7 +7716,7 @@ def generate_finance_report(
             mapped[i] = String(pos[i]);
           }}
         }}
-        return mapped;
+        return formatPlanPctInRow(mapped);
       }}
       function matrixToPlanRecords(matrix) {{
         if (!matrix || !matrix.length) return [];
@@ -7711,7 +7750,7 @@ def generate_finance_report(
           return r.some(function (x) {{ return String(x).trim() !== ""; }});
         }});
         if (!rows.length) return false;
-        planDraftRows = rows;
+        planDraftRows = formatPlanPctInRows(rows);
         planCellBgHex = [];
         planSelectedCell = null;
         renderPlanStatusTable();
@@ -8040,9 +8079,7 @@ def generate_finance_report(
         }}
         if (planCellApplyBtn) {{
           planCellApplyBtn.addEventListener("click", function () {{
-            try {{ capturePlanDraftRows(); }} catch (_pc) {{}}
-            applyPickedColor();
-            saveUserEditsToServer();
+            applyPlanPanelChanges();
           }});
         }}
       }}
@@ -8100,9 +8137,7 @@ def generate_finance_report(
         ensurePlanCellMatrix(minPlanRows);
         planSelectedCell = null;
         renderPlanStatusTable();
-        try {{
-          writeAuditPersistScript(planDraftRows || [], planCellBgHex || [], snapshotReviewsForExport());
-        }} catch (_w) {{}}
+        try {{ persistAuditUserEdits(); }} catch (_w) {{}}
       }}
       function closePlanStatus() {{
         if (planBackdrop) {{
@@ -8234,16 +8269,6 @@ def generate_finance_report(
         if (ui.planUploadFile) planUploadBtn.setAttribute("aria-label", ui.planUploadFile);
       }}
       if (planAddRowBtn) planAddRowBtn.textContent = ui.planAddRow || "Add row";
-      if (planClearAllLabel) planClearAllLabel.textContent = ui.planClearAllDataLabel || "Clear all table data";
-      if (planClearAllCb && ui.planClearAllDataAria) planClearAllCb.setAttribute("aria-label", ui.planClearAllDataAria);
-      if (planClearAllWrap && ui.planClearAllDataAria) planClearAllWrap.setAttribute("title", ui.planClearAllDataAria);
-      if (planClearAllCb) {{
-        planClearAllCb.addEventListener("change", function () {{
-          if (!planClearAllCb.checked) return;
-          clearAllPlanTableData();
-          planClearAllCb.checked = false;
-        }});
-      }}
       const brandCoReopenBtn = document.getElementById("brand-company-filter-reopen");
       if (brandCoReopenBtn && !brandCoReopenBtn.getAttribute("data-wired")) {{
         brandCoReopenBtn.setAttribute("data-wired", "1");
@@ -8269,16 +8294,13 @@ def generate_finance_report(
       }}
       if (planColortoolsLabel) planColortoolsLabel.textContent = ui.planColColorsLabel || "Cell colors";
       if (planColResetBtn) {{
-        planColResetBtn.textContent = ui.planColColorsReset || "Reset";
+        planColResetBtn.textContent = ui.planClearAllDataLabel || "Clear all table data";
+        if (ui.planClearAllDataAria) {{
+          planColResetBtn.setAttribute("aria-label", ui.planClearAllDataAria);
+          planColResetBtn.setAttribute("title", ui.planClearAllDataAria);
+        }}
         planColResetBtn.addEventListener("click", function () {{
-          let n = 8;
-          if (planBodyRows) n = Math.max(8, planBodyRows.querySelectorAll("tr").length);
-          else if (planCellBgHex.length) n = planCellBgHex.length;
-          planCellBgHex = [];
-          ensurePlanCellMatrix(n);
-          applyPlanCellStyles();
-          syncPlanCellPickerState();
-          syncPlanPaletteSelection("#ffffff");
+          clearAllPlanTableData();
         }});
       }}
       initPlanCellColorToolsOnce();

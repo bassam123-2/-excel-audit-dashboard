@@ -18,7 +18,6 @@ from reports_app.services.report_generation import (
     validate_dashboard_user_edits_payload,
 )
 
-
 class AuditPlanUserEditsTests(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(
@@ -60,6 +59,21 @@ class AuditPlanUserEditsTests(TestCase):
         self.assertEqual(payload["planCellBg"][0][0], "#ff0000")
         self.assertEqual(payload["planCellBg"][0][1], "#ffffff")
         self.assertEqual(payload["reviewsNote"], "note")
+
+    def test_validate_dashboard_user_edits_payload_formats_percent_columns(self):
+        payload = validate_dashboard_user_edits_payload(
+            {
+                "v": 1,
+                "planRows": [
+                    ["Project", "Finance", "Bob", "Open", 0.5, "0.25", "75"],
+                ],
+                "planCellBg": [],
+                "reviewsNote": "",
+            }
+        )
+        self.assertEqual(payload["planRows"][0][4], "50%")
+        self.assertEqual(payload["planRows"][0][5], "25%")
+        self.assertEqual(payload["planRows"][0][6], "75%")
 
     def test_inject_user_edits_persist_script_inserts_json_block(self):
         html = "<html><body><div>ok</div></body></html>"
