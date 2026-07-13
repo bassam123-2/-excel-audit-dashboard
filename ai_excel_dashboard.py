@@ -11328,17 +11328,111 @@ def generate_finance_report(
         finishBrandStrip();
       }}
 
+      /** Rows used to rebuild one dim's options (all other filters applied; this dim excluded). */
+      function aoRowsForDimOptionUniverse(excludeDimKey) {{
+        const rules = [];
+        dims.forEach(function (dim, i) {{
+          if (dim.key === "y") return;
+          if (dim.key === excludeDimKey) return;
+          const el = auditDimFilterSelectEl(i);
+          if (!el || !el.options || el.options.length === 0) return;
+          const picked = Array.from(el.selectedOptions || []).map(function (o) {{ return o.value; }});
+          if (!picked.length) return;
+          if (picked.length >= el.options.length) return;
+          rules.push({{ k: dim.key, vals: picked }});
+        }});
+        let out = (AO.rows || []).filter(function (r) {{
+          if (!aoRowIsUsable(r)) return false;
+          for (let j = 0; j < rules.length; j++) {{
+            const dk = rules[j].k;
+            let ok = false;
+            for (let k = 0; k < rules[j].vals.length; k++) {{
+              if (auditToolbarDimMatch(dk, r[dk], rules[j].vals[k])) {{ ok = true; break; }}
+            }}
+            if (!ok) return false;
+          }}
+          return true;
+        }});
+        if (activeAuditYears.size > 0) {{
+          out = out.filter(function (r) {{
+            const yk = ffCellKey(r.y);
+            const yl = yk === "" ? blankLabel : yk;
+            return activeAuditYears.has(yl);
+          }});
+        }}
+        out = out
+          .filter(function (r) {{ return rowInIaSelection(r, blankLabel); }})
+          .filter(function (r) {{ return rowMatchesRatingSelection(r); }})
+          .filter(function (r) {{ return rowMatchesObsTypeSelection(r, blankLabel); }});
+        return out;
+      }}
+
+      /** Keep Audit Cycle / Department (and other dim) lists live with current filters. */
+      function syncAuditDimFilterOptions() {{
+        dims.forEach(function (dim, i) {{
+          if (dim.key === "y") return;
+          const el = auditDimFilterSelectEl(i);
+          if (!el) return;
+          const rows = aoRowsForDimOptionUniverse(dim.key);
+          const avail = new Set();
+          for (let ri = 0; ri < rows.length; ri++) {{
+            const v = ffCellKey(rows[ri][dim.key]);
+            if (v !== "") avail.add(v);
+          }}
+          const ordered = [];
+          const seen = new Set();
+          (dim.values || []).forEach(function (v) {{
+            const tok = ffCellKey(v);
+            if (tok === "" || seen.has(tok) || !avail.has(tok)) return;
+            seen.add(tok);
+            ordered.push(tok);
+          }});
+          Array.from(avail)
+            .sort(function (a, b) {{
+              return String(a).localeCompare(String(b), undefined, {{ numeric: true, sensitivity: "base" }});
+            }})
+            .forEach(function (v) {{
+              if (seen.has(v)) return;
+              seen.add(v);
+              ordered.push(v);
+            }});
+          const prevSelected = new Set(
+            Array.from(el.selectedOptions || []).map(function (o) {{ return String(o.value); }})
+          );
+          el.innerHTML = "";
+          for (let oi = 0; oi < ordered.length; oi++) {{
+            const o = document.createElement("option");
+            o.value = ordered[oi];
+            o.textContent = ordered[oi];
+            o.selected = prevSelected.has(ordered[oi]);
+            el.appendChild(o);
+          }}
+        }});
+      }}
+
       function aoRefresh() {{
-        const yearRows = aoRowsForYearStrip();
+        syncAuditDimFilterOptions();
+        const yearRowsBase = aoRowsForYearStrip();
+        const yearKeysSet = {{}};
+        for (let i = 0; i < yearRowsBase.length; i++) {{
+          const yk0 = ffCellKey(yearRowsBase[i].y);
+          if (yk0 === "") continue;
+          yearKeysSet[yk0] = true;
+        }}
+        const yearKeys = Object.keys(yearKeysSet).sort(function (a, b) {{
+          return String(a).localeCompare(String(b), undefined, {{ numeric: true, sensitivity: "base" }});
+        }});
+        // Same downstream filters as the audit-year pie so every year block + Total stay live.
+        const yearRows = yearRowsBase
+          .filter(function (r) {{ return rowInIaSelection(r, blankLabel); }})
+          .filter(function (r) {{ return rowMatchesRatingSelection(r); }})
+          .filter(function (r) {{ return rowMatchesObsTypeSelection(r, blankLabel); }});
         const yearCounts = {{}};
         for (let i = 0; i < yearRows.length; i++) {{
           const yk = ffCellKey(yearRows[i].y);
           if (yk === "") continue;
           yearCounts[yk] = (yearCounts[yk] || 0) + 1;
         }}
-        const yearKeys = Object.keys(yearCounts).sort(function (a, b) {{
-          return String(a).localeCompare(String(b), undefined, {{ numeric: true, sensitivity: "base" }});
-        }});
         if (activeAuditYears.size > 0) {{
           const ykOk = new Set(yearKeys);
           activeAuditYears = new Set(Array.from(activeAuditYears).filter(function (y) {{ return ykOk.has(y); }}));
@@ -11362,7 +11456,7 @@ def generate_finance_report(
               const yNumSp = document.createElement("span");
               yNumSp.className = "audit-rating-n";
               yLabSp.textContent = yk;
-              yNumSp.textContent = String(yearCounts[yk]);
+              yNumSp.textContent = String(yearCounts[yk] || 0);
               yb.appendChild(yLabSp);
               yb.appendChild(yNumSp);
               yb.setAttribute("aria-pressed", activeAuditYears.has(yk) ? "true" : "false");
