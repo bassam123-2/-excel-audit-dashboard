@@ -33,6 +33,7 @@ import pandas as pd
 
 from dashboard_locale import AR_MONTH_HINTS, normalize_locale, tr
 from data_io import ATTR_READ_NOTES, read_input_file
+from site_robots import ROBOTS_META_HTML
 
 REPORT_VERSION = "dashboard-v1.0.4"
 ALL_ATTACHMENT_KINDS = frozenset(
@@ -43,6 +44,7 @@ ALL_ATTACHMENT_KINDS = frozenset(
         "missingVehicle",
         "internalAuditQuarterly",
         "specialAssignment",
+        "accApprovedMoM",
     }
 )
 _ATTACHMENT_TOGGLE_SPECS = (
@@ -56,10 +58,15 @@ _ATTACHMENT_TOGGLE_SPECS = (
         "audit-internal-audit-quarterly-label",
     ),
     ("specialAssignment", "audit-special-assignment-cb", "audit-special-assignment-label"),
+    ("accApprovedMoM", "audit-acc-approved-mom-cb", "audit-acc-approved-mom-label"),
 )
 # Injected into generated HTML; replaced with Django API URLs via report_generation.inject_web_mail_api.
 _MAIL_API_MARKER = "window.__AI_EXCEL_MAIL_API__=null;"
 _PLAN_PARSE_API_MARKER = "window.__AI_EXCEL_PLAN_PARSE_URL__=null;"
+_USER_EDITS_SAVE_MARKER = "window.__AI_EXCEL_USER_EDITS_SAVE_URL__=null;"
+_CAN_SAVE_USER_EDITS_MARKER = "window.__AI_EXCEL_CAN_SAVE_USER_EDITS__=false;"
+_USER_EDITS_SAVE_META_MARKER = "__AI_EXCEL_USER_EDITS_SAVE_META__"
+_CAN_SAVE_USER_EDITS_META_MARKER = "__AI_EXCEL_CAN_SAVE_USER_EDITS_META__"
 _SMTP_HELPER_HOST = "127.0.0.1"
 _SMTP_HELPER_PORT = 51977
 _MAIL_API_FALLBACK_MARKER = (
@@ -735,7 +742,9 @@ def build_finance_trends_payload(
         if ycol:
             work["_by"] = work[ycol].astype(str).str.strip()
         else:
-            work["_by"] = str(datetime.now().year)
+            from accounts_app.services.project_timezone import project_local_now
+
+            work["_by"] = str(project_local_now().year)
 
     fcat = "__category__"
     uncat = tr(loc, "val_uncategorized")
@@ -852,6 +861,52 @@ def _json_safe_cell(v: Any) -> Any:
     return str(v).strip()
 
 
+def _json_safe_obs_date_cell(v: Any) -> Any:
+    """Normalize observation date cells to ISO dates or Excel serials for aging."""
+    if v is None:
+        return None
+    try:
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(v, (pd.Timestamp, datetime)):
+        return v.date().isoformat()
+    if isinstance(v, numbers.Real) and not isinstance(v, bool):
+        fv = float(v)
+        if math.isnan(fv):
+            return None
+        if 1000 <= fv <= 80000:
+            return int(fv) if fv == int(fv) else fv
+        if fv >= 1e12:
+            return datetime.utcfromtimestamp(fv / 1000.0).date().isoformat()
+        if 1e9 <= fv < 1e12:
+            return datetime.utcfromtimestamp(fv).date().isoformat()
+        return fv
+    if isinstance(v, numbers.Integral) and not isinstance(v, bool):
+        if 1000 <= v <= 80000:
+            return int(v)
+        if v >= int(1e12):
+            return datetime.utcfromtimestamp(v / 1000.0).date().isoformat()
+        if int(1e9) <= v < int(1e12):
+            return datetime.utcfromtimestamp(v).date().isoformat()
+        return int(v)
+    s = str(v).strip()
+    if not s:
+        return None
+    dt = pd.to_datetime(s, errors="coerce", dayfirst=True)
+    if pd.notna(dt):
+        yr = int(dt.year)
+        if 1970 <= yr <= 2100:
+            return dt.date().isoformat()
+    serial = pd.to_numeric(s, errors="coerce")
+    if pd.notna(serial):
+        sv = float(serial)
+        if 1000 <= sv <= 80000:
+            return int(sv) if sv == int(sv) else sv
+    return s
+
+
 def _filter_option_token(v: Any) -> str:
     """Stable string for filter dropdown values so they match _json_safe_cell rows after JSON parse."""
     j = _json_safe_cell(v)
@@ -866,6 +921,14 @@ def _filter_option_token(v: Any) -> str:
             return str(int(j))
         return str(j)
     return str(j).strip()
+
+
+def _df_column_as_series(df: pd.DataFrame, column: str) -> pd.Series:
+    """DataFrame column access with a stable Series type for pandas accessors."""
+    series = df[column]
+    if isinstance(series, pd.Series):
+        return series
+    return pd.Series(series, index=df.index)
 
 
 def _audit_observation_row_is_usable(row: pd.Series, colmap: dict[str, str]) -> bool:
@@ -1063,9 +1126,12 @@ def resolve_audit_observation_columns(df: pd.DataFrame) -> dict[str, str] | None
                 targetdatecol = actual
                 break
     reviseddatecol = pick(("revised date", "revised completion date", "revised target date"))
+    if reviseddatecol is not None:
+        if not _norm_audit_header(reviseddatecol).startswith("revised date"):
+            reviseddatecol = None
     if reviseddatecol is None:
         for na, actual in n2c.items():
-            if "revised" in na and "date" in na:
+            if na.startswith("revised date"):
                 reviseddatecol = actual
                 break
     obsidcol = pick(
@@ -1114,14 +1180,15 @@ def build_audit_observation_payload(
 ) -> dict[str, Any]:
     loc = normalize_locale(locale)
     all_token = "__ALL__"
-    df_obs = df[df.apply(lambda r: _audit_observation_row_is_usable(r, colmap), axis=1)]
+    usable_mask = df.apply(lambda r: _audit_observation_row_is_usable(r, colmap), axis=1)
+    df_obs = df.loc[usable_mask].copy()
     fk_order: list[str] = ["audit_year", "audit_cycle", "department"]
     has_co_dim = False
     if "company" in colmap:
         c_co = colmap["company"]
         co_tokens = {
             _filter_option_token(x)
-            for x in df_obs[c_co].dropna().unique()
+            for x in _df_column_as_series(df_obs, c_co).dropna().unique()
             if _filter_option_token(x) != ""
         }
         if co_tokens:
@@ -1131,7 +1198,7 @@ def build_audit_observation_payload(
         s_col = colmap["subcompany"]
         sc_tokens = {
             _filter_option_token(x)
-            for x in df_obs[s_col].dropna().unique()
+            for x in _df_column_as_series(df_obs, s_col).dropna().unique()
             if _filter_option_token(x) != ""
         }
         if sc_tokens:
@@ -1139,7 +1206,7 @@ def build_audit_observation_payload(
     filter_dims: list[dict[str, Any]] = []
     for logical in fk_order:
         c = colmap[logical]
-        sub = df_obs[c]
+        sub = _df_column_as_series(df_obs, c)
         tokens = {
             _filter_option_token(x)
             for x in sub.dropna().unique()
@@ -1159,7 +1226,7 @@ def build_audit_observation_payload(
     has_observation_type = "observation_type" in colmap
     obs_type_order: list[str] = []
     if has_observation_type:
-        ot_s = df_obs[colmap["observation_type"]]
+        ot_s = _df_column_as_series(df_obs, colmap["observation_type"])
         file_order: list[str] = []
         seen_ot: set[str] = set()
         for x in ot_s.dropna().unique():
@@ -1204,15 +1271,15 @@ def build_audit_observation_payload(
         else:
             rec["rec"] = None
         if "implementation_due" in colmap:
-            rec["idue"] = _json_safe_cell(r[colmap["implementation_due"]])
+            rec["idue"] = _json_safe_obs_date_cell(r[colmap["implementation_due"]])
         else:
             rec["idue"] = None
         if "target_date" in colmap:
-            rec["tdate"] = _json_safe_cell(r[colmap["target_date"]])
+            rec["tdate"] = _json_safe_obs_date_cell(r[colmap["target_date"]])
         else:
             rec["tdate"] = None
         if "revised_date" in colmap:
-            rec["rdate"] = _json_safe_cell(r[colmap["revised_date"]])
+            rec["rdate"] = _json_safe_obs_date_cell(r[colmap["revised_date"]])
         else:
             rec["rdate"] = None
         if "observation_id" in colmap:
@@ -1354,7 +1421,6 @@ def build_audit_observation_payload(
             "planUploadFile": tr(loc, "audit_plan_upload_file"),
             "planAddRow": tr(loc, "audit_plan_add_row"),
             "planColColorsLabel": tr(loc, "audit_plan_col_colors_label"),
-            "planColColorsReset": tr(loc, "audit_plan_col_colors_reset"),
             "planCellColorsHint": tr(loc, "audit_plan_cell_colors_hint"),
             "planCellFillLabel": tr(loc, "audit_plan_cell_fill_label"),
             "planClearAllDataLabel": tr(loc, "audit_plan_clear_all_data"),
@@ -1364,6 +1430,9 @@ def build_audit_observation_payload(
             "planUploadBadType": tr(loc, "audit_plan_upload_bad_type"),
             "planUploadNoRows": tr(loc, "audit_plan_upload_no_rows"),
             "planUploadPptxFail": tr(loc, "audit_plan_upload_pptx_fail"),
+            "planSaveSuccess": tr(loc, "audit_plan_save_success"),
+            "planApplySuccess": tr(loc, "audit_plan_apply_success"),
+            "planSaveFailed": tr(loc, "audit_plan_save_failed"),
             "companyLabel": tr(loc, "audit_company_label"),
             "subcompanyLabel": tr(loc, "audit_subcompany_label"),
             "brandCompaniesInFilterTitle": tr(loc, "audit_brand_companies_in_filter"),
@@ -1424,6 +1493,9 @@ def build_audit_observation_payload(
                     "specialAssignmentToggleLabel": tr("en", "audit_special_assignment_toggle_label"),
                     "specialAssignmentUploadTitle": tr("en", "audit_special_assignment_upload_title"),
                     "specialAssignmentUploadHint": tr("en", "audit_special_assignment_upload_hint"),
+                    "accApprovedMoMToggleLabel": tr("en", "audit_acc_approved_mom_toggle_label"),
+                    "accApprovedMoMUploadTitle": tr("en", "audit_acc_approved_mom_upload_title"),
+                    "accApprovedMoMUploadHint": tr("en", "audit_acc_approved_mom_upload_hint"),
                 }
                 if loc == "en"
                 else {}
@@ -1823,7 +1895,7 @@ def build_multi_dashboard_shell(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{shell_title}</title>{mail_head}
+{ROBOTS_META_HTML}  <title>{shell_title}</title>{mail_head}
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="{font_link}" rel="stylesheet" />
   <style>
@@ -2093,6 +2165,8 @@ def generate_finance_report(
     embedded_internal_audit_quarterly_decks_by_company_path: dict[str, str] | None = None,
     attached_special_assignment_deck_path: str | None = None,
     embedded_special_assignment_decks_by_company_path: dict[str, str] | None = None,
+    attached_acc_approved_mom_deck_path: str | None = None,
+    embedded_acc_approved_mom_decks_by_company_path: dict[str, str] | None = None,
     allow_multiple_audit_companies: bool = False,
     enabled_attachment_kinds: set[str] | frozenset[str] | None = None,
     company_entity=None,
@@ -2310,10 +2384,20 @@ def generate_finance_report(
             )
             if sa_embedded:
                 chart_payload["embedded_special_assignment_slide_deck"] = sa_embedded
+        if "accApprovedMoM" in enabled_kinds:
+            acc_mom_embedded = build_embedded_slide_deck_bundle(
+                fallback_path=attached_acc_approved_mom_deck_path,
+                by_company_paths=embedded_acc_approved_mom_decks_by_company_path,
+                locale=loc,
+            )
+            if acc_mom_embedded:
+                chart_payload["embedded_acc_approved_mom_slide_deck"] = acc_mom_embedded
     logo_catalog = build_company_logo_catalog(company_entity)
     chart_payload["brand_logo_catalog"] = logo_catalog
 
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    from accounts_app.services.project_timezone import project_local_now
+
+    generated_at = project_local_now().strftime("%Y-%m-%d %H:%M:%S")
     stat_tiles = "".join(
         f'<div class="stat-tile st-{(i + layout_spin) % 6}"><span class="st-label">{html.escape(lab)}</span>'
         f'<span class="st-val">{val}</span></div>'
@@ -2409,11 +2493,15 @@ def generate_finance_report(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{page_title}</title>
+{ROBOTS_META_HTML}  <title>{page_title}</title>
   <meta name="excel-dashboard-ui" content="{REPORT_VERSION}" />
+  <meta name="ai-excel-user-edits-save-url" content="{_USER_EDITS_SAVE_META_MARKER}" />
+  <meta name="ai-excel-can-save-user-edits" content="{_CAN_SAVE_USER_EDITS_META_MARKER}" />
   <!-- plan-upload:v4-fetch-only (no FileReader for audit plan file reads) -->
   <script>{_MAIL_API_MARKER}</script>
   <script>{_PLAN_PARSE_API_MARKER}</script>
+  <script>{_USER_EDITS_SAVE_MARKER}</script>
+  <script>{_CAN_SAVE_USER_EDITS_MARKER}</script>
   <script>{_MAIL_API_FALLBACK_MARKER}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -3488,6 +3576,7 @@ def generate_finance_report(
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-missing-vehicle-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-internal-audit-quarterly-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-special-assignment-cb,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-acc-approved-mom-cb,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-additional-notes-cb {{
       -webkit-appearance: none;
       appearance: none;
@@ -3513,6 +3602,7 @@ def generate_finance_report(
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-missing-vehicle-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-internal-audit-quarterly-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-special-assignment-cb:checked,
+    .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-acc-approved-mom-cb:checked,
     .audit-deck-attach-corner .audit-obs-aging-toggle input#audit-additional-notes-cb:checked {{
       border-radius: 0 !important;
       -webkit-border-radius: 0;
@@ -3525,6 +3615,7 @@ def generate_finance_report(
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-missing-vehicle-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-internal-audit-quarterly-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-special-assignment-cb:focus-visible),
+    .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-acc-approved-mom-cb:focus-visible),
     .audit-deck-attach-corner .audit-obs-aging-toggle:has(#audit-additional-notes-cb:focus-visible) {{
       box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45);
     }}
@@ -4794,19 +4885,54 @@ def generate_finance_report(
       outline: 2px solid #0f172a;
       outline-offset: -2px;
     }}
-    .audit-plan-clear-all-wrap {{
+    .audit-plan-save-toast {{
+      position: absolute;
+      top: 0.72rem;
+      inset-inline-end: 3.25rem;
+      z-index: 4;
       display: inline-flex;
       align-items: center;
-      gap: 0.35rem;
-      cursor: pointer;
+      gap: 0.4rem;
+      max-width: min(18rem, calc(100% - 5rem));
+      padding: 0.42rem 0.72rem;
+      border-radius: 999px;
       font-size: 0.78rem;
-      font-weight: 600;
-      color: var(--text);
-      user-select: none;
+      font-weight: 700;
+      line-height: 1.2;
+      color: #ffffff;
+      background: hsl(var(--dyn-h2), 74%, 38%);
+      border: 1px solid hsla(var(--dyn-h2), 78%, 28%, 0.35);
+      box-shadow: 0 10px 24px hsla(var(--dyn-h2), 70%, 24%, 0.28);
+      opacity: 0;
+      transform: translateY(-8px);
+      pointer-events: none;
+      transition: opacity 0.22s ease, transform 0.22s ease;
     }}
-    .audit-plan-clear-all-wrap input {{
-      accent-color: #166534;
-      cursor: pointer;
+    .audit-plan-save-toast::before {{
+      content: "✓";
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.05rem;
+      height: 1.05rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.2);
+      font-size: 0.72rem;
+    }}
+    .audit-plan-save-toast.audit-plan-save-toast--visible {{
+      opacity: 1;
+      transform: translateY(0);
+    }}
+    .audit-plan-save-toast.audit-plan-save-toast--error {{
+      background: #dc2626;
+      border-color: rgba(127, 29, 29, 0.35);
+      box-shadow: 0 10px 24px rgba(220, 38, 38, 0.22);
+    }}
+    .audit-plan-save-toast.audit-plan-save-toast--error::before {{
+      content: "!";
+    }}
+    #audit-plan-panel .audit-aging-head {{
+      position: relative;
     }}
     .audit-obs-names-open {{
       flex: 1;
@@ -5779,20 +5905,17 @@ def generate_finance_report(
       <div class="audit-aging-inner">
         <div class="audit-aging-head">
           <h3 class="audit-aging-title" id="audit-plan-title"></h3>
+          <div class="audit-plan-save-toast" id="audit-plan-save-toast" role="status" aria-live="polite" hidden></div>
           <button type="button" class="audit-aging-close" id="audit-plan-close" aria-label="Close">×</button>
         </div>
         <div class="audit-aging-body">
           <div class="audit-plan-toolbar" style="display:flex;justify-content:space-between;gap:0.45rem;align-items:center;margin-bottom:0.55rem;flex-wrap:wrap;">
             <div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;">
             <button type="button" class="nav-btn audit-plan-add-row-btn" id="audit-plan-add-row"></button>
-            <label class="audit-plan-clear-all-wrap" id="audit-plan-clear-all-wrap">
-              <input type="checkbox" id="audit-plan-clear-all-cb" />
-              <span id="audit-plan-clear-all-label"></span>
-            </label>
             </div>
             <div style="display:flex;gap:0.45rem;align-items:center;flex-wrap:wrap;">
               <button type="button" class="nav-btn" id="audit-plan-upload-btn"></button>
-              <input type="file" id="audit-plan-upload-file" accept=".csv,.xlsx,.xls,.xlsm,.json,.pptx" style="display:none" aria-hidden="true" />
+              <input type="file" id="audit-plan-upload-file" accept=".xlsx,.xls,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none" aria-hidden="true" />
               <button type="button" class="nav-btn" id="audit-plan-download-ppt"></button>
             </div>
           </div>
@@ -6243,6 +6366,159 @@ def generate_finance_report(
         try {{
           writeAuditPersistScript(planDraftRows || [], planCellBgHex || [], snapshotReviewsForExport());
         }} catch (_e1) {{}}
+        try {{ scheduleSaveUserEditsToServer(); }} catch (_e2) {{}}
+      }}
+      let userEditsSaveTimer = null;
+      let userEditsSaveInFlight = false;
+      let userEditsSaveQueued = false;
+      let planSaveToastTimer = null;
+      function showPlanSaveToast(message, isError) {{
+        const toast = document.getElementById("audit-plan-save-toast");
+        if (!toast) return;
+        if (planSaveToastTimer) {{
+          clearTimeout(planSaveToastTimer);
+          planSaveToastTimer = null;
+        }}
+        toast.textContent = String(message || "");
+        toast.hidden = false;
+        toast.classList.remove("audit-plan-save-toast--error");
+        toast.classList.toggle("audit-plan-save-toast--error", !!isError);
+        toast.classList.add("audit-plan-save-toast--visible");
+        planSaveToastTimer = setTimeout(function () {{
+          toast.classList.remove("audit-plan-save-toast--visible");
+          planSaveToastTimer = setTimeout(function () {{
+            toast.hidden = true;
+            toast.textContent = "";
+          }}, 240);
+        }}, isError ? 3200 : 2200);
+      }}
+      function getDashboardCsrfToken() {{
+        try {{
+          const m = document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/);
+          return m ? decodeURIComponent(m[1]) : "";
+        }} catch (_c) {{
+          return "";
+        }}
+      }}
+      function resolveDashboardPkFromPath() {{
+        try {{
+          const m = String(window.location.pathname || "").match(/\\/dashboards\\/(\\d+)\\//);
+          return m ? parseInt(m[1], 10) : null;
+        }} catch (_pk) {{
+          return null;
+        }}
+      }}
+      function resolveUserEditsSaveUrl() {{
+        try {{
+          let url = window.__AI_EXCEL_USER_EDITS_SAVE_URL__;
+          if (url && typeof url === "string") {{
+            url = String(url).trim();
+            if (url && url !== "null") return url;
+          }}
+          const meta = document.querySelector('meta[name="ai-excel-user-edits-save-url"]');
+          if (meta) {{
+            const mv = String(meta.getAttribute("content") || "").trim();
+            if (mv && mv !== "__AI_EXCEL_USER_EDITS_SAVE_META__" && mv !== "null") return mv;
+          }}
+          const pk = resolveDashboardPkFromPath();
+          if (!pk) return "";
+          const path = String(window.location.pathname || "");
+          const base = path.replace(/\\/serve\\/?.*$/, "");
+          if (!base || base === path) return "";
+          return base.replace(/\\/+$/, "") + "/api/user-edits/";
+        }} catch (_u) {{
+          return "";
+        }}
+      }}
+      function readCanSaveUserEditsFlag() {{
+        try {{
+          const flag = window.__AI_EXCEL_CAN_SAVE_USER_EDITS__;
+          if (flag === true || flag === "true") return true;
+          if (flag === false || flag === "false") return false;
+          const meta = document.querySelector('meta[name="ai-excel-can-save-user-edits"]');
+          if (meta) {{
+            const mv = String(meta.getAttribute("content") || "").trim().toLowerCase();
+            if (mv === "true" || mv === "1") return true;
+            if (mv === "false" || mv === "0") return false;
+            if (mv === "__ai_excel_can_save_user_edits_meta__") return false;
+          }}
+          return resolveUserEditsSaveUrl() !== "";
+        }} catch (_f) {{
+          return false;
+        }}
+      }}
+      function canSaveUserEditsToServer() {{
+        try {{
+          if (!readCanSaveUserEditsFlag()) return false;
+          return !!resolveUserEditsSaveUrl();
+        }} catch (_x) {{
+          return false;
+        }}
+      }}
+      function saveUserEditsToServer(opts) {{
+        opts = opts || {{}};
+        const successMsg = opts.successMsg || (typeof ui !== "undefined" && ui && ui.planSaveSuccess) || "Changes saved";
+        if (!canSaveUserEditsToServer()) {{
+          showPlanSaveToast((typeof ui !== "undefined" && ui && ui.planSaveFailed) || "Could not save changes", true);
+          return Promise.resolve(false);
+        }}
+        const url = resolveUserEditsSaveUrl();
+        if (userEditsSaveInFlight) {{
+          userEditsSaveQueued = true;
+          return Promise.resolve(false);
+        }}
+        userEditsSaveInFlight = true;
+        try {{ capturePlanDraftRows(); }} catch (_cap) {{}}
+        const payload = {{
+          v: 1,
+          planRows: planDraftRows || [],
+          planCellBg: planCellBgHex || [],
+          reviewsNote: snapshotReviewsForExport(),
+        }};
+        return fetch(url, {{
+          method: "POST",
+          headers: {{
+            "Content-Type": "application/json",
+            "X-CSRFToken": getDashboardCsrfToken(),
+            "X-Requested-With": "XMLHttpRequest",
+          }},
+          credentials: "same-origin",
+          body: JSON.stringify(payload),
+        }})
+          .then(function (resp) {{
+            if (!resp.ok) {{
+              showPlanSaveToast(ui.planSaveFailed || "Could not save changes", true);
+              return false;
+            }}
+            return resp.json().then(function (j) {{
+              const ok = !!(j && j.ok);
+              if (ok) showPlanSaveToast(successMsg, false);
+              else showPlanSaveToast(ui.planSaveFailed || "Could not save changes", true);
+              return ok;
+            }}).catch(function () {{
+              showPlanSaveToast(ui.planSaveFailed || "Could not save changes", true);
+              return false;
+            }});
+          }})
+          .catch(function () {{
+            showPlanSaveToast(ui.planSaveFailed || "Could not save changes", true);
+            return false;
+          }})
+          .finally(function () {{
+            userEditsSaveInFlight = false;
+            if (userEditsSaveQueued) {{
+              userEditsSaveQueued = false;
+              scheduleSaveUserEditsToServer(120);
+            }}
+          }});
+      }}
+      function scheduleSaveUserEditsToServer(delayMs) {{
+        if (!canSaveUserEditsToServer()) return;
+        if (userEditsSaveTimer) clearTimeout(userEditsSaveTimer);
+        userEditsSaveTimer = setTimeout(function () {{
+          userEditsSaveTimer = null;
+          saveUserEditsToServer();
+        }}, typeof delayMs === "number" ? delayMs : 700);
       }}
       const defGrid = document.getElementById("default-stat-grid");
       const topBar = document.getElementById("audit-top-bar");
@@ -6365,9 +6641,6 @@ def generate_finance_report(
       const planCellColorInput = document.getElementById("audit-plan-cell-color");
       const planCellApplyBtn = document.getElementById("audit-plan-cell-apply");
       const planColResetBtn = document.getElementById("audit-plan-col-reset");
-      const planClearAllCb = document.getElementById("audit-plan-clear-all-cb");
-      const planClearAllLabel = document.getElementById("audit-plan-clear-all-label");
-      const planClearAllWrap = document.getElementById("audit-plan-clear-all-wrap");
       const deckAttachCb = document.getElementById("audit-deck-attach-cb");
       const deckAttachLbl = document.getElementById("audit-deck-attach-label");
       const highRiskCb = document.getElementById("audit-high-risk-cb");
@@ -6380,13 +6653,15 @@ def generate_finance_report(
       const internalAuditQuarterlyLbl = document.getElementById("audit-internal-audit-quarterly-label");
       const specialAssignmentCb = document.getElementById("audit-special-assignment-cb");
       const specialAssignmentLbl = document.getElementById("audit-special-assignment-label");
+      const accApprovedMoMCb = document.getElementById("audit-acc-approved-mom-cb");
+      const accApprovedMoMLbl = document.getElementById("audit-acc-approved-mom-label");
       const deckUploadLayer = document.getElementById("audit-deck-upload-layer");
       const deckUploadLayerTitle = document.getElementById("audit-deck-upload-layer-title");
       const deckUploadLayerHint = document.getElementById("audit-deck-upload-layer-hint");
       const deckUploadLayerBrowse = document.getElementById("audit-deck-upload-layer-browse");
       let deckPanelMode = "committee";
-      const deckFilesByMode = {{ committee: null, highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null }};
-      const deckAttachToggles = [deckAttachCb, highRiskCb, tgaViolationsCb, missingVehicleCb, internalAuditQuarterlyCb, specialAssignmentCb];
+      const deckFilesByMode = {{ committee: null, highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null, accApprovedMoM: null }};
+      const deckAttachToggles = [deckAttachCb, highRiskCb, tgaViolationsCb, missingVehicleCb, internalAuditQuarterlyCb, specialAssignmentCb, accApprovedMoMCb];
       const deckBackdrop = document.getElementById("audit-deck-backdrop");
       const deckModal = document.getElementById("audit-deck-modal");
       const deckModalClose = document.getElementById("audit-deck-modal-close");
@@ -6408,7 +6683,7 @@ def generate_finance_report(
       let deckBlobUrls = [];
       let deckLastFile = null;
       let embeddedDeckLoadSig = null;
-      const embeddedAltDeckLoadSig = {{ highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null }};
+      const embeddedAltDeckLoadSig = {{ highRisk: null, tgaViolations: null, missingVehicle: null, internalAuditQuarterly: null, specialAssignment: null, accApprovedMoM: null }};
       let deckLastObjectUrl = null;
       let deckPptxViewer = null;
       let deckPptxSvgViewer = null;
@@ -6419,7 +6694,7 @@ def generate_finance_report(
       let deckPdfPage = 1;
       const emptyMark = ui.obsDetailEmpty || "—";
       let agingMatrixUseRevised = false;
-      const hasStandardAgingDates = !!(AO.has_target_date || AO.has_implementation_due);
+      const hasStandardAgingDates = AO.has_implementation_due === true;
       const hasRevisedDateCol = AO.has_revised_date === true;
       const hasAgingDateSource = !!(hasStandardAgingDates || hasRevisedDateCol);
       const showDetailAgingChip = hasStandardAgingDates;
@@ -6471,20 +6746,31 @@ def generate_finance_report(
         }}
         return rv;
       }}
+      function obsDateCellRaw(v) {{
+        if (v == null) return null;
+        const s = String(v).trim();
+        return s === "" ? null : v;
+      }}
       function rowAgingDateRaw(row) {{
-        if (AO.has_target_date) return row.tdate;
-        return row.idue;
+        const t = obsDateCellRaw(row.tdate);
+        if (t != null) return t;
+        return obsDateCellRaw(row.idue);
+      }}
+      function rowAgingMatrixDueDateRaw(row) {{
+        return obsDateCellRaw(row.idue);
+      }}
+      function rowRevisedMatrixDateRaw(row) {{
+        return obsDateCellRaw(row.rdate);
       }}
       function rowMatrixCompareDateRaw(row) {{
         if (agingMatrixUseRevised && hasRevisedDateCol) {{
-          const rv = row.rdate;
-          if (rv != null && String(rv).trim() !== "") return rv;
+          return rowRevisedMatrixDateRaw(row);
         }}
-        return rowAgingDateRaw(row);
+        return rowAgingMatrixDueDateRaw(row);
       }}
       function detailAgingDaysText(row) {{
         if (!showDetailAgingChip) return emptyMark;
-        const due = parseObsDate(rowAgingDateRaw(row));
+        const due = parseObsDate(rowMatrixCompareDateRaw(row));
         if (!due) return emptyMark;
         let refDate = null;
         if (revisedDateVal) refDate = parseObsDate(revisedDateVal);
@@ -7035,7 +7321,7 @@ def generate_finance_report(
             planDraftRows = o.planRows.map(function (r) {{
               const row = Array.isArray(r) ? r.slice(0, 7) : [];
               while (row.length < 7) row.push("");
-              return row.map(function (c) {{ return String(c != null ? c : ""); }});
+              return formatPlanPctInRow(row.map(function (c) {{ return String(c != null ? c : ""); }}));
             }});
           }}
           if (Array.isArray(o.planCellBg) && o.planCellBg.length) {{
@@ -7054,23 +7340,61 @@ def generate_finance_report(
           }}
         }} catch (_e) {{}}
       }}
-      hydratePersistedUserEdits();
 
+      function parseObsDateFromEpoch(value) {{
+        if (!Number.isFinite(value)) return null;
+        let ms = null;
+        if (value >= 1e12) ms = value;
+        else if (value >= 1e9) ms = value * 1000;
+        else return null;
+        const dNum = new Date(ms);
+        if (isNaN(dNum.getTime())) return null;
+        return new Date(Date.UTC(dNum.getUTCFullYear(), dNum.getUTCMonth(), dNum.getUTCDate()));
+      }}
+      function parseObsDateFromExcelSerial(excelDays) {{
+        if (!Number.isFinite(excelDays)) return null;
+        const days = Math.floor(excelDays);
+        if (days < 1000 || days > 80000) return null;
+        const msUtc = (days - 25569) * 86400 * 1000;
+        const dNum = new Date(msUtc);
+        if (isNaN(dNum.getTime())) return null;
+        return new Date(Date.UTC(dNum.getUTCFullYear(), dNum.getUTCMonth(), dNum.getUTCDate()));
+      }}
       function parseObsDate(value) {{
         if (value == null || value === "") return null;
         if (typeof value === "number" && Number.isFinite(value)) {{
-          const excelDays = Math.floor(value);
-          const msUtc = (excelDays - 25569) * 86400 * 1000;
-          const dNum = new Date(msUtc);
-          if (!isNaN(dNum.getTime())) return new Date(Date.UTC(dNum.getUTCFullYear(), dNum.getUTCMonth(), dNum.getUTCDate()));
+          const fromEpoch = parseObsDateFromEpoch(value);
+          if (fromEpoch) return fromEpoch;
+          return parseObsDateFromExcelSerial(value);
         }}
         const s = String(value).trim();
-        const m = s.match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})/);
-        if (m) {{
-          const y = Number(m[1]);
-          const mm = Number(m[2]);
-          const dd = Number(m[3]);
+        const serialM = s.match(/^(\\d+(?:\\.\\d+)?)$/);
+        if (serialM) {{
+          const n = Number(serialM[1]);
+          const fromEpoch = parseObsDateFromEpoch(n);
+          if (fromEpoch) return fromEpoch;
+          const fromSerial = parseObsDateFromExcelSerial(n);
+          if (fromSerial) return fromSerial;
+        }}
+        const iso = s.match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})/);
+        if (iso) {{
+          const y = Number(iso[1]);
+          const mm = Number(iso[2]);
+          const dd = Number(iso[3]);
           if (Number.isFinite(y) && Number.isFinite(mm) && Number.isFinite(dd)) {{
+            return new Date(Date.UTC(y, mm - 1, dd));
+          }}
+        }}
+        const dmy = s.match(/^(\\d{{1,2}})[\\/\\-](\\d{{1,2}})[\\/\\-](\\d{{4}})$/);
+        if (dmy) {{
+          const p1 = Number(dmy[1]);
+          const p2 = Number(dmy[2]);
+          const y = Number(dmy[3]);
+          let dd = p1;
+          let mm = p2;
+          if (p1 > 12 && p2 <= 12) {{ dd = p1; mm = p2; }}
+          else if (p2 > 12 && p1 <= 12) {{ dd = p2; mm = p1; }}
+          if (Number.isFinite(y) && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {{
             return new Date(Date.UTC(y, mm - 1, dd));
           }}
         }}
@@ -7139,6 +7463,11 @@ def generate_finance_report(
         if (k === "low" || k === "very low" || k === "closed") return "low";
         return "total";
       }}
+      function rowIaStatusKey(row, bl) {{
+        const ik = ffCellKey(row.ia);
+        const label = ik === "" ? bl : ik;
+        return iaStatusColorKey(label);
+      }}
       function computeAgingMatrixRows(rows) {{
         const tfNotDue = ui.agingTfNotDue || "Not Due";
         const tfLt6Months = ui.agingTfLt6Months || "Less than 6 months";
@@ -7151,6 +7480,7 @@ def generate_finance_report(
         const counts = {{}};
         const idSets = {{}};
         const useOid = AO.has_observation_id === true;
+        const bl = ui.statusBlank || "(blank)";
         frames.forEach(function (f) {{
           counts[f] = {{}};
           idSets[f] = {{}};
@@ -7163,20 +7493,23 @@ def generate_finance_report(
         const agingRef = parseObsDate(revisedDateVal) || new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
         const refDay = Math.floor(agingRef.getTime() / 86400000);
         rows.forEach(function (r) {{
-          const target = parseObsDate(rowMatrixCompareDateRaw(r));
-          if (!target) return;
-          const targetDay = Math.floor(target.getTime() / 86400000);
-          let frame = tfNotDue;
-          if (targetDay > refDay) {{
-            frame = tfNotDue;
-          }} else {{
-            const diffDays = refDay - targetDay;
-            if (diffDays > 365) frame = tfOverYear;
-            else if (diffDays < 183) frame = tfLt6Months;
-            else frame = tfLtYear;
-          }}
           const rk = resolveAgingMatrixRatingKey(r.rt);
           if (!rk) return;
+          const iaKey = rowIaStatusKey(r, bl);
+          let frame = null;
+          if (iaKey === "open not due") {{
+            frame = tfNotDue;
+          }} else if (iaKey === "open due") {{
+            const target = parseObsDate(rowMatrixCompareDateRaw(r));
+            if (!target) return;
+            const targetDay = Math.floor(target.getTime() / 86400000);
+            const diffDays = refDay - targetDay;
+            if (diffDays < 183) frame = tfLt6Months;
+            else if (diffDays < 365) frame = tfLtYear;
+            else frame = tfOverYear;
+          }} else {{
+            return;
+          }}
           let idKey = "_idx:" + String(r._idx);
           if (useOid) {{
             const ok = ffCellKey(r.oid);
@@ -7331,24 +7664,94 @@ def generate_finance_report(
       }};
       function normalizePlanHeader(h) {{
         return String(h || "")
+          .replace(/^\\ufeff/, "")
+          .replace(/\\u00a0/g, " ")
           .trim()
           .toLowerCase()
           .replace(/[%_\\-]/g, " ")
           .replace(/\\s+/g, " ")
           .trim();
       }}
+      function formatPlanPctCell(value) {{
+        if (value == null || value === "") return "";
+        if (typeof value === "number" && Number.isFinite(value)) {{
+          let n = value;
+          if (n > 0 && n <= 1) n = n * 100;
+          const rounded = Math.round(n * 100) / 100;
+          const disp = (rounded % 1 === 0) ? String(Math.round(rounded)) : String(rounded);
+          return disp + "%";
+        }}
+        let s = String(value).trim();
+        if (!s) return "";
+        if (/%/.test(s)) {{
+          const m = s.match(/^([\\d.,]+)\\s*%?\\s*$/);
+          if (m) {{
+            let num = parseFloat(m[1].replace(/,/g, "."));
+            if (Number.isFinite(num)) {{
+              if (num > 0 && num <= 1) num = num * 100;
+              const rounded = Math.round(num * 100) / 100;
+              const disp = (rounded % 1 === 0) ? String(Math.round(rounded)) : String(rounded);
+              return disp + "%";
+            }}
+          }}
+          return s.replace(/\\s+/g, "");
+        }}
+        const m2 = s.match(/^([\\d.,]+)$/);
+        if (m2) {{
+          let num = parseFloat(m2[1].replace(/,/g, "."));
+          if (!Number.isFinite(num)) return s;
+          if (num > 0 && num <= 1) num = num * 100;
+          const rounded = Math.round(num * 100) / 100;
+          const disp = (rounded % 1 === 0) ? String(Math.round(rounded)) : String(rounded);
+          return disp + "%";
+        }}
+        return s;
+      }}
+      function formatPlanPctInRow(row) {{
+        const r = Array.isArray(row) ? row.slice(0, 7) : [];
+        while (r.length < 7) r.push("");
+        for (let i = 4; i < 7; i++) r[i] = formatPlanPctCell(r[i]);
+        return r;
+      }}
+      function formatPlanPctInRows(rows) {{
+        return (rows || []).map(formatPlanPctInRow);
+      }}
+      function applyPlanPanelChanges() {{
+        try {{ capturePlanDraftRows(); }} catch (_pc) {{}}
+        planDraftRows = formatPlanPctInRows(planDraftRows);
+        renderPlanStatusTable();
+        try {{
+          writeAuditPersistScript(planDraftRows || [], planCellBgHex || [], snapshotReviewsForExport());
+        }} catch (_w) {{}}
+        const applyMsg = ui.planApplySuccess || ui.planSaveSuccess || "Applied successfully";
+        saveUserEditsToServer({{ successMsg: applyMsg }});
+      }}
+      hydratePersistedUserEdits();
+      function planPositionalValues(rec) {{
+        if (!rec || typeof rec !== "object") return [];
+        if (Array.isArray(rec)) return rec.slice(0, 7);
+        try {{
+          return Object.keys(rec).map(function (k) {{ return rec[k]; }});
+        }} catch (_e) {{
+          return [];
+        }}
+      }}
       function mapPlanRowFromRecord(rec) {{
         const keyMap = {{
-          project: ["project name", "project"],
-          auditable: ["auditable function", "auditable"],
-          resource: ["resource allocated", "resource"],
-          status: ["project status", "status"],
-          planning: ["planning %", "planning"],
-          field: ["field work %", "field work", "fieldwork"],
-          reporting: ["reporting %", "reporting"],
+          project: ["project name", "project", "اسم المشروع", "اسم مشروع"],
+          auditable: ["auditable function", "auditable", "الوظيفة القابلة للتدقيق", "وظيفة قابلة للتدقيق"],
+          resource: ["resource allocated", "resource", "الموارد المخصصة", "موارد مخصصة"],
+          status: ["project status", "status", "حالة المشروع"],
+          planning: ["planning %", "planning", "planning percent", "نسبة التخطيط", "التخطيط"],
+          field: ["field work %", "field work", "fieldwork", "field work percent", "نسبة العمل الميداني", "العمل الميداني"],
+          reporting: ["reporting %", "reporting", "reporting percent", "نسبة التقرير", "التقرير"],
         }};
         const normRec = {{}};
-        Object.keys(rec || {{}}).forEach(function (k) {{ normRec[normalizePlanHeader(k)] = rec[k]; }});
+        Object.keys(rec || {{}}).forEach(function (k) {{
+          const nk = normalizePlanHeader(k);
+          if (!nk || nk === "__empty" || nk === "empty") return;
+          normRec[nk] = rec[k];
+        }});
         function pick(keys) {{
           for (let i = 0; i < keys.length; i++) {{
             const nk = normalizePlanHeader(keys[i]);
@@ -7356,7 +7759,7 @@ def generate_finance_report(
           }}
           return "";
         }}
-        return [
+        const mapped = [
           String(pick(keyMap.project) ?? ""),
           String(pick(keyMap.auditable) ?? ""),
           String(pick(keyMap.resource) ?? ""),
@@ -7365,6 +7768,39 @@ def generate_finance_report(
           String(pick(keyMap.field) ?? ""),
           String(pick(keyMap.reporting) ?? ""),
         ];
+        const pos = planPositionalValues(rec);
+        for (let i = 0; i < 7 && i < pos.length; i++) {{
+          if (!String(mapped[i] || "").trim() && pos[i] != null && String(pos[i]).trim() !== "") {{
+            mapped[i] = String(pos[i]);
+          }}
+        }}
+        return formatPlanPctInRow(mapped);
+      }}
+      function matrixToPlanRecords(matrix) {{
+        if (!matrix || !matrix.length) return [];
+        let hdrIdx = 0;
+        for (let i = 0; i < Math.min(5, matrix.length); i++) {{
+          const joined = (matrix[i] || []).map(function (x) {{ return normalizePlanHeader(x); }}).join(" ");
+          if (/project|auditable|planning|field|reporting|resource|status|مشروع|تدقيق|تخطيط|ميداني|تقرير/.test(joined)) {{
+            hdrIdx = i;
+            break;
+          }}
+        }}
+        const hdr = matrix[hdrIdx] || [];
+        const dataRows = matrix.slice(hdrIdx + 1);
+        return dataRows.map(function (vals) {{
+          const rec = {{}};
+          hdr.forEach(function (h, j) {{
+            const key = String(h != null ? h : "").trim();
+            rec[key || ("__col" + j)] = vals[j] !== undefined ? vals[j] : "";
+          }});
+          return rec;
+        }});
+      }}
+      function parseExcelPlanWorksheet(ws) {{
+        if (!ws || typeof XLSX === "undefined") return [];
+        const matrix = XLSX.utils.sheet_to_json(ws, {{ header: 1, defval: "" }});
+        return matrixToPlanRecords(matrix);
       }}
       function fillPlanFromRecords(records) {{
         if (!Array.isArray(records) || !records.length) return false;
@@ -7372,7 +7808,7 @@ def generate_finance_report(
           return r.some(function (x) {{ return String(x).trim() !== ""; }});
         }});
         if (!rows.length) return false;
-        planDraftRows = rows;
+        planDraftRows = formatPlanPctInRows(rows);
         planCellBgHex = [];
         planSelectedCell = null;
         renderPlanStatusTable();
@@ -7701,7 +8137,7 @@ def generate_finance_report(
         }}
         if (planCellApplyBtn) {{
           planCellApplyBtn.addEventListener("click", function () {{
-            applyPickedColor();
+            applyPlanPanelChanges();
           }});
         }}
       }}
@@ -7759,9 +8195,7 @@ def generate_finance_report(
         ensurePlanCellMatrix(minPlanRows);
         planSelectedCell = null;
         renderPlanStatusTable();
-        try {{
-          writeAuditPersistScript(planDraftRows || [], planCellBgHex || [], snapshotReviewsForExport());
-        }} catch (_w) {{}}
+        try {{ persistAuditUserEdits(); }} catch (_w) {{}}
       }}
       function closePlanStatus() {{
         if (planBackdrop) {{
@@ -7773,6 +8207,7 @@ def generate_finance_report(
           planPanel.setAttribute("aria-hidden", "true");
         }}
         document.body.style.overflow = "";
+        try {{ saveUserEditsToServer(); }} catch (_sv) {{}}
         try {{
           if (window.parent && window.parent !== window) {{
             window.parent.postMessage({{ type: "deck-modal-state", open: false }}, "*");
@@ -7892,16 +8327,6 @@ def generate_finance_report(
         if (ui.planUploadFile) planUploadBtn.setAttribute("aria-label", ui.planUploadFile);
       }}
       if (planAddRowBtn) planAddRowBtn.textContent = ui.planAddRow || "Add row";
-      if (planClearAllLabel) planClearAllLabel.textContent = ui.planClearAllDataLabel || "Clear all table data";
-      if (planClearAllCb && ui.planClearAllDataAria) planClearAllCb.setAttribute("aria-label", ui.planClearAllDataAria);
-      if (planClearAllWrap && ui.planClearAllDataAria) planClearAllWrap.setAttribute("title", ui.planClearAllDataAria);
-      if (planClearAllCb) {{
-        planClearAllCb.addEventListener("change", function () {{
-          if (!planClearAllCb.checked) return;
-          clearAllPlanTableData();
-          planClearAllCb.checked = false;
-        }});
-      }}
       const brandCoReopenBtn = document.getElementById("brand-company-filter-reopen");
       if (brandCoReopenBtn && !brandCoReopenBtn.getAttribute("data-wired")) {{
         brandCoReopenBtn.setAttribute("data-wired", "1");
@@ -7927,16 +8352,13 @@ def generate_finance_report(
       }}
       if (planColortoolsLabel) planColortoolsLabel.textContent = ui.planColColorsLabel || "Cell colors";
       if (planColResetBtn) {{
-        planColResetBtn.textContent = ui.planColColorsReset || "Reset";
+        planColResetBtn.textContent = ui.planClearAllDataLabel || "Clear all table data";
+        if (ui.planClearAllDataAria) {{
+          planColResetBtn.setAttribute("aria-label", ui.planClearAllDataAria);
+          planColResetBtn.setAttribute("title", ui.planClearAllDataAria);
+        }}
         planColResetBtn.addEventListener("click", function () {{
-          let n = 8;
-          if (planBodyRows) n = Math.max(8, planBodyRows.querySelectorAll("tr").length);
-          else if (planCellBgHex.length) n = planCellBgHex.length;
-          planCellBgHex = [];
-          ensurePlanCellMatrix(n);
-          applyPlanCellStyles();
-          syncPlanCellPickerState();
-          syncPlanPaletteSelection("#ffffff");
+          clearAllPlanTableData();
         }});
       }}
       initPlanCellColorToolsOnce();
@@ -8068,6 +8490,7 @@ def generate_finance_report(
       if (missingVehicleLbl) missingVehicleLbl.textContent = ui.missingVehicleToggleLabel || "Missing Vehicle Report";
       if (internalAuditQuarterlyLbl) internalAuditQuarterlyLbl.textContent = ui.internalAuditQuarterlyToggleLabel || "Internal Audit Quarterly Report";
       if (specialAssignmentLbl) specialAssignmentLbl.textContent = ui.specialAssignmentToggleLabel || "Special Assignment Report";
+      if (accApprovedMoMLbl) accApprovedMoMLbl.textContent = ui.accApprovedMoMToggleLabel || "ACC Aproved MoM";
       if (deckUploadLayerTitle) {{
         deckUploadLayerTitle.textContent = ui.deckUploadTitle || "Upload document";
       }}
@@ -8114,6 +8537,12 @@ def generate_finance_report(
           uploadTitle: function () {{ return ui.specialAssignmentUploadTitle || ui.deckUploadTitle || "Upload document"; }},
           uploadHint: function () {{ return ui.specialAssignmentUploadHint || ui.deckUploadHint || ""; }},
         }},
+        accApprovedMoM: {{
+          title: function () {{ return ui.accApprovedMoMToggleLabel || "ACC Aproved MoM"; }},
+          hint: function () {{ return ui.accApprovedMoMUploadHint || ui.deckUploadHint || ""; }},
+          uploadTitle: function () {{ return ui.accApprovedMoMUploadTitle || ui.deckUploadTitle || "Upload document"; }},
+          uploadHint: function () {{ return ui.accApprovedMoMUploadHint || ui.deckUploadHint || ""; }},
+        }},
       }};
       function deckIsAltMode(mode) {{
         const m = mode != null ? mode : deckPanelMode;
@@ -8128,6 +8557,7 @@ def generate_finance_report(
         if (mode === "missingVehicle") return payload.embedded_missing_vehicle_slide_deck;
         if (mode === "internalAuditQuarterly") return payload.embedded_internal_audit_quarterly_slide_deck;
         if (mode === "specialAssignment") return payload.embedded_special_assignment_slide_deck;
+        if (mode === "accApprovedMoM") return payload.embedded_acc_approved_mom_slide_deck;
         return null;
       }}
       function deckUncheckOtherAttachToggles(activeCb) {{
@@ -8307,6 +8737,7 @@ def generate_finance_report(
           : mode === "missingVehicle" ? "missing-vehicle-report.pptx"
           : mode === "internalAuditQuarterly" ? "internal-audit-quarterly-report.pptx"
           : mode === "specialAssignment" ? "special-assignment-report.pptx"
+          : mode === "accApprovedMoM" ? "acc-approved-mom.pptx"
           : "slides.pptx";
         return loadEmbeddedDeckBundleEntry(entry, defaultName);
       }}
@@ -8318,6 +8749,7 @@ def generate_finance_report(
           missingVehicle: missingVehicleCb,
           internalAuditQuarterly: internalAuditQuarterlyCb,
           specialAssignment: specialAssignmentCb,
+          accApprovedMoM: accApprovedMoMCb,
         }};
         const cb = cbByMode[deckPanelMode];
         if (!cb || !cb.checked) return;
@@ -9375,6 +9807,7 @@ def generate_finance_report(
         if (missingVehicleCb) missingVehicleCb.checked = false;
         if (internalAuditQuarterlyCb) internalAuditQuarterlyCb.checked = false;
         if (specialAssignmentCb) specialAssignmentCb.checked = false;
+        if (accApprovedMoMCb) accApprovedMoMCb.checked = false;
         if (deckFileInput) deckFileInput.value = "";
         deckSetUploadFirstMode(false);
         deckClearViewer();
@@ -9506,6 +9939,7 @@ def generate_finance_report(
       const missingVehicleDeckSyncPanel = makeAltDeckSyncPanel(missingVehicleCb, "missingVehicle");
       const internalAuditQuarterlyDeckSyncPanel = makeAltDeckSyncPanel(internalAuditQuarterlyCb, "internalAuditQuarterly");
       const specialAssignmentDeckSyncPanel = makeAltDeckSyncPanel(specialAssignmentCb, "specialAssignment");
+      const accApprovedMoMDeckSyncPanel = makeAltDeckSyncPanel(accApprovedMoMCb, "accApprovedMoM");
       function deckShowPdf(file) {{
         if (!deckPdfFrame) return;
         deckDestroyPptxViewer();
@@ -9582,6 +10016,7 @@ def generate_finance_report(
       bindAltDeckToggle(missingVehicleCb, missingVehicleDeckSyncPanel);
       bindAltDeckToggle(internalAuditQuarterlyCb, internalAuditQuarterlyDeckSyncPanel);
       bindAltDeckToggle(specialAssignmentCb, specialAssignmentDeckSyncPanel);
+      bindAltDeckToggle(accApprovedMoMCb, accApprovedMoMDeckSyncPanel);
       if (deckMissingOk) deckMissingOk.addEventListener("click", deckCloseNoAttachmentNotice);
       if (deckMissingBackdrop) deckMissingBackdrop.addEventListener("click", deckCloseNoAttachmentNotice);
       document.addEventListener("keydown", function (ev) {{
@@ -9803,7 +10238,10 @@ def generate_finance_report(
                   const data = new Uint8Array(ab);
                   const wb = XLSX.read(data, {{ type: "array" }});
                   const ws = wb.Sheets[wb.SheetNames[0]];
-                  const rows = XLSX.utils.sheet_to_json(ws, {{ defval: "" }});
+                  let rows = parseExcelPlanWorksheet(ws);
+                  if (!rows.length) {{
+                    rows = XLSX.utils.sheet_to_json(ws, {{ defval: "" }});
+                  }}
                   if (!fillPlanFromRecords(rows)) warn(noRowsMsg);
                 }} finally {{
                   resetPlanUploadInput();

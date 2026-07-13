@@ -61,6 +61,79 @@ html[data-theme="dark"] body {
     color: var(--text);
 }
 
+@media (max-width: 1199.98px) {
+    .topbar {
+        flex-wrap: wrap;
+    }
+
+    .topbar-start {
+        flex: 1 1 100%;
+        order: 1;
+        overflow: hidden;
+    }
+
+    .topbar-title {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .breadcrumb-nav {
+        overflow: hidden;
+        min-width: 0;
+    }
+
+    .breadcrumb-nav .current {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .topbar-center {
+        flex: 1 1 100%;
+        order: 2;
+        padding: 0.35rem 0 0.15rem;
+    }
+
+    .topbar-company-logo {
+        max-height: 36px;
+        max-width: min(180px, 70vw);
+    }
+
+    .topbar-actions {
+        flex: 1 1 100%;
+        order: 3;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+}
+
+@media (min-width: 1200px) {
+    .topbar-start {
+        overflow: hidden;
+    }
+
+    .topbar-title {
+        overflow: hidden;
+        min-width: 0;
+    }
+
+    .breadcrumb-nav {
+        overflow: hidden;
+        min-width: 0;
+    }
+
+    .breadcrumb-nav .current {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .topbar-company-logo {
+        max-width: min(160px, 28vw);
+    }
+}
+
 @media (max-width: 767.98px) {
     .btn-sidebar-toggle {
         display: inline-flex;
@@ -90,14 +163,29 @@ html[data-theme="dark"] body {
         padding: 0.65rem 1rem;
     }
 
-    .topbar-title {
+    .topbar-start {
         flex: 1 1 100%;
         order: 1;
     }
 
-    .topbar-actions {
+    .topbar-title {
+        flex: 1 1 auto;
+    }
+
+    .topbar-center {
         flex: 1 1 100%;
         order: 2;
+        padding: 0.35rem 0 0.15rem;
+    }
+
+    .topbar-company-logo {
+        max-height: 36px;
+        max-width: min(180px, 70vw);
+    }
+
+    .topbar-actions {
+        flex: 1 1 100%;
+        order: 3;
         flex-wrap: wrap;
         justify-content: flex-start;
     }

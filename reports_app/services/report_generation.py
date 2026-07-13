@@ -3,16 +3,22 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import uuid
+from html import escape as html_escape
 from pathlib import Path
 from typing import Any
 
 from django.utils.text import slugify
 
 from ai_excel_dashboard import (
+    _CAN_SAVE_USER_EDITS_MARKER,
+    _CAN_SAVE_USER_EDITS_META_MARKER,
     _MAIL_API_MARKER,
     _PLAN_PARSE_API_MARKER,
+    _USER_EDITS_SAVE_MARKER,
+    _USER_EDITS_SAVE_META_MARKER,
     AUDIT_BUNDLE_MAX_FILES,
     REPORT_VERSION,
     build_multi_dashboard_shell,
@@ -20,6 +26,11 @@ from ai_excel_dashboard import (
     generate_finance_report,
     resolve_attached_deck_for_workbook_index,
     workbook_dashboard_tab_title,
+)
+from audit_app.dashboard_template_codes import (
+    DEFAULT_DASHBOARD_TEMPLATE_CODE,
+    TEMPLATE_CODE_CD,
+    TEMPLATE_CODE_IAD,
 )
 from audit_app.services.persistence import persist_report_result
 from dashboard_locale import normalize_locale, tr
@@ -98,7 +109,99 @@ ATTACHMENT_SPECS: list[dict[str, str]] = [
         "zone_icon": "bi-file-earmark-person",
         "details_id": "specialAssignmentDeckDetails",
     },
+    {
+        "kind": "accApprovedMoM",
+        "source_key": "acc_approved_mom_decks",
+        "field_prefix": "acc_approved_mom_deck",
+        "file_stem_prefix": "acc_approved_mom_deck",
+        "ui_label": "upload_acc_approved_mom_label",
+        "ui_hint": "upload_acc_approved_mom_hint",
+        "ui_drop": "upload_acc_approved_mom_drop",
+        "summary_icon": "bi-journal-check",
+        "zone_icon": "bi-file-earmark-check",
+        "details_id": "accApprovedMoMDeckDetails",
+    },
 ]
+
+
+def _existing_excel_names(dashboard) -> list[str]:
+    if not dashboard or not isinstance(dashboard.source_files, dict):
+        return []
+    names = dashboard.source_files.get("excel") or []
+    if isinstance(names, str):
+        token = names.strip()
+        return [token] if token else []
+    return [str(n).strip() for n in names if str(n).strip()]
+
+
+def _excel_remove_requested(request) -> bool:
+    return request.POST.get("remove_excel") == "1"
+
+
+def _resubmit_can_keep_existing_excel(request, resubmit_dashboard, template_type: str) -> bool:
+    if not resubmit_dashboard or _excel_remove_requested(request):
+        return False
+    if excel_uploads_from_request(request):
+        return False
+    if resubmit_dashboard.template_type != template_type:
+        return False
+    session = resubmit_dashboard.upload_session
+    return bool(session and session.raw_data_json)
+
+
+def _resubmit_update_metadata_and_attachments(
+    request,
+    resubmit_dashboard,
+    *,
+    dashboard_name: str,
+    icon: str,
+    template_type: str,
+    description: str,
+    active_company,
+) -> "Dashboard":
+    from reports_app.dashboard_workflow import mark_dashboard_draft
+
+    existing_source = (
+        resubmit_dashboard.source_files
+        if isinstance(resubmit_dashboard.source_files, dict)
+        else {}
+    )
+    resolved_decks = _resolve_all_deck_attachments(
+        request,
+        resubmit_dashboard.report_id,
+        existing_source=existing_source,
+        is_resubmit=True,
+        company=active_company,
+    )
+    excel_names = _existing_excel_names(resubmit_dashboard)
+    source_files_info = dict(existing_source)
+    source_files_info.update(resolved_decks)
+    if excel_names:
+        source_files_info["excel"] = excel_names
+
+    resubmit_dashboard.name = dashboard_name
+    resubmit_dashboard.description = description
+    resubmit_dashboard.icon = icon
+    resubmit_dashboard.template_type = template_type
+    resubmit_dashboard.html_file = ""
+    resubmit_dashboard.source_files = source_files_info
+    if not resubmit_dashboard.company_id:
+        resubmit_dashboard.company = active_company
+    mark_dashboard_draft(resubmit_dashboard)
+    resubmit_dashboard.save(
+        update_fields=[
+            "name",
+            "description",
+            "icon",
+            "template_type",
+            "html_file",
+            "source_files",
+            "company",
+            "status",
+            "published_at",
+        ]
+    )
+    return resubmit_dashboard
 
 
 def inject_web_mail_api(html_out: str, mail_url: str, plan_url: str) -> str:
@@ -113,6 +216,189 @@ def inject_web_mail_api(html_out: str, mail_url: str, plan_url: str) -> str:
         return h
     except Exception:
         return html_out
+
+
+def inject_user_edits_persist_script(html_out: str, user_edits_json: str) -> str:
+    """Insert or replace the audit-dashboard-user-persist JSON block."""
+    raw = str(user_edits_json or "").strip()
+    if not raw:
+        return html_out
+    safe = raw.replace("</", "<\\/")
+    script = (
+        f'<script id="audit-dashboard-user-persist" type="application/json">{safe}</script>'
+    )
+    cleaned = re.sub(
+        r'<script id="audit-dashboard-user-persist"[^>]*>.*?</script>\s*',
+        "",
+        html_out,
+        flags=re.DOTALL,
+    )
+    if re.search(r"<body\b", cleaned, flags=re.IGNORECASE):
+        return re.sub(
+            r"(<body[^>]*>)",
+            r"\1\n" + script,
+            cleaned,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+    return script + cleaned
+
+
+def _inject_before_head_close(html_out: str, snippet: str) -> str:
+    """Append HTML snippet before </head> (or prefix if no head tag)."""
+    if re.search(r"</head>", html_out, flags=re.IGNORECASE):
+        return re.sub(
+            r"</head>",
+            snippet + "\n</head>",
+            html_out,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+    return snippet + html_out
+
+
+def inject_dashboard_serve_context(
+    html_out: str,
+    *,
+    mail_url: str,
+    plan_url: str,
+    user_edits_save_url: str | None,
+    can_save_user_edits: bool,
+    user_edits_json: str = "",
+) -> str:
+    h = inject_web_mail_api(html_out, mail_url, plan_url)
+    save_js = f"window.__AI_EXCEL_USER_EDITS_SAVE_URL__={json.dumps(user_edits_save_url or '')};"
+    can_js = (
+        f"window.__AI_EXCEL_CAN_SAVE_USER_EDITS__="
+        f"{'true' if can_save_user_edits else 'false'};"
+    )
+    save_meta = html_escape(user_edits_save_url or "", quote=True)
+    can_meta = "true" if can_save_user_edits else "false"
+    try:
+        if _USER_EDITS_SAVE_MARKER in h:
+            h = h.replace(_USER_EDITS_SAVE_MARKER, save_js)
+        elif "window.__AI_EXCEL_USER_EDITS_SAVE_URL__" not in h:
+            h = _inject_before_head_close(h, f"<script>{save_js}\n{can_js}</script>")
+        if _CAN_SAVE_USER_EDITS_MARKER in h:
+            h = h.replace(_CAN_SAVE_USER_EDITS_MARKER, can_js)
+        if _USER_EDITS_SAVE_META_MARKER in h:
+            h = h.replace(_USER_EDITS_SAVE_META_MARKER, save_meta)
+        if _CAN_SAVE_USER_EDITS_META_MARKER in h:
+            h = h.replace(_CAN_SAVE_USER_EDITS_META_MARKER, can_meta)
+        if user_edits_json and str(user_edits_json).strip():
+            h = inject_user_edits_persist_script(h, user_edits_json)
+        return h
+    except Exception:
+        return h
+
+
+def _format_plan_pct_cell(value) -> str:
+    """Normalize audit-plan percentage cells to a display value like 50%."""
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        n = float(value)
+        if n > 0 and n <= 1:
+            n *= 100
+        rounded = round(n, 2)
+        disp = str(int(rounded)) if rounded == int(rounded) else str(rounded)
+        return f"{disp}%"
+    s = str(value).strip()
+    if not s:
+        return ""
+    if "%" in s:
+        m = re.match(r"^([\d.,]+)\s*%?\s*$", s)
+        if m:
+            num = float(m.group(1).replace(",", "."))
+            if num > 0 and num <= 1:
+                num *= 100
+            rounded = round(num, 2)
+            disp = str(int(rounded)) if rounded == int(rounded) else str(rounded)
+            return f"{disp}%"
+        return re.sub(r"\s+", "", s)
+    m2 = re.match(r"^([\d.,]+)$", s)
+    if m2:
+        num = float(m2.group(1).replace(",", "."))
+        if num > 0 and num <= 1:
+            num *= 100
+        rounded = round(num, 2)
+        disp = str(int(rounded)) if rounded == int(rounded) else str(rounded)
+        return f"{disp}%"
+    return s
+
+
+def validate_dashboard_user_edits_payload(data: dict) -> dict:
+    """Normalize client audit-plan persistence payload."""
+    if not isinstance(data, dict):
+        raise ValueError("invalid_payload")
+    version = data.get("v")
+    if version != 1:
+        raise ValueError("invalid_version")
+
+    plan_rows_out: list[list[str]] = []
+    for row in data.get("planRows") or []:
+        if not isinstance(row, list):
+            continue
+        cells = [str(c if c is not None else "").strip() for c in row[:7]]
+        while len(cells) < 7:
+            cells.append("")
+        for idx in (4, 5, 6):
+            cells[idx] = _format_plan_pct_cell(cells[idx])
+        plan_rows_out.append(cells)
+
+    plan_bg_out: list[list[str]] = []
+    for row in data.get("planCellBg") or []:
+        if not isinstance(row, list):
+            continue
+        colors: list[str] = []
+        for c in row[:7]:
+            s = str(c if c is not None else "#ffffff").strip()
+            colors.append(s if re.fullmatch(r"#[0-9a-fA-F]{6}", s) else "#ffffff")
+        while len(colors) < 7:
+            colors.append("#ffffff")
+        plan_bg_out.append(colors)
+
+    reviews_note = data.get("reviewsNote")
+    if reviews_note is not None and not isinstance(reviews_note, str):
+        raise ValueError("invalid_reviews_note")
+
+    return {
+        "v": 1,
+        "planRows": plan_rows_out,
+        "planCellBg": plan_bg_out,
+        "reviewsNote": str(reviews_note or ""),
+    }
+
+
+def update_dashboard_review_attachments(
+    request,
+    dashboard,
+    *,
+    company=None,
+) -> None:
+    """Replace deck attachments for a dashboard under review (Excel unchanged)."""
+    from audit_app.models import DashboardStatus
+
+    if dashboard.status != DashboardStatus.UNDER_REVIEW:
+        raise ValueError("not_under_review")
+
+    existing_source = (
+        dashboard.source_files if isinstance(dashboard.source_files, dict) else {}
+    )
+    resolved = _resolve_all_deck_attachments(
+        request,
+        dashboard.report_id,
+        existing_source=existing_source,
+        is_resubmit=True,
+        company=company or dashboard.company,
+    )
+    source_files_info = dict(existing_source)
+    source_files_info.update(resolved)
+    if "excel" not in source_files_info and existing_source.get("excel"):
+        source_files_info["excel"] = list(existing_source.get("excel") or [])
+    dashboard.source_files = source_files_info
+    dashboard.html_file = ""
+    dashboard.save(update_fields=["source_files", "html_file"])
 
 
 def excel_uploads_from_request(request) -> list:
@@ -318,6 +604,7 @@ def _attachment_path_kwargs(
         "missingVehicle": source_files.get("missing_vehicle_decks") or [],
         "internalAuditQuarterly": source_files.get("internal_audit_quarterly_decks") or [],
         "specialAssignment": source_files.get("special_assignment_decks") or [],
+        "accApprovedMoM": source_files.get("acc_approved_mom_decks") or [],
     }
     param_by_kind = {
         "deck": "attached_deck_path",
@@ -326,6 +613,7 @@ def _attachment_path_kwargs(
         "missingVehicle": "attached_missing_vehicle_deck_path",
         "internalAuditQuarterly": "attached_internal_audit_quarterly_deck_path",
         "specialAssignment": "attached_special_assignment_deck_path",
+        "accApprovedMoM": "attached_acc_approved_mom_deck_path",
     }
     kwargs: dict[str, str | None] = {}
     for kind, param in param_by_kind.items():
@@ -342,8 +630,11 @@ def _attachment_path_kwargs(
 
 def report_locale_for_dashboard(dashboard, request) -> str:
     """Locale for generated report HTML (iframe content). AI dashboards are English-only."""
-    if getattr(dashboard, "template_type", None) == "ai":
+    template = getattr(dashboard, "template_type", None)
+    if template == TEMPLATE_CODE_IAD:
         return "en"
+    if template == TEMPLATE_CODE_CD:
+        return "ar"
     return normalize_locale(request.session.get("ui_lang", "en"))
 
 
@@ -366,11 +657,197 @@ def version_payload(module_file: str) -> dict[str, str]:
 # ── New architecture: store-only upload + on-demand generation ────────
 
 
+def _ar_compliance_err(locale: str, ar: str, en: str) -> str:
+    return ar if locale == "ar" else en
+
+
+def _assert_ar_compliance_upload_request(request, uploads, locale: str) -> None:
+    from arabic_compliance_dashboard.schema import EXCEL_EXTENSIONS
+
+    if len(uploads) != 1:
+        raise ValueError(
+            _ar_compliance_err(
+                locale,
+                "قالب الالتزام العربي يقبل ملف Excel واحد فقط.",
+                "Arabic compliance template accepts one Excel file only.",
+            )
+        )
+    ext = Path(uploads[0].name).suffix.lower()
+    if ext not in EXCEL_EXTENSIONS:
+        raise ValueError(
+            _ar_compliance_err(
+                locale,
+                "صيغة الملف غير مدعومة. استخدم .xlsx أو .xls أو .xlsm",
+                "Unsupported file type. Use .xlsx, .xls, or .xlsm.",
+            )
+        )
+    extra_keys = ("file2", "file3", "file4")
+    for key in extra_keys:
+        f = request.FILES.get(key)
+        if f and str(getattr(f, "name", "")).strip():
+            raise ValueError(
+                _ar_compliance_err(
+                    locale,
+                    "قالب الالتزام العربي لا يقبل ملفات Excel إضافية.",
+                    "Arabic compliance template does not accept extra Excel files.",
+                )
+            )
+    for key in request.FILES:
+        if key.startswith("deck") or key.startswith("remove_deck"):
+            raise ValueError(
+                _ar_compliance_err(
+                    locale,
+                    "قالب الالتزام العربي لا يقبل مرفقات PPTX/PDF.",
+                    "Arabic compliance template does not accept deck attachments.",
+                )
+            )
+
+
+def _store_ar_compliance_upload(
+    request,
+    dashboard_name: str,
+    icon: str,
+    description: str,
+    *,
+    resubmit_dashboard: "Dashboard | None",
+    ui_locale: str,
+    active_company,
+) -> "Dashboard":
+    import uuid
+
+    import pandas as pd
+    from audit_app.models import Dashboard, DashboardStatus, ICON_CHOICES, UploadSession
+    from audit_app.services.persistence import persist_report_result
+    from arabic_compliance_dashboard.data import (
+        minimal_audit_payload,
+        prepare_upload_dataframe,
+        validate_ar_companies_for_tenant,
+    )
+    from arabic_compliance_dashboard.schema import TEMPLATE_CODE
+    from reports_app.dashboard_workflow import mark_dashboard_draft
+
+    sheet = None
+    uploads = excel_uploads_from_request(request)
+    remove_excel = _excel_remove_requested(request)
+
+    if resubmit_dashboard and not uploads:
+        if remove_excel:
+            raise ValueError(tr(ui_locale, "upload_excel_removed_need_file"))
+        if _resubmit_can_keep_existing_excel(request, resubmit_dashboard, TEMPLATE_CODE):
+            valid_icons = {v for v, _ in ICON_CHOICES}
+            if icon not in valid_icons:
+                icon = "bi-bar-chart-line-fill"
+            return _resubmit_update_metadata_and_attachments(
+                request,
+                resubmit_dashboard,
+                dashboard_name=dashboard_name,
+                icon=icon,
+                template_type=TEMPLATE_CODE,
+                description=description,
+                active_company=active_company,
+            )
+        raise ValueError(tr(ui_locale, "web_err_no_file"))
+
+    _assert_ar_compliance_upload_request(request, uploads, ui_locale)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        up = uploads[0]
+        path = _persist_upload(up, tmp_dir)
+        df = read_input_file(path, sheet_name=sheet, locale=ui_locale)
+        if isinstance(df, dict):
+            first_key = next(iter(df.keys()))
+            df = df[first_key]
+        df = df.dropna(how="all").dropna(axis=1, how="all")
+        if df.empty:
+            raise ValueError(tr(ui_locale, "web_err_empty"))
+
+        df = prepare_upload_dataframe(df, locale=ui_locale)
+        validate_ar_companies_for_tenant(df, active_company, locale=ui_locale)
+
+        primary_name = up.name
+        primary_sha256 = content_fingerprint(df, up.name)
+
+        report_id = (
+            resubmit_dashboard.report_id
+            if resubmit_dashboard
+            else str(uuid.uuid4())
+        )
+        primary_audit_payload = minimal_audit_payload(report_id=report_id, df=df)
+
+        if resubmit_dashboard:
+            old_session = resubmit_dashboard.upload_session
+            if old_session:
+                resubmit_dashboard.upload_session = None
+                resubmit_dashboard.save(update_fields=["upload_session"])
+                old_session.delete()
+
+        session = persist_report_result(
+            source_name=primary_name,
+            sheet_name=sheet,
+            locale="ar",
+            mode=TEMPLATE_CODE,
+            content_sha256=primary_sha256,
+            observation_rows=[],
+            audit_payload=primary_audit_payload,
+        )
+
+        entry = json.loads(
+            df.to_json(orient="split", force_ascii=False, default_handler=str)
+        )
+        entry["source_name"] = primary_name
+        if isinstance(session, UploadSession):
+            session.raw_data_json = json.dumps(entry, ensure_ascii=False)
+            session.save(update_fields=["raw_data_json"])
+
+        source_files_info = {"excel": [primary_name]}
+
+        if resubmit_dashboard:
+            resubmit_dashboard.name = dashboard_name
+            resubmit_dashboard.description = description
+            resubmit_dashboard.icon = icon
+            resubmit_dashboard.template_type = TEMPLATE_CODE
+            resubmit_dashboard.html_file = ""
+            resubmit_dashboard.source_files = source_files_info
+            resubmit_dashboard.upload_session = session
+            if not resubmit_dashboard.company_id:
+                resubmit_dashboard.company = active_company
+            mark_dashboard_draft(resubmit_dashboard)
+            resubmit_dashboard.save(
+                update_fields=[
+                    "name",
+                    "description",
+                    "icon",
+                    "template_type",
+                    "html_file",
+                    "source_files",
+                    "upload_session",
+                    "company",
+                    "status",
+                    "published_at",
+                ]
+            )
+            return resubmit_dashboard
+
+        return Dashboard.objects.create(
+            name=dashboard_name,
+            description=description,
+            icon=icon,
+            template_type=TEMPLATE_CODE,
+            report_id=report_id,
+            html_file="",
+            source_files=source_files_info,
+            company=active_company,
+            created_by=request.user if request.user.is_authenticated else None,
+            upload_session=session,
+            status=DashboardStatus.DRAFT,
+        )
+
+
 def store_upload_to_db(
     request,
     dashboard_name: str,
     icon: str,
-    template_type: str = "ai",
+    template_type: str = DEFAULT_DASHBOARD_TEMPLATE_CODE,
     description: str = "",
     *,
     resubmit_dashboard: "Dashboard | None" = None,
@@ -381,7 +858,7 @@ def store_upload_to_db(
     a Dashboard record.
 
     Deck/plan files (deck1, high_risk_deck1, tga_violations_deck1, missing_vehicle_deck1,
-    internal_audit_quarterly_deck1, special_assignment_deck1)
+    internal_audit_quarterly_deck1, special_assignment_deck1, acc_approved_mom_deck1)
     are saved to media/decks/<report_id>/
     and embedded in the dashboard HTML when it is generated on view.
 
@@ -406,6 +883,25 @@ def store_upload_to_db(
         raise ValueError(tr(ui_locale, "err_no_active_company"))
     sheet = None
     uploads = excel_uploads_from_request(request)
+    remove_excel = _excel_remove_requested(request)
+
+    if resubmit_dashboard and not uploads:
+        if remove_excel:
+            raise ValueError(tr(ui_locale, "upload_excel_removed_need_file"))
+        if _resubmit_can_keep_existing_excel(request, resubmit_dashboard, template_type):
+            valid_icons = {v for v, _ in ICON_CHOICES}
+            if icon not in valid_icons:
+                icon = "bi-bar-chart-line-fill"
+            return _resubmit_update_metadata_and_attachments(
+                request,
+                resubmit_dashboard,
+                dashboard_name=dashboard_name,
+                icon=icon,
+                template_type=template_type,
+                description=description,
+                active_company=active_company,
+            )
+        raise ValueError(tr(ui_locale, "web_err_no_file"))
 
     if not uploads:
         raise ValueError(tr(ui_locale, "web_err_no_file"))
@@ -414,6 +910,17 @@ def store_upload_to_db(
     valid_icons = {v for v, _ in ICON_CHOICES}
     if icon not in valid_icons:
         icon = "bi-bar-chart-line-fill"
+
+    if template_type == TEMPLATE_CODE_CD:
+        return _store_ar_compliance_upload(
+            request,
+            dashboard_name,
+            icon,
+            description,
+            resubmit_dashboard=resubmit_dashboard,
+            ui_locale=ui_locale,
+            active_company=active_company,
+        )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         # ── Read all Excel files ──────────────────────────────────────
@@ -586,8 +1093,23 @@ def generate_from_db_data(dashboard, request, locale: str | None = None) -> str:
     if not session or not session.raw_data_json:
         raise ValueError("No stored data for this dashboard.")
 
+    if getattr(dashboard, "template_type", None) == TEMPLATE_CODE_CD:
+        from arabic_compliance_dashboard.data import dataframe_from_dashboard, main_brand_logo_pack
+        from arabic_compliance_dashboard.generator import generate_ar_compliance_report
+
+        df = dataframe_from_dashboard(dashboard)
+        api_base = f"/dashboards/{dashboard.pk}/ar-api"
+        brand_logos, default_brand_code = main_brand_logo_pack(dashboard.company)
+        return generate_ar_compliance_report(
+            df,
+            dashboard_id=dashboard.pk,
+            api_base=api_base,
+            brand_logos=brand_logos,
+            default_brand_code=default_brand_code,
+        )
+
     # AI dashboards are always English; others follow the UI language.
-    if getattr(dashboard, "template_type", None) == "ai":
+    if getattr(dashboard, "template_type", None) == TEMPLATE_CODE_IAD:
         locale = "en"
     elif locale is None:
         locale = request.session.get("ui_lang", session.locale or "en")

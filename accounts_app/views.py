@@ -1,14 +1,17 @@
 """Authentication views: login, 2FA, profile, password expiry, company selection."""
 from __future__ import annotations
 
+import mimetypes
+
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_GET, require_http_methods
 
 from urllib.parse import quote
 
@@ -406,6 +409,28 @@ def switch_company_view(request):
 
     messages.error(request, ui.get("company_switch_invalid", "Invalid company selection."))
     return redirect(next_url)
+
+
+@login_required
+@require_GET
+def company_logo_view(request, company_id: int):
+    """Serve a company logo when the user belongs to that company."""
+    if not user_companies(request.user).filter(pk=company_id).exists():
+        return HttpResponse(status=403)
+    from audit_app.models import Company
+
+    company = Company.objects.filter(pk=company_id, is_active=True, is_deleted=False).first()
+    if not company or not company.logo:
+        return HttpResponse(status=404)
+    try:
+        content_type, _ = mimetypes.guess_type(company.logo.name)
+        content_type = content_type or "image/png"
+        data = company.logo.open("rb").read()
+    except OSError:
+        return HttpResponse(status=404)
+    response = HttpResponse(data, content_type=content_type)
+    response["Cache-Control"] = "private, max-age=3600"
+    return response
 
 
 @login_required

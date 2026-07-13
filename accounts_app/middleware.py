@@ -143,3 +143,19 @@ class IdleSessionMiddleware:
         if path.startswith("/profile"):
             return True
         return any(path.startswith(prefix) for prefix in self.EXEMPT_PREFIXES)
+
+
+class ProjectTimezoneMiddleware:
+    """Activate the configured project timezone for each request."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from accounts_app.services.project_timezone import activate_project_timezone
+
+        activate_project_timezone()
+        try:
+            return self.get_response(request)
+        finally:
+            timezone.deactivate()

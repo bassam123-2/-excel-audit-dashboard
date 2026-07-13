@@ -30,10 +30,47 @@ msgstr "إعدادات أمان المشروع"
 
 #: .\accounts_app\admin.py:52
 msgid ""
-"Configure email OTP validity and sign-in verification behavior for all users."
+"Configure email OTP validity, project timezone, and sign-in verification "
+"behavior for all users."
 msgstr ""
-"اضبط مدة صلاحية رمز OTP بالبريد وسلوك التحقق عند تسجيل الدخول لجميع "
-"المستخدمين."
+"اضبط مدة صلاحية رمز OTP بالبريد، المنطقة الزمنية للمشروع، وسلوك التحقق عند "
+"تسجيل الدخول لجميع المستخدمين."
+
+#: .\accounts_app\admin.py:32 .\accounts_app\models.py:35
+msgid "Project timezone"
+msgstr "المنطقة الزمنية للمشروع"
+
+#: .\accounts_app\admin.py:34 .\accounts_app\models.py:37
+msgid ""
+"All dates and times shown in the application, admin panel, and generated "
+"reports use this timezone."
+msgstr ""
+"جميع التواريخ والأوقات المعروضة في التطبيق ولوحة الإدارة والتقارير المُنشأة "
+"تستخدم هذه المنطقة الزمنية."
+
+#: .\accounts_app\admin.py:78
+msgid "Date and time"
+msgstr "التاريخ والوقت"
+
+#: .\accounts_app\admin.py:82
+msgid ""
+"Sets the timezone used for all dates and times across the dashboard, admin "
+"panel, emails, and generated reports."
+msgstr ""
+"يحدد المنطقة الزمنية المستخدمة لجميع التواريخ والأوقات في اللوحة ولوحة "
+"الإدارة والبريد والتقارير المُنشأة."
+
+#: .\accounts_app\admin.py:40
+msgid "Search timezone…"
+msgstr "ابحث عن المنطقة الزمنية…"
+
+#: .\accounts_app\admin.py:41
+msgid "No matching timezones"
+msgstr "لا توجد مناطق زمنية مطابقة"
+
+#: .\accounts_app\models.py:45
+msgid "Can change project timezone"
+msgstr "يمكنه تغيير المنطقة الزمنية للمشروع"
 
 #: .\accounts_app\admin.py:56
 msgid "Email OTP"
@@ -505,6 +542,21 @@ msgstr "ابحث برمز الشركة أو الاسم…"
 msgid "Total companies"
 msgstr "إجمالي الشركات"
 
+msgid "Active main companies"
+msgstr "الشركات الرئيسية النشطة"
+
+msgid "Active subsidiaries"
+msgstr "الشركات التابعة النشطة"
+
+msgid "Inactive users"
+msgstr "المستخدمون غير النشطين"
+
+msgid "Users without 2FA"
+msgstr "مستخدمون بدون مصادقة ثنائية"
+
+msgid "Users"
+msgstr "المستخدمون"
+
 #: .\audit_app\admin.py:1175
 msgid "Main companies"
 msgstr "الشركات الرئيسية"
@@ -914,8 +966,8 @@ msgstr "اسم العائلة"
 
 #: .\audit_app\admin_forms.py:164 .\audit_app\admin_forms.py:325
 #: .\templates\admin\auth\user\send_credentials_checkbox.html:6
-msgid "Send new password by email"
-msgstr "إرسال كلمة المرور الجديدة بالبريد"
+msgid "Send reset link"
+msgstr "إرسال رابط إعادة تعيين"
 
 #: .\audit_app\admin_forms.py:168 .\audit_app\admin_forms.py:329
 #: .\templates\admin\auth\user\send_credentials_checkbox.html:8
@@ -1009,6 +1061,10 @@ msgstr "إزالة %(name)s"
 msgid "Excel Audit"
 msgstr "تدقيق Excel"
 
+#: .\accounts_app\apps.py:10
+msgid "Authentication & Accounts"
+msgstr "المصادقة والحسابات"
+
 #: .\audit_app\company_access.py:275
 msgid "(none registered)"
 msgstr "(لا يوجد مسجّل)"
@@ -1044,6 +1100,10 @@ msgstr "تقرير التدقيق الداخلي الربع سنوي"
 #: .\audit_app\models.py:23
 msgid "Special Assignment Report"
 msgstr "تقرير المهمة الخاصة"
+
+#: .\audit_app\models.py:24
+msgid "ACC Aproved MoM"
+msgstr "ACC Aproved MoM"
 
 #: .\audit_app\models.py:48 .\audit_app\models.py:515
 msgid "Deleted by"

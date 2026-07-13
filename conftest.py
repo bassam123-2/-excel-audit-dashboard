@@ -59,14 +59,24 @@ def nat_company(db):
 @pytest.fixture
 def uploader_user(btc_company):
     user = make_user("pytest_uploader", email="uploader@example.com")
-    make_membership(user, btc_company, can_upload=True, can_view=True)
+    make_membership(user, btc_company, can_upload=True)
     return user
 
 
 @pytest.fixture
-def viewer_user(btc_company):
+def viewer_user(btc_company, uploader_user):
     user = make_user("pytest_viewer", email="viewer@example.com")
-    make_membership(user, btc_company, can_view=True)
+    make_membership(user, btc_company)
+    dash = Dashboard.objects.create(
+        name="Viewer Dash",
+        report_id="rid-viewer-pytest",
+        company=btc_company,
+        created_by=uploader_user,
+        status=DashboardStatus.PUBLISHED,
+    )
+    from audit_app.models import DashboardViewer
+
+    DashboardViewer.objects.create(dashboard=dash, user=user, granted_by=uploader_user)
     return user
 
 

@@ -18,7 +18,7 @@ from accounts_app.services.email_branding import (
     send_branded_email_smtp,
 )
 from accounts_app.services.email_dispatch import dispatch_in_background
-from audit_app.models import Company, CompanyMembership, Dashboard
+from audit_app.models import Company, CompanyMembership, Dashboard, DashboardViewer
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ SUBMIT_KIND_LABELS = {
     "new": ("طلب جديد", "New submission"),
     "edit": ("تعديل مسودة", "Draft edit"),
     "resubmit": ("إعادة إرسال", "Resubmission"),
+    "return_to_review": ("إرجاع من منشورة", "Returned from published"),
 }
 
 
@@ -44,14 +45,22 @@ def _user_display(user: User | None) -> str:
     return full or user.username
 
 
-def _eligible_email(user: User | None) -> str | None:
+def _wants_workflow_email(user: User | None) -> bool:
     if user is None or not user.is_active:
+        return False
+    profile = getattr(user, "profile", None)
+    if profile and profile.is_deleted:
+        return False
+    if profile is None:
+        return not user.is_superuser
+    return bool(profile.receive_workflow_emails)
+
+
+def _eligible_email(user: User | None) -> str | None:
+    if not _wants_workflow_email(user):
         return None
     email = (user.email or "").strip()
     if not email:
-        return None
-    profile = getattr(user, "profile", None)
-    if profile and profile.is_deleted:
         return None
     return email
 
@@ -102,32 +111,32 @@ def _reviewer_users(company: Company, *, exclude_user_id: int | None = None) -> 
     return users
 
 
-def _viewer_users(
-    company: Company,
+def _assigned_viewer_users(
+    dashboard: Dashboard,
     *,
     exclude_user_id: int | None = None,
 ) -> list[User]:
     users: list[User] = []
     seen_ids: set[int] = set()
 
-    membership_qs = CompanyMembership.objects.filter(
-        company=company,
-        can_view=True,
-        is_deleted=False,
+    viewer_qs = DashboardViewer.objects.filter(
+        dashboard=dashboard,
     ).select_related("user")
     if exclude_user_id:
-        membership_qs = membership_qs.exclude(user_id=exclude_user_id)
-    for membership in membership_qs:
-        if membership.user_id not in seen_ids:
-            seen_ids.add(membership.user_id)
-            users.append(membership.user)
-
-    for user in _superuser_workflow_users(exclude_user_id=exclude_user_id):
-        if user.pk not in seen_ids:
+        viewer_qs = viewer_qs.exclude(user_id=exclude_user_id)
+    for grant in viewer_qs:
+        user = grant.user
+        if user.pk not in seen_ids and user.is_active:
             seen_ids.add(user.pk)
             users.append(user)
 
     return users
+
+
+def _users_by_ids(user_ids: list[int]) -> list[User]:
+    if not user_ids:
+        return []
+    return list(User.objects.filter(pk__in=user_ids, is_active=True))
 
 
 def _send_many(cfg, *, recipients: Iterable[str], subject: str, plain: str, html: str) -> None:
@@ -375,10 +384,12 @@ def _send_viewers_published(dashboard_id: int, base_url: str, reviewer_id: int) 
         logger.warning("SMTP not configured; skipping publish notifications")
         return
 
-    recipients = _collect_emails(_viewer_users(company, exclude_user_id=reviewer_id))
+    recipients = _collect_emails(
+        _assigned_viewer_users(dashboard, exclude_user_id=reviewer_id)
+    )
     if not recipients:
-        logger.warning(
-            "No viewer recipients for dashboard %s (company=%s); check can_view users",
+        logger.info(
+            "No assigned viewers for dashboard %s (company=%s); skipping publish email",
             dashboard.pk,
             company.code,
         )
@@ -396,11 +407,11 @@ def _send_viewers_published(dashboard_id: int, base_url: str, reviewer_id: int) 
 
     text_ar = (
         f"<p style='margin:0 0 10px;'>السلام عليكم،</p>"
-        f"<p style='margin:0 0 12px;'>تم اعتماد لوحة تحكم جديدة</p>"
+        f"<p style='margin:0 0 12px;'>تم نشر لوحة تحكم جديدة</p>"
         f"<ul style='margin:0 0 12px;padding-right:20px;'>"
         f"<li><strong>اللوحة:</strong> {dash_name}</li>"
         f"<li><strong>الشركة:</strong> {company_name}</li>"
-        f"<li><strong>اعتمدها:</strong> {reviewer_name}</li>"
+        f"<li><strong>نشرها:</strong> {reviewer_name}</li>"
         f"</ul>"
     )
     text_en = (
@@ -409,7 +420,7 @@ def _send_viewers_published(dashboard_id: int, base_url: str, reviewer_id: int) 
         f"<ul style='margin:0 0 12px;padding-left:20px;'>"
         f"<li><strong>Dashboard:</strong> {dash_name}</li>"
         f"<li><strong>Company:</strong> {company_name}</li>"
-        f"<li><strong>Approved by:</strong> {reviewer_name}</li>"
+        f"<li><strong>Published by:</strong> {reviewer_name}</li>"
         f"</ul>"
     )
 
@@ -420,21 +431,21 @@ def _send_viewers_published(dashboard_id: int, base_url: str, reviewer_id: int) 
 
     plain = render_bilingual_plain(
         text_ar=(
-            f"تم اعتماد لوحة: {dashboard.name}\n"
+            f"تم نشر لوحة: {dashboard.name}\n"
             f"الشركة: {company.name}\n"
-            f"اعتمدها: {_user_display(reviewer)}\n"
+            f"نشرها: {_user_display(reviewer)}\n"
             f"الرابط: {link}\n"
         ),
         text_en=(
             f"Dashboard published: {dashboard.name}\n"
             f"Company: {company.name}\n"
-            f"Approved by: {_user_display(reviewer)}\n"
+            f"Published by: {_user_display(reviewer)}\n"
             f"Link: {link}\n"
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
     subject = format_bilingual_subject(
-        text_ar="تم اعتماد لوحة تحكم",
+        text_ar="تم نشر لوحة تحكم",
         text_en="Dashboard Published",
     )
     html = build_branded_email_html(
@@ -446,93 +457,101 @@ def _send_viewers_published(dashboard_id: int, base_url: str, reviewer_id: int) 
     _send_many(cfg, recipients=recipients, subject=subject, plain=plain, html=html)
 
 
-def notify_workflow_assignee(
+def notify_viewers_assigned(
     dashboard: Dashboard,
     *,
+    user_ids: list[int],
     base_url: str,
-    assignee: User,
+    granted_by: User,
 ) -> None:
     dispatch_in_background(
-        _send_workflow_assignee,
+        _send_viewers_assigned,
         dashboard.pk,
+        user_ids,
         base_url,
-        assignee.pk,
+        granted_by.pk,
     )
 
 
-def _send_workflow_assignee(dashboard_id: int, base_url: str, assignee_id: int) -> None:
+def _send_viewers_assigned(
+    dashboard_id: int,
+    user_ids: list[int],
+    base_url: str,
+    granted_by_id: int,
+) -> None:
     dashboard = _refresh_dashboard(dashboard_id)
-    try:
-        assignee = User.objects.get(pk=assignee_id)
-    except User.DoesNotExist:
-        logger.warning("Skipping workflow assignee email: user %s not found", assignee_id)
-        return
-    recipient = _eligible_email(assignee)
-    if not recipient:
-        logger.warning(
-            "Skipping workflow assignee email: user %s has no eligible email",
-            assignee_id,
-        )
+    if not user_ids:
         return
     try:
         cfg = _load_smtp_cfg()
     except ValueError:
-        logger.warning("SMTP not configured; skipping workflow assignee notification")
+        logger.warning("SMTP not configured; skipping viewer assignment notifications")
         return
+
+    recipients = _collect_emails(_users_by_ids(user_ids))
+    if not recipients:
+        return
+
+    try:
+        granted_by = User.objects.get(pk=granted_by_id)
+    except User.DoesNotExist:
+        granted_by = None
 
     dash_name = escape(dashboard.name)
     company_name = escape(dashboard.company.name if dashboard.company else "—")
+    granted_by_name = escape(_user_display(granted_by))
     link = build_auth_link(base_url, f"/dashboards/{dashboard.pk}/")
 
     text_ar = (
         f"<p style='margin:0 0 10px;'>السلام عليكم،</p>"
-        f"<p style='margin:0 0 12px;'>لوحة تحكم بانتظار اطلاعك:</p>"
+        f"<p style='margin:0 0 12px;'>تم نشر لوحة تحكم جديدة ويمكنك الآن عرضها:</p>"
         f"<ul style='margin:0 0 12px;padding-right:20px;'>"
         f"<li><strong>اللوحة:</strong> {dash_name}</li>"
         f"<li><strong>الشركة:</strong> {company_name}</li>"
+        f"<li><strong>تعيين العرض بواسطة:</strong> {granted_by_name}</li>"
         f"</ul>"
     )
     text_en = (
         f"<p style='margin:0 0 10px;'>Hello,</p>"
-        f"<p style='margin:0 0 12px;'>A dashboard awaits your acknowledgment:</p>"
+        f"<p style='margin:0 0 12px;'>A new dashboard has been published and you can view it:</p>"
         f"<ul style='margin:0 0 12px;padding-left:20px;'>"
         f"<li><strong>Dashboard:</strong> {dash_name}</li>"
         f"<li><strong>Company:</strong> {company_name}</li>"
+        f"<li><strong>View access assigned by:</strong> {granted_by_name}</li>"
         f"</ul>"
     )
 
     body_html = (
         render_bilingual_block(text_ar=text_ar, text_en=text_en)
-        + render_cta_button(link, label_ar="تم الاطلاع", label_en="Acknowledge")
+        + render_cta_button(link, label_ar="عرض اللوحة", label_en="View Dashboard")
     )
 
     plain = render_bilingual_plain(
         text_ar=(
-            f"لوحة بانتظار اطلاعك: {dashboard.name}\n"
+            f"تم نشر لوحة تحكم جديدة: {dashboard.name}\n"
             f"الشركة: {dashboard.company.name if dashboard.company else '—'}\n"
+            f"تعيين العرض بواسطة: {_user_display(granted_by)}\n"
             f"الرابط: {link}\n"
         ),
         text_en=(
-            f"Dashboard awaiting acknowledgment: {dashboard.name}\n"
+            f"A new dashboard is available: {dashboard.name}\n"
             f"Company: {dashboard.company.name if dashboard.company else '—'}\n"
+            f"View access assigned by: {_user_display(granted_by)}\n"
             f"Link: {link}\n"
         ),
     ) + "\n\n" + bilingual_footer_plain()
 
     subject = format_bilingual_subject(
-        text_ar="لوحة بانتظار اطلاعك",
-        text_en="Dashboard Acknowledgment Required",
+        text_ar="لوحة تحكم جديدة متاحة لك",
+        text_en="New Dashboard Available",
     )
     html = build_branded_email_html(
-        header_ar="لوحة بانتظار اطلاعك",
-        header_en="Dashboard Awaiting Acknowledgment",
+        header_ar="لوحة تحكم جديدة",
+        header_en="New Dashboard",
         body_html=body_html,
         logo_url=resolve_logo_src_for_email(base_url=base_url, cfg=cfg),
     )
-    try:
-        send_branded_email_smtp(cfg, to_addr=recipient, subject=subject, plain=plain, html=html)
-    except Exception:
-        logger.exception("Failed to send workflow assignee email to %s", recipient)
+    _send_many(cfg, recipients=recipients, subject=subject, plain=plain, html=html)
 
 
 def notify_creator_published(
@@ -581,12 +600,12 @@ def _send_creator_published(
     text_ar = (
         f"<p style='margin:0 0 10px;'>السلام عليكم،</p>"
         f"<p style='margin:0 0 12px;'>تم نشر لوحتك <strong>{dash_name}</strong>.</p>"
-        f"<p style='margin:0 0 8px;'><span dir='rtl'>اعتمدها: {reviewer_name}</span></p>"
+        f"<p style='margin:0 0 8px;'><span dir='rtl'>نشرها: {reviewer_name}</span></p>"
     )
     text_en = (
         f"<p style='margin:0 0 10px;'>Hello,</p>"
         f"<p style='margin:0 0 12px;'>Your dashboard <strong>{dash_name}</strong> has been published.</p>"
-        f"<p style='margin:0 0 8px;'><span dir='ltr'>Approved by: {reviewer_name}</span></p>"
+        f"<p style='margin:0 0 8px;'><span dir='ltr'>Published by: {reviewer_name}</span></p>"
     )
 
     body_html = (
@@ -597,12 +616,12 @@ def _send_creator_published(
     plain = render_bilingual_plain(
         text_ar=(
             f"تم نشر لوحتك: {dashboard.name}\n"
-            f"اعتمدها: {_user_display(reviewer)}\n"
+            f"نشرها: {_user_display(reviewer)}\n"
             f"الرابط: {link}\n"
         ),
         text_en=(
             f"Your dashboard was published: {dashboard.name}\n"
-            f"Approved by: {_user_display(reviewer)}\n"
+            f"Published by: {_user_display(reviewer)}\n"
             f"Link: {link}\n"
         ),
     ) + "\n\n" + bilingual_footer_plain()

@@ -152,7 +152,6 @@ def test_switch_theme_works_before_company_selection(client: Client):
             user=user,
             company=company,
             can_upload=True,
-            can_view=True,
         )
 
     client.force_login(user)

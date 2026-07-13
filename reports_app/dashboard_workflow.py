@@ -1,9 +1,11 @@
-"""Dashboard permissions and draft/submit/approve/reject/workflow/soft-delete."""
+"""Dashboard permissions and draft/submit/publish/return/soft-delete."""
 from __future__ import annotations
 
 import re
 from typing import Any
 
+from django.contrib.auth.models import User
+from django.db import transaction
 from django.db.models import Q, QuerySet
 from django.utils import timezone
 
@@ -14,30 +16,31 @@ from audit_app.company_access import (
     resolve_tenant_company,
     user_must_select_company,
 )
-from audit_app.models import COMPANY_KIND_MAIN, Company, Dashboard, DashboardRejectionLog, DashboardStatus
+from audit_app.models import (
+    COMPANY_KIND_MAIN,
+    Company,
+    CompanyMembership,
+    Dashboard,
+    DashboardRejectionLog,
+    DashboardStatus,
+    DashboardViewer,
+)
 from reports_app.workflow_engine import (
-    cancel_workflow_on_reject,
     company_uses_workflow_v2,
-    get_workflow_instance,
     publish_dashboard,
-    start_workflow_after_approval,
     submit_dashboard_for_review,
-    workflow_progress_label,
 )
 
 _DASHBOARD_PK_URL = re.compile(r"^/dashboards/(\d+)(?:/|$)")
 
 FILTER_ALL = "all"
 FILTER_PENDING_REVIEW = "pending_review"
-FILTER_PENDING_ACK = "pending_ack"
 FILTER_PUBLISHED = "published"
 FILTER_MINE = "mine"
 FILTER_REJECTED = "rejected"
+FILTER_DRAFT = "draft"
 
-_REVIEWABLE_STATUSES = (
-    DashboardStatus.UNDER_REVIEW,
-    DashboardStatus.IN_WORKFLOW,
-)
+_REVIEWABLE_STATUSES = (DashboardStatus.UNDER_REVIEW,)
 _PRIVATE_CREATOR_STATUSES = (
     DashboardStatus.DRAFT,
     DashboardStatus.REJECTED,
@@ -64,14 +67,14 @@ def has_upload_perm(user, company: Company | None = None) -> bool:
     return has_company_perm(user, company, "upload")
 
 
-def has_view_perm(user, company: Company | None = None) -> bool:
+def has_assign_viewers_perm(user, company: Company | None = None) -> bool:
     if not active_companies_exist():
         return False
     if company is None:
         if user.is_superuser and not user_must_select_company(user):
             return True
         return False
-    return has_company_perm(user, company, "view")
+    return has_company_perm(user, company, "assign_viewers")
 
 
 def has_view_own_only_perm(user, company: Company | None = None) -> bool:
@@ -82,12 +85,23 @@ def has_view_own_only_perm(user, company: Company | None = None) -> bool:
     return has_company_perm(user, company, "view_own")
 
 
+def user_has_dashboard_viewer_grant(user, company: Company | None = None) -> bool:
+    if company is None:
+        return False
+    return DashboardViewer.objects.filter(
+        user=user,
+        dashboard__company=company,
+        dashboard__is_deleted=False,
+    ).exists()
+
+
 def has_dashboard_list_perm(user, company: Company | None = None) -> bool:
     return (
         has_review_perm(user, company)
-        or has_view_perm(user, company)
+        or has_assign_viewers_perm(user, company)
         or has_view_own_only_perm(user, company)
         or has_upload_perm(user, company)
+        or user_has_dashboard_viewer_grant(user, company)
     )
 
 
@@ -145,13 +159,18 @@ def _base_dashboards_qs(company: Company | None) -> QuerySet[Dashboard]:
             "upload_session",
             "reviewed_by",
             "company",
-            "workflow_instance",
-            "workflow_instance__current_assignee",
         )
     )
     if company is not None:
         qs = qs.filter(company=company)
     return qs
+
+
+def _published_viewer_q(user) -> Q:
+    return Q(
+        status=DashboardStatus.PUBLISHED,
+        viewers__user=user,
+    )
 
 
 def _visibility_q(user, company: Company | None) -> Q:
@@ -164,17 +183,10 @@ def _visibility_q(user, company: Company | None) -> Q:
     if has_review_perm(user, company):
         q |= Q(status__in=[*_REVIEWABLE_STATUSES, DashboardStatus.PUBLISHED])
 
-    if has_view_perm(user, company):
+    if has_assign_viewers_perm(user, company):
         q |= Q(status=DashboardStatus.PUBLISHED)
 
-    if has_upload_perm(user, company) and not has_view_perm(user, company):
-        if not has_view_own_only_perm(user, company):
-            q |= Q(status=DashboardStatus.PUBLISHED)
-
-    q |= Q(
-        status=DashboardStatus.IN_WORKFLOW,
-        workflow_instance__current_assignee=user,
-    )
+    q |= _published_viewer_q(user)
 
     return q
 
@@ -201,22 +213,17 @@ def user_can_see_dashboard(user, dashboard: Dashboard, company: Company | None =
         return True
 
     if dashboard.status == DashboardStatus.PUBLISHED:
-        if has_view_perm(user, active):
-            return True
-        if has_upload_perm(user, active):
-            return True
-        return has_view_own_only_perm(user, active)
-
-    if dashboard.status in _REVIEWABLE_STATUSES:
         if has_review_perm(user, active):
             return True
-        instance = get_workflow_instance(dashboard)
-        if (
-            dashboard.status == DashboardStatus.IN_WORKFLOW
-            and instance
-            and instance.current_assignee_id == user.id
-        ):
+        if has_assign_viewers_perm(user, active):
             return True
+        return DashboardViewer.objects.filter(
+            dashboard=dashboard,
+            user=user,
+        ).exists()
+
+    if dashboard.status in _REVIEWABLE_STATUSES:
+        return has_review_perm(user, active)
 
     return False
 
@@ -226,7 +233,7 @@ def dashboards_queryset_for_user(user, company: Company | None = None) -> QueryS
         return Dashboard.objects.none()
 
     qs = _base_dashboards_qs(company)
-    if user.is_superuser and company is None:
+    if user.is_superuser:
         return qs
 
     return qs.filter(_visibility_q(user, company)).distinct()
@@ -243,17 +250,14 @@ def filter_dashboards_queryset(
         return qs
     if key == FILTER_PENDING_REVIEW:
         return qs.filter(status=DashboardStatus.UNDER_REVIEW)
-    if key == FILTER_PENDING_ACK:
-        return qs.filter(
-            status=DashboardStatus.IN_WORKFLOW,
-            workflow_instance__current_assignee=user,
-        )
     if key == FILTER_PUBLISHED:
         return qs.filter(status=DashboardStatus.PUBLISHED)
     if key == FILTER_MINE:
         return qs.filter(created_by=user)
     if key == FILTER_REJECTED:
         return qs.filter(status=DashboardStatus.REJECTED, created_by=user)
+    if key == FILTER_DRAFT:
+        return qs.filter(status=DashboardStatus.DRAFT)
     return qs
 
 
@@ -283,20 +287,12 @@ def available_dashboard_filters(
                 }
             )
 
-    pending_ack = qs.filter(
-        status=DashboardStatus.IN_WORKFLOW,
-        workflow_instance__current_assignee=user,
+    show_published_filter = (
+        has_review_perm(user, company)
+        or has_assign_viewers_perm(user, company)
+        or user_has_dashboard_viewer_grant(user, company)
     )
-    if pending_ack.exists():
-        filters.append(
-            {
-                "key": FILTER_PENDING_ACK,
-                "label_key": "dl_filter_pending_ack",
-                "count": pending_ack.count(),
-            }
-        )
-
-    if has_view_perm(user, company):
+    if show_published_filter:
         published = qs.filter(status=DashboardStatus.PUBLISHED)
         if published.exists() or (has_review_perm(user, company) and len(filters) > 1):
             filters.append(
@@ -328,6 +324,17 @@ def available_dashboard_filters(
             }
         )
 
+    if user.is_superuser:
+        drafts = qs.filter(status=DashboardStatus.DRAFT)
+        if drafts.exists():
+            filters.append(
+                {
+                    "key": FILTER_DRAFT,
+                    "label_key": "dl_filter_draft",
+                    "count": drafts.count(),
+                }
+            )
+
     if len(filters) <= 1:
         return []
     return filters
@@ -347,7 +354,6 @@ def get_dashboard_for_review(user, pk: int, company: Company | None = None) -> D
             "upload_session",
             "reviewed_by",
             "company",
-            "workflow_instance",
         ).get(pk=pk, is_deleted=False)
     except Dashboard.DoesNotExist:
         return None
@@ -381,8 +387,6 @@ def load_dashboard_cross_company(
             "reviewed_by",
             "deleted_by",
             "company",
-            "workflow_instance",
-            "workflow_instance__current_assignee",
         ).get(pk=pk)
     except Dashboard.DoesNotExist:
         return None
@@ -448,8 +452,6 @@ def get_dashboard_for_user(
             "reviewed_by",
             "deleted_by",
             "company",
-            "workflow_instance",
-            "workflow_instance__current_assignee",
         ).get(pk=pk)
     except Dashboard.DoesNotExist:
         return None
@@ -485,20 +487,13 @@ def submit_dashboard(user, dashboard: Dashboard, company: Company | None = None)
 
 
 def approve_dashboard(dashboard: Dashboard, reviewer) -> str:
-    """
-    Approve dashboard: start workflow or publish directly.
-
-    Returns: 'workflow' | 'published'
-    """
-    company = dashboard.company
-    if company and _uses_v2(company) and start_workflow_after_approval(dashboard, reviewer):
-        return "workflow"
+    """Publish dashboard after reviewer approval."""
     publish_dashboard(dashboard, reviewer)
     return "published"
 
 
 def reject_dashboard(dashboard: Dashboard, reviewer, reason: str) -> DashboardRejectionLog:
-    cancel_workflow_on_reject(dashboard)
+    DashboardViewer.objects.filter(dashboard=dashboard).delete()
     log = DashboardRejectionLog.objects.create(
         dashboard=dashboard,
         reason=reason.strip(),
@@ -514,8 +509,21 @@ def reject_dashboard(dashboard: Dashboard, reviewer, reason: str) -> DashboardRe
     return log
 
 
+@transaction.atomic
+def return_published_to_review(dashboard: Dashboard, reviewer) -> None:
+    """Move a published dashboard back to pending approval/rejection."""
+    DashboardViewer.objects.filter(dashboard=dashboard).delete()
+    dashboard.status = DashboardStatus.UNDER_REVIEW
+    dashboard.published_at = None
+    dashboard.submitted_at = timezone.now()
+    dashboard.reviewed_by = reviewer
+    dashboard.save(
+        update_fields=["status", "published_at", "submitted_at", "reviewed_by"]
+    )
+
+
 def mark_dashboard_draft(dashboard: Dashboard) -> None:
-    cancel_workflow_on_reject(dashboard)
+    DashboardViewer.objects.filter(dashboard=dashboard).delete()
     dashboard.status = DashboardStatus.DRAFT
     dashboard.published_at = None
     dashboard.submitted_at = None
@@ -533,6 +541,29 @@ def can_user_resubmit(user, dashboard: Dashboard, company: Company | None = None
     )
 
 
+def can_user_save_dashboard_user_edits(
+    user,
+    dashboard: Dashboard,
+    company: Company | None = None,
+) -> bool:
+    """Allow persisting audit-plan / review-note edits until publish."""
+    if dashboard.is_deleted or dashboard.status == DashboardStatus.PUBLISHED:
+        return False
+    return user_can_see_dashboard(user, dashboard, company)
+
+
+def can_user_manage_review_attachments(
+    user,
+    dashboard: Dashboard,
+    company: Company | None = None,
+) -> bool:
+    """Reviewer may add/replace/remove deck attachments while pending approval."""
+    return (
+        can_user_review(user, dashboard, company)
+        and dashboard.status == DashboardStatus.UNDER_REVIEW
+    )
+
+
 def can_user_review(user, dashboard: Dashboard, company: Company | None = None) -> bool:
     active = company or dashboard.company
     if not has_review_perm(user, active) or dashboard.is_deleted:
@@ -546,24 +577,116 @@ def can_user_review(user, dashboard: Dashboard, company: Company | None = None) 
     return dashboard.status == DashboardStatus.DRAFT
 
 
-def can_user_acknowledge(user, dashboard: Dashboard, company: Company | None = None) -> bool:
-    if dashboard.is_deleted or dashboard.status != DashboardStatus.IN_WORKFLOW:
-        return False
-    instance = get_workflow_instance(dashboard)
-    if instance is None or instance.current_assignee_id != user.id:
-        return False
+def can_user_return_published_to_review(
+    user,
+    dashboard: Dashboard,
+    company: Company | None = None,
+) -> bool:
+    """Reviewer may return a published dashboard to pending approval/rejection."""
     active = company or dashboard.company
+    if not has_review_perm(user, active) or dashboard.is_deleted:
+        return False
+    if active is not None and dashboard.company_id != active.id and not user.is_superuser:
+        return False
+    if not _uses_v2(active):
+        return False
+    return dashboard.status == DashboardStatus.PUBLISHED
+
+
+def return_published_dashboard_to_review(
+    user,
+    dashboard: Dashboard,
+    company: Company | None = None,
+) -> None:
+    if not can_user_return_published_to_review(user, dashboard, company):
+        raise PermissionError("return_to_review_forbidden")
+    return_published_to_review(dashboard, reviewer=user)
+
+
+def can_user_manage_dashboard_viewers(
+    user,
+    dashboard: Dashboard,
+    company: Company | None = None,
+) -> bool:
+    active = company or dashboard.company
+    if dashboard.is_deleted or dashboard.status != DashboardStatus.PUBLISHED:
+        return False
+    if not has_assign_viewers_perm(user, active):
+        return False
     if active is not None and dashboard.company_id != active.id and not user.is_superuser:
         return False
     return True
 
 
+def company_members_for_viewer_assignment(company: Company) -> QuerySet[User]:
+    user_ids = CompanyMembership.objects.filter(
+        company=company,
+        is_deleted=False,
+    ).values_list("user_id", flat=True)
+    return User.objects.filter(pk__in=user_ids, is_active=True).order_by(
+        "username"
+    )
+
+
+def get_dashboard_viewer_user_ids(dashboard: Dashboard) -> set[int]:
+    return set(
+        DashboardViewer.objects.filter(dashboard=dashboard).values_list(
+            "user_id", flat=True
+        )
+    )
+
+
+@transaction.atomic
+def set_dashboard_viewers(
+    dashboard: Dashboard,
+    user_ids: list[int],
+    granted_by: User,
+) -> tuple[set[int], set[int]]:
+    """
+    Replace viewer assignments for a published dashboard.
+
+    Returns (added_user_ids, removed_user_ids).
+    """
+    company = dashboard.company
+    if company is None:
+        raise ValueError("no_company")
+
+    allowed_ids = set(
+        CompanyMembership.objects.filter(
+            company=company,
+            is_deleted=False,
+        ).values_list("user_id", flat=True)
+    )
+    requested = {uid for uid in user_ids if uid in allowed_ids}
+    current = get_dashboard_viewer_user_ids(dashboard)
+
+    to_add = requested - current
+    to_remove = current - requested
+
+    if to_remove:
+        DashboardViewer.objects.filter(
+            dashboard=dashboard,
+            user_id__in=to_remove,
+        ).delete()
+
+    if to_add:
+        DashboardViewer.objects.bulk_create(
+            [
+                DashboardViewer(
+                    dashboard=dashboard,
+                    user_id=uid,
+                    granted_by=granted_by,
+                )
+                for uid in to_add
+            ],
+            ignore_conflicts=True,
+        )
+
+    return to_add, to_remove
+
+
 def can_user_reject(user, dashboard: Dashboard, company: Company | None = None) -> bool:
     return can_user_review(user, dashboard, company)
-
-
-def dashboard_workflow_progress(dashboard: Dashboard) -> str | None:
-    return workflow_progress_label(dashboard)
 
 
 def soft_delete_dashboard(dashboard: Dashboard, user) -> None:

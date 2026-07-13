@@ -121,21 +121,12 @@ class Command(BaseCommand):
         )
 
         # ── Seed default dashboard template types ───────────────────
+        from audit_app.dashboard_template_codes import seed_dashboard_template_types
+
+        seed_dashboard_template_types()
         from audit_app.models import DashboardTemplateType
 
-        defaults = [
-            {
-                "code": "ai",
-                "name": "لوحة تحليلية ذكية",
-                "description": "لوحة تحكم مبنية بالذكاء الاصطناعي تعرض مؤشرات التدقيق الداخلي",
-                "icon": "bi-stars",
-                "sort_order": 1,
-            },
-        ]
-        for d in defaults:
-            code = d.pop("code")
-            obj, was_created = DashboardTemplateType.objects.get_or_create(
-                code=code, defaults=d
-            )
-            action = "seeded" if was_created else "exists"
-            self.stdout.write(f"  [{action}] template type: {code}")
+        for code in DashboardTemplateType.objects.filter(code__in=["IAD", "CD"]).values_list(
+            "code", flat=True
+        ):
+            self.stdout.write(f"  [seeded] template type: {code}")

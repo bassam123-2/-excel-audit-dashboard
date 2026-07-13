@@ -1,0 +1,31 @@
+{
+  "include": [
+    "accounts_app",
+    "audit_app",
+    "arabic_compliance_dashboard",
+    "config",
+    "config.example",
+    "reports_app",
+    "mail_app",
+    "exports_app",
+    "tests",
+    "*.py"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/.venv",
+    "**/node_modules",
+    "**/media",
+    "**/staticfiles"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": ["."]
+    }
+  ]
+}

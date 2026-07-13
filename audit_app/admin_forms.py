@@ -20,7 +20,6 @@ from audit_app.models import (
     COMPANY_KIND_SUBSIDIARY,
     Company,
     CompanyAttachmentSetting,
-    WorkflowTemplateStep,
 )
 
 IS_STAFF_LABEL = _("Admin")
@@ -113,10 +112,10 @@ def apply_user_profile_form(user, cleaned_data: dict) -> None:
     _save_user_password_expiry(
         user, cleaned_data.get("password_expiry_enabled", True)
     )
-    if user.is_superuser:
-        _save_user_workflow_emails(
-            user, cleaned_data.get("receive_workflow_emails", False)
-        )
+    default_workflow = False if user.is_superuser else True
+    _save_user_workflow_emails(
+        user, cleaned_data.get("receive_workflow_emails", default_workflow)
+    )
 
 
 def _initial_job_title(user) -> str:
@@ -126,12 +125,6 @@ def _initial_job_title(user) -> str:
         return user.profile.job_title
     except UserProfile.DoesNotExist:
         return ""
-
-
-def _form_data_requests_superuser(form: forms.BaseForm) -> bool:
-    if not form.data:
-        return False
-    return form.data.get("is_superuser") in ("on", "true", "1", True)
 
 
 class MandatoryPasswordAdminCreationForm(UserCreationForm):
@@ -161,7 +154,7 @@ class MandatoryPasswordAdminCreationForm(UserCreationForm):
         help_text=_("The user's job title or position."),
     )
     send_credentials_email = forms.BooleanField(
-        label=_("Send new password by email"),
+        label=_("Send reset link"),
         required=False,
         initial=False,
         help_text=_(
@@ -244,8 +237,8 @@ class AdminUserChangeForm(UserChangeForm):
         label=_("Receive workflow notification emails"),
         required=False,
         help_text=_(
-            "Superuser accounts only. Enable to receive dashboard workflow emails "
-            "(pending review, publish, etc.) on this support account."
+            "When enabled, the user receives dashboard workflow emails "
+            "(pending review, publish, rejection, assignment)."
         ),
     )
 
@@ -262,15 +255,11 @@ class AdminUserChangeForm(UserChangeForm):
         self.fields["password_expiry_enabled"].initial = (
             profile.password_expiry_enabled if profile else True
         )
-        workflow_field = self.fields.pop("receive_workflow_emails", None)
-        show_workflow_emails = self.instance.is_superuser or _form_data_requests_superuser(
-            self
+        self.fields["receive_workflow_emails"].initial = (
+            profile.receive_workflow_emails
+            if profile
+            else (False if self.instance.is_superuser else True)
         )
-        if show_workflow_emails and workflow_field is not None:
-            self.fields["receive_workflow_emails"] = workflow_field
-            self.fields["receive_workflow_emails"].initial = (
-                profile.receive_workflow_emails if profile else False
-            )
         if "email" in self.fields:
             self.fields["email"].required = True
             self.fields["email"].widget = forms.EmailInput(
@@ -322,7 +311,7 @@ class MandatoryPasswordAdminChangeForm(SetPasswordMixin, forms.Form):
     required_css_class = "required"
     password1, password2 = SetPasswordMixin.create_password_fields()
     send_credentials_email = forms.BooleanField(
-        label=_("Send new password by email"),
+        label=_("Send reset link"),
         required=False,
         initial=False,
         help_text=_(
@@ -386,6 +375,10 @@ class _CompanyAdminFormBase(forms.ModelForm):
             pk=self.instance.pk if self.instance.pk else None
         )
         self.fields["parent"].required = False
+        if self.instance.pk:
+            self.fields["parent"].widget.attrs["data-exclude-pk"] = str(
+                self.instance.pk
+            )
         self.fields["logo"].required = not bool(self.instance.pk and self.instance.logo)
         kind = (
             (self.data.get("company_kind") if self.data else None)
@@ -479,60 +472,3 @@ CompanyAdminForm = type(
 )
 
 
-# ── Workflow template step inline (admin) ─────────────────────────────
-
-
-class WorkflowTemplateStepForm(forms.ModelForm):
-    """Only assignee is editable; step order comes from row order (drag-and-drop)."""
-
-    wf_row_order = forms.IntegerField(widget=forms.HiddenInput(), required=False, label="")
-
-    class Meta:
-        model = WorkflowTemplateStep
-        fields = ("assignee",)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        from audit_app.admin_utils import (
-            WorkflowAssigneeAutocompleteWidget,
-            format_admin_user_label,
-        )
-
-        if self.instance.pk:
-            self.fields["wf_row_order"].initial = self.instance.step_order
-
-        assignee_field = self.fields.get("assignee")
-        if assignee_field is not None:
-            assignee_field.label_from_instance = format_admin_user_label
-            db_field = WorkflowTemplateStep._meta.get_field("assignee")
-            assignee_field.widget = WorkflowAssigneeAutocompleteWidget(
-                db_field,
-                admin.site,
-                choices=assignee_field.choices,
-            )
-
-
-class WorkflowTemplateStepFormSet(BaseInlineFormSet):
-    def clean(self):
-        super().clean()
-        assignees: list = []
-        for form in self.forms:
-            if not form.cleaned_data or form.cleaned_data.get("DELETE"):
-                continue
-            assignee = form.cleaned_data.get("assignee")
-            if assignee:
-                assignees.append(assignee)
-        if self.instance.pk and not assignees:
-            raise forms.ValidationError(
-                _("Add at least one workflow step with an assignee.")
-            )
-        assignee_ids = [assignee.pk for assignee in assignees]
-        if len(assignee_ids) != len(set(assignee_ids)):
-            raise forms.ValidationError(
-                _("Each person can appear only once in the workflow chain.")
-            )
-
-    def get_form_kwargs(self, index):
-        kwargs = super().get_form_kwargs(index)
-        kwargs["label_suffix"] = ""
-        return kwargs

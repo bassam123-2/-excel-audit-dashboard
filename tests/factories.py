@@ -17,7 +17,10 @@ def make_user(username: str, *, email: str = "", password: str = "Test@1234") ->
     profile = user.profile
     profile.two_factor_enabled = False  # keep tests on simple login path unless 2FA is under test
     profile.job_title = profile.job_title or "Tester"
-    profile.save(update_fields=["two_factor_enabled", "job_title"])
+    profile.receive_workflow_emails = not user.is_superuser
+    profile.save(
+        update_fields=["two_factor_enabled", "job_title", "receive_workflow_emails"]
+    )
     return user
 
 
@@ -26,7 +29,7 @@ def make_membership(
     company: Company,
     *,
     can_upload: bool = False,
-    can_view: bool = False,
+    can_assign_dashboard_viewers: bool = False,
     can_view_own_only: bool = False,
     can_review: bool = False,
     can_delete_drafts: bool = False,
@@ -35,7 +38,7 @@ def make_membership(
         user=user,
         company=company,
         can_upload=can_upload,
-        can_view=can_view,
+        can_assign_dashboard_viewers=can_assign_dashboard_viewers,
         can_view_own_only=can_view_own_only,
         can_review=can_review,
         can_delete_drafts=can_delete_drafts,

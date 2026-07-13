@@ -22,8 +22,8 @@ from reports_app.dashboard_workflow import (
     has_delete_draft_perm,
     has_review_perm,
     has_upload_perm,
-    has_view_perm,
 )
+from django.urls import reverse
 from web_strings import get_ui
 
 
@@ -66,6 +66,14 @@ def ui_context(request) -> dict:
             and active_company is None
         )
 
+    active_company_logo_url = None
+    if active_company and not needs_company_selection and getattr(active_company, "logo", None):
+        try:
+            if active_company.logo.name:
+                active_company_logo_url = reverse("company_logo", args=[active_company.pk])
+        except (ValueError, AttributeError):
+            active_company_logo_url = None
+
     return {
         "lang": lang,
         "ui_theme": ui_theme,
@@ -79,6 +87,7 @@ def ui_context(request) -> dict:
         "can_delete_drafts": can_delete_drafts,
         "can_manage_users": can_manage_users,
         "active_company": active_company,
+        "active_company_logo_url": active_company_logo_url,
         "user_companies": user_company_list,
         "show_company_switcher": len(user_company_list) > 1,
         "needs_company_selection": needs_company_selection,

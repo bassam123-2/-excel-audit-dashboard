@@ -25,44 +25,54 @@ from web_strings import get_ui  # noqa: E402
 from dashboard_locale import normalize_locale  # noqa: E402
 
 from audit_app.company_access import user_must_select_company
-from audit_app.models import Dashboard, DashboardTemplateType, DashboardStatus, ICON_CHOICES
+from audit_app.models import (
+    Dashboard,
+    DashboardTemplateType,
+    DashboardStatus,
+    ICON_CHOICES,
+    TEMPLATE_TYPE_CHOICES,
+)
 from .dashboard_workflow import (
     FILTER_ALL,
     activate_company_for_dashboard,
     approve_dashboard,
     available_dashboard_filters,
-    can_user_acknowledge,
     can_user_delete_dashboard,
+    can_user_manage_dashboard_viewers,
+    can_user_manage_review_attachments,
     can_user_resubmit,
+    can_user_return_published_to_review,
     can_user_review,
+    can_user_save_dashboard_user_edits,
     can_user_submit,
-    dashboard_workflow_progress,
+    company_members_for_viewer_assignment,
     dashboards_queryset_for_user,
     filter_dashboards_queryset,
     get_dashboard_for_review,
     get_dashboard_for_user,
+    get_dashboard_viewer_user_ids,
     has_delete_perm,
     has_review_perm,
     has_upload_perm,
     has_dashboard_list_perm,
-    has_view_perm,
     load_dashboard_cross_company,
     reject_dashboard,
+    return_published_dashboard_to_review,
+    set_dashboard_viewers,
     soft_delete_dashboard,
     submit_dashboard,
 )
-from reports_app.workflow_engine import (
-    acknowledge_workflow_step,
-    company_uses_workflow_v2,
-    current_assignee_display,
-)
+from reports_app.workflow_engine import company_uses_workflow_v2
 from .services.report_generation import (
     build_attachment_form_slots,
     version_payload,
     generate_from_db_data,
-    inject_web_mail_api,
+    inject_dashboard_serve_context,
     report_locale_for_dashboard,
     store_upload_to_db,
+    update_dashboard_review_attachments,
+    validate_dashboard_user_edits_payload,
+    _existing_excel_names,
 )
 
 logger = logging.getLogger(__name__)
@@ -166,11 +176,19 @@ def _cleanup_dashboard_files(dashboard: Dashboard) -> None:
 
 
 def _dashboard_cache_fresh(cache_path: Path) -> bool:
-    """Invalidate cached HTML when the dashboard generator module changes."""
+    """Invalidate cached HTML when dashboard generator or embedded assets change."""
     if not cache_path.exists():
         return False
     try:
         gen_mtime = Path(_ai_excel_dashboard_mod.__file__).stat().st_mtime
+        ar_pkg = Path(__file__).resolve().parents[1] / "arabic_compliance_dashboard"
+        ar_gen = ar_pkg / "generator.py"
+        if ar_gen.is_file():
+            gen_mtime = max(gen_mtime, ar_gen.stat().st_mtime)
+        for asset_name in ("assets/dashboard.js", "assets/styles.css", "assets/body.html"):
+            asset_path = ar_pkg / asset_name
+            if asset_path.is_file():
+                gen_mtime = max(gen_mtime, asset_path.stat().st_mtime)
         return cache_path.stat().st_mtime >= gen_mtime
     except OSError:
         return False
@@ -179,12 +197,24 @@ def _dashboard_cache_fresh(cache_path: Path) -> bool:
 # ── Upload form helpers ───────────────────────────────────────────────
 
 
+def _active_upload_template_codes() -> set[str]:
+    codes = set(
+        DashboardTemplateType.objects.filter(
+            is_active=True,
+            is_deleted=False,
+        ).values_list("code", flat=True)
+    )
+    if codes:
+        return codes
+    return {code for code, _ in TEMPLATE_TYPE_CHOICES}
+
+
 def _upload_form_from_post(post) -> dict:
     return {
         "dashboard_name": post.get("dashboard_name", "").strip(),
         "icon": post.get("icon", "").strip(),
         "description": post.get("description", "").strip(),
-        "template_type": post.get("template_type", "ai").strip() or "ai",
+        "template_type": post.get("template_type", "").strip(),
         "resubmit_dashboard_id": post.get("resubmit_dashboard_id", "").strip(),
     }
 
@@ -213,22 +243,38 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
     selected_template = (
         form.get("template_type")
         or (resubmit_dashboard.template_type if resubmit_dashboard else "")
-        or "ai"
     )
+    active_templates = list(
+        DashboardTemplateType.objects.filter(
+            is_active=True,
+            is_deleted=False,
+        )
+    )
+    if not selected_template and len(active_templates) == 1:
+        selected_template = active_templates[0].code
     dashboard_name_value = (
         form.get("dashboard_name")
         or (resubmit_dashboard.name if resubmit_dashboard else "")
         or ""
     )
     lang = normalize_locale(request.session.get("ui_lang", "en"))
+    existing_excel_names: list[str] = []
+    has_existing_excel = False
+    if resubmit_dashboard:
+        existing_excel_names = _existing_excel_names(resubmit_dashboard)
+        session = resubmit_dashboard.upload_session
+        has_existing_excel = bool(
+            existing_excel_names
+            and session
+            and session.raw_data_json
+        )
     return {
         "icon_choices": ICON_CHOICES,
-        "template_types": DashboardTemplateType.objects.filter(
-            is_active=True,
-            is_deleted=False,
-        ),
+        "template_types": active_templates,
         "resubmit_dashboard": resubmit_dashboard,
         "is_edit_mode": resubmit_dashboard is not None,
+        "existing_excel_names": existing_excel_names,
+        "has_existing_excel": has_existing_excel,
         "attachment_slots": build_attachment_form_slots(
             resubmit_dashboard,
             locale=lang,
@@ -293,12 +339,21 @@ def analyze(request):
     description = form["description"]
     template_type = form["template_type"]
 
+    valid_template_codes = _active_upload_template_codes()
+    if not template_type and len(valid_template_codes) == 1:
+        template_type = next(iter(valid_template_codes))
+
     if not dashboard_name:
         messages.error(request, ui["upload_err_name"])
         return _render_upload_page(request, form)
 
     if not icon:
         messages.error(request, ui["upload_err_icon"])
+        return _render_upload_page(request, form)
+
+    valid_template_codes = _active_upload_template_codes()
+    if template_type not in valid_template_codes:
+        messages.error(request, ui["upload_err_template"])
         return _render_upload_page(request, form)
 
     resubmit_dashboard = None
@@ -332,8 +387,9 @@ def analyze(request):
         messages.error(request, err)
         return _render_upload_page(request, form)
 
+    _clear_dashboard_html_cache(dashboard)
+
     if resubmit_dashboard:
-        _clear_dashboard_html_cache(dashboard)
         dashboard.save(update_fields=["html_file"])
         if was_draft_edit:
             messages.success(request, ui.get("wf_edit_draft_success", ui["upload_success"]))
@@ -370,7 +426,21 @@ def _inject_served_dashboard_html(
 ) -> str:
     mail_url = request.build_absolute_uri("/api/send-obs-email")
     plan_url = request.build_absolute_uri("/api/parse-audit-plan-pptx")
-    return inject_web_mail_api(html_content, mail_url, plan_url)
+    company = _active_company(request)
+    can_save = can_user_save_dashboard_user_edits(request.user, dashboard, company)
+    save_url = (
+        request.build_absolute_uri(reverse("dashboard_user_edits", args=[dashboard.pk]))
+        if can_save
+        else ""
+    )
+    return inject_dashboard_serve_context(
+        html_content,
+        mail_url=mail_url,
+        plan_url=plan_url,
+        user_edits_save_url=save_url,
+        can_save_user_edits=can_save,
+        user_edits_json=dashboard.user_edits_json or "",
+    )
 
 
 def _send_publish_notifications(request, dashboard, reviewer):
@@ -430,6 +500,16 @@ def dashboard_list(request):
         for dashboard in dashboards
         if can_user_delete_dashboard(request.user, dashboard, company)
     }
+    manageable_viewer_dashboard_ids = {
+        dashboard.pk
+        for dashboard in dashboards
+        if can_user_manage_dashboard_viewers(request.user, dashboard, company)
+    }
+    returnable_dashboard_ids = {
+        dashboard.pk
+        for dashboard in dashboards
+        if can_user_return_published_to_review(request.user, dashboard, company)
+    }
     undo_deleted_pk = None
     undo_deleted_name = ""
     return render(
@@ -438,6 +518,8 @@ def dashboard_list(request):
         {
             "dashboards": dashboards,
             "deletable_dashboard_ids": deletable_dashboard_ids,
+            "manageable_viewer_dashboard_ids": manageable_viewer_dashboard_ids,
+            "returnable_dashboard_ids": returnable_dashboard_ids,
             "can_review_dashboards": has_review_perm(
                 request.user, company
             ),
@@ -462,7 +544,9 @@ def dashboard_detail(request, pk: int):
         return render_page_not_found(request)
     rejection_logs = dashboard.rejection_logs.select_related("rejected_by").all()
     company = _active_company(request)
-    workflow_instance = getattr(dashboard, "workflow_instance", None)
+    can_manage_review_attachments = can_user_manage_review_attachments(
+        request.user, dashboard, company
+    )
     return render(
         request,
         "reports_app/dashboard_detail.html",
@@ -473,18 +557,20 @@ def dashboard_detail(request, pk: int):
             "can_resubmit": can_user_resubmit(request.user, dashboard, company),
             "can_submit_for_review": can_user_submit(request.user, dashboard, company),
             "can_approve_reject": can_user_review(request.user, dashboard, company),
-            "can_acknowledge": can_user_acknowledge(request.user, dashboard, company),
-            "can_delete_dashboard": can_user_delete_dashboard(
+            "can_return_to_review": can_user_return_published_to_review(
                 request.user, dashboard, company
             ),
-            "workflow_progress": dashboard_workflow_progress(dashboard),
-            "workflow_assignee_name": current_assignee_display(dashboard),
-            "workflow_step_logs": (
-                workflow_instance.step_logs.select_related(
-                    "assignee", "acknowledged_by"
-                ).all()
-                if workflow_instance
+            "can_manage_review_attachments": can_manage_review_attachments,
+            "review_attachment_slots": (
+                build_attachment_form_slots(dashboard, locale=request.session.get("ui_lang", "en"), company=company)
+                if can_manage_review_attachments
                 else []
+            ),
+            "can_manage_dashboard_viewers": can_user_manage_dashboard_viewers(
+                request.user, dashboard, company
+            ),
+            "can_delete_dashboard": can_user_delete_dashboard(
+                request.user, dashboard, company
             ),
         },
     )
@@ -521,6 +607,66 @@ def dashboard_delete(request, pk: int):
 @require_http_methods(["POST"])
 def dashboard_restore(request, pk: int):
     return render_page_not_found(request)
+
+
+@login_required
+@require_http_methods(["POST"])
+def dashboard_user_edits(request, pk: int):
+    """Persist audit-plan table edits and review notes for a dashboard."""
+    import json
+
+    dashboard = _resolve_dashboard_request(request, pk)
+    if not dashboard:
+        return JsonResponse({"ok": False, "error": "not_found"}, status=404)
+
+    company = _active_company(request)
+    if not can_user_save_dashboard_user_edits(request.user, dashboard, company):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    try:
+        raw = request.body.decode("utf-8") if request.body else ""
+        data = json.loads(raw or "{}")
+        payload = validate_dashboard_user_edits_payload(data)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return JsonResponse({"ok": False, "error": "invalid_payload"}, status=400)
+
+    dashboard.user_edits_json = json.dumps(payload, ensure_ascii=False)
+    dashboard.save(update_fields=["user_edits_json"])
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_http_methods(["POST"])
+def dashboard_review_attachments(request, pk: int):
+    """Allow reviewer to add/replace/remove deck attachments before publish."""
+    lang = request.session.get("ui_lang", "en")
+    ui = get_ui(lang)
+
+    dashboard = _resolve_dashboard_request(request, pk)
+    if not dashboard:
+        messages.error(request, ui.get("wf_dashboard_not_found", "Dashboard not found."))
+        return redirect("dashboard_list")
+
+    company = _active_company(request)
+    if not can_user_manage_review_attachments(request.user, dashboard, company):
+        messages.error(request, ui.get("wf_review_attach_forbidden", "Cannot edit attachments."))
+        return redirect("dashboard_detail", pk=pk)
+
+    try:
+        update_dashboard_review_attachments(request, dashboard, company=company)
+        _clear_dashboard_html_cache(dashboard)
+        dashboard.save(update_fields=["html_file"])
+        messages.success(request, ui.get("wf_review_attach_saved", "Attachments updated."))
+    except ValueError as exc:
+        if str(exc) == "not_under_review":
+            messages.error(request, ui.get("wf_review_not_pending", "This dashboard is not pending review."))
+        else:
+            messages.error(request, str(exc))
+    except Exception:
+        logger.exception("Failed to update review attachments for dashboard %s", dashboard.pk)
+        messages.error(request, ui.get("wf_review_attach_error", "Could not update attachments."))
+
+    return redirect(f"{reverse('dashboard_detail', args=[pk])}?attachments_updated=1")
 
 
 @login_required
@@ -574,7 +720,8 @@ def dashboard_serve(request, pk: int):
             dashboard.html_file = f"dashboards/{cache_filename}"
             dashboard.save(update_fields=["html_file"])
 
-        resp = HttpResponse(html_out, content_type="text/html; charset=utf-8")
+        content = _inject_served_dashboard_html(request, dashboard, html_out)
+        resp = HttpResponse(content, content_type="text/html; charset=utf-8")
         resp["X-Frame-Options"] = "SAMEORIGIN"
         return resp
 
@@ -625,38 +772,14 @@ def dashboard_approve(request, pk: int):
             msg = ui.get("wf_already_published", "This dashboard is already published.")
         elif dashboard.status == DashboardStatus.REJECTED:
             msg = ui.get("wf_already_rejected", "This dashboard was already rejected.")
-        elif dashboard.status == DashboardStatus.IN_WORKFLOW:
-            msg = ui.get("wf_in_workflow", "This dashboard is in the acknowledgment workflow.")
         else:
             msg = ui.get("wf_review_not_pending", "This dashboard is not pending review.")
         return _review_action_redirect(request, dashboard, not_pending_msg=msg)
 
-    if dashboard.status == DashboardStatus.IN_WORKFLOW:
-        messages.error(request, ui.get("wf_use_acknowledge", "Use acknowledge during workflow."))
-        return redirect("dashboard_detail", pk=pk)
-
-    result = approve_dashboard(dashboard, request.user)
+    approve_dashboard(dashboard, request.user)
     dashboard.refresh_from_db()
-    if result == "workflow":
-        messages.success(request, ui.get("wf_workflow_started", "Approval recorded. Acknowledgment workflow started."))
-        from accounts_app.services.workflow_email import notify_workflow_assignee
-
-        instance = getattr(dashboard, "workflow_instance", None)
-        if instance and instance.current_assignee_id:
-            try:
-                notify_workflow_assignee(
-                    dashboard,
-                    base_url=request.build_absolute_uri("/"),
-                    assignee=instance.current_assignee,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to send workflow assignee notification for dashboard %s",
-                    dashboard.pk,
-                )
-    else:
-        messages.success(request, ui.get("wf_approve_success", "Dashboard published."))
-        _send_publish_notifications(request, dashboard, request.user)
+    messages.success(request, ui.get("wf_approve_success", "Dashboard published."))
+    _send_publish_notifications(request, dashboard, request.user)
 
     return redirect("dashboard_list")
 
@@ -712,6 +835,54 @@ def dashboard_reject(request, pk: int):
 
 @login_required
 @require_http_methods(["POST"])
+def dashboard_return_to_review(request, pk: int):
+    lang = request.session.get("ui_lang", "en")
+    ui = get_ui(lang)
+    dashboard = _resolve_dashboard_request(request, pk)
+    if not dashboard:
+        messages.error(request, ui.get("wf_dashboard_not_found", "Dashboard not found."))
+        return redirect("dashboard_list")
+
+    company = _active_company(request)
+    if not can_user_return_published_to_review(request.user, dashboard, company):
+        messages.error(
+            request,
+            ui.get(
+                "wf_return_to_review_forbidden",
+                "You cannot return this dashboard to review.",
+            ),
+        )
+        return redirect("dashboard_detail", pk=pk)
+
+    return_published_dashboard_to_review(request.user, dashboard, company)
+    _clear_dashboard_html_cache(dashboard)
+    messages.success(
+        request,
+        ui.get(
+            "wf_return_to_review_success",
+            "Dashboard returned to pending review.",
+        ),
+    )
+
+    from accounts_app.services.workflow_email import notify_reviewers_pending
+
+    try:
+        notify_reviewers_pending(
+            dashboard,
+            base_url=request.build_absolute_uri("/"),
+            submit_kind="return_to_review",
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send return-to-review notification for dashboard %s",
+            dashboard.pk,
+        )
+
+    return redirect("dashboard_list")
+
+
+@login_required
+@require_http_methods(["POST"])
 def dashboard_submit(request, pk: int):
     lang = request.session.get("ui_lang", "en")
     ui = get_ui(lang)
@@ -747,50 +918,105 @@ def dashboard_submit(request, pk: int):
     return redirect("dashboard_list")
 
 
+def _load_dashboard_for_viewer_assignment(request, pk: int) -> Dashboard | None:
+    """Load dashboard in active company for viewer-management API (no visibility gate)."""
+    company = _active_company(request)
+    try:
+        dashboard = Dashboard.objects.select_related("company", "created_by").get(
+            pk=pk,
+            is_deleted=False,
+        )
+    except Dashboard.DoesNotExist:
+        return None
+    if company is not None and dashboard.company_id != company.id:
+        return None
+    if company is None and not request.user.is_superuser:
+        return None
+    return dashboard
+
+
 @login_required
-@require_http_methods(["POST"])
-def dashboard_acknowledge(request, pk: int):
+@require_http_methods(["GET", "POST"])
+def dashboard_viewers(request, pk: int):
     lang = request.session.get("ui_lang", "en")
     ui = get_ui(lang)
-    dashboard = _resolve_dashboard_request(request, pk)
+    dashboard = _load_dashboard_for_viewer_assignment(request, pk)
     if not dashboard:
+        if _wants_json(request):
+            return JsonResponse({"error": "not_found"}, status=404)
         messages.error(request, ui.get("wf_dashboard_not_found", "Dashboard not found."))
         return redirect("dashboard_list")
 
-    company = _active_company(request)
-    if not can_user_acknowledge(request.user, dashboard, company):
-        messages.error(request, ui.get("wf_ack_forbidden", "You cannot acknowledge this dashboard."))
+    company = _active_company(request) or dashboard.company
+    if not can_user_manage_dashboard_viewers(request.user, dashboard, company):
+        if _wants_json(request):
+            return JsonResponse({"error": "forbidden"}, status=403)
+        messages.error(request, ui.get("dv_forbidden", "No permission to manage viewers."))
         return redirect("dashboard_detail", pk=pk)
 
-    try:
-        published = acknowledge_workflow_step(dashboard, request.user)
-    except ValueError:
-        messages.error(request, ui.get("wf_ack_forbidden", "You cannot acknowledge this dashboard."))
-        return redirect("dashboard_detail", pk=pk)
-
-    dashboard.refresh_from_db()
-    if published:
-        messages.success(request, ui.get("wf_ack_published", "Acknowledgment complete. Dashboard published."))
-        _send_publish_notifications(request, dashboard, dashboard.reviewed_by)
-    else:
-        messages.success(request, ui.get("wf_ack_success", "Acknowledgment recorded."))
-        from accounts_app.services.workflow_email import notify_workflow_assignee
-
-        instance = getattr(dashboard, "workflow_instance", None)
-        if instance and instance.current_assignee_id:
-            try:
-                notify_workflow_assignee(
-                    dashboard,
-                    base_url=request.build_absolute_uri("/"),
-                    assignee=instance.current_assignee,
+    if request.method == "GET":
+        assigned_ids = get_dashboard_viewer_user_ids(dashboard)
+        members = []
+        if dashboard.company_id:
+            for user in company_members_for_viewer_assignment(dashboard.company):
+                full = user.get_full_name().strip()
+                members.append(
+                    {
+                        "id": user.pk,
+                        "username": user.username,
+                        "name": full or user.username,
+                        "assigned": user.pk in assigned_ids,
+                    }
                 )
-            except Exception:
-                logger.exception(
-                    "Failed to send workflow assignee notification for dashboard %s",
-                    dashboard.pk,
-                )
+        return JsonResponse(
+            {
+                "members": members,
+                "assigned_ids": sorted(assigned_ids),
+            }
+        )
 
-    return redirect("dashboard_list")
+    raw_ids = request.POST.getlist("user_ids")
+    user_ids: list[int] = []
+    for raw in raw_ids:
+        try:
+            user_ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+
+    added, removed = set_dashboard_viewers(
+        dashboard,
+        user_ids,
+        granted_by=request.user,
+    )
+
+    if added:
+        from accounts_app.services.workflow_email import notify_viewers_assigned
+
+        try:
+            notify_viewers_assigned(
+                dashboard,
+                user_ids=sorted(added),
+                base_url=request.build_absolute_uri("/"),
+                granted_by=request.user,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send viewer assignment email for dashboard %s",
+                dashboard.pk,
+            )
+
+    if _wants_json(request):
+        return JsonResponse(
+            {
+                "ok": True,
+                "assigned_ids": sorted(get_dashboard_viewer_user_ids(dashboard)),
+                "added": sorted(added),
+                "removed": sorted(removed),
+            }
+        )
+
+    messages.success(request, ui.get("dv_saved", "Viewer assignments saved."))
+    return redirect("dashboard_detail", pk=pk)
 
 
 @require_GET

@@ -71,9 +71,11 @@ def enrich_message_headers(
     from_addr: str,
     to_addr: str,
 ) -> None:
-    from email.utils import formatdate, make_msgid
+    from email.utils import format_datetime, make_msgid
 
-    msg["Date"] = formatdate(localtime=True)
+    from accounts_app.services.project_timezone import project_local_now
+
+    msg["Date"] = format_datetime(project_local_now())
     msg["Message-ID"] = make_msgid(domain=_message_id_domain(from_addr))
     msg["MIME-Version"] = "1.0"
     reply_to = str(cfg.get("reply_to") or "").strip()
@@ -214,7 +216,9 @@ def load_logo_attachment() -> tuple[bytes, str] | None:
 
 
 def bilingual_footer_html() -> str:
-    year = datetime.now().year
+    from accounts_app.services.project_timezone import project_local_now
+
+    year = project_local_now().year
     return (
         f"© {year} {BRAND_NAME_EN}. جميع الحقوق محفوظة.<br>"
         f"© {year} {BRAND_NAME_EN}. All rights reserved."
@@ -222,7 +226,9 @@ def bilingual_footer_html() -> str:
 
 
 def bilingual_footer_plain() -> str:
-    year = datetime.now().year
+    from accounts_app.services.project_timezone import project_local_now
+
+    year = project_local_now().year
     return (
         f"© {year} {BRAND_NAME_EN}. جميع الحقوق محفوظة.\n"
         f"© {year} {BRAND_NAME_EN}. All rights reserved."
@@ -268,6 +274,19 @@ def render_otp_code(code: str) -> str:
     return render_info_box(
         f'<span style="font-size:38px;font-weight:bold;color:{BRAND_RED};'
         f'letter-spacing:8px;font-family:Arial,Helvetica,sans-serif;">{safe_code}</span>'
+    )
+
+
+def render_username_box(username: str) -> str:
+    """Prominent bilingual username display for credentials / set-password emails."""
+    safe_username = escape(username)
+    return render_info_box(
+        f'<p dir="rtl" style="margin:0 0 4px;font-size:13px;color:{TEXT_MUTED};">'
+        f"اسم المستخدم</p>"
+        f'<p dir="ltr" style="margin:0 0 12px;font-size:13px;color:{TEXT_MUTED};">'
+        f"Username</p>"
+        f'<span style="font-size:24px;font-weight:bold;color:{BRAND_BLUE};'
+        f'font-family:Arial,Helvetica,sans-serif;">{safe_username}</span>'
     )
 
 

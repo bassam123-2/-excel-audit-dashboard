@@ -1,0 +1,190 @@
+<header class="header">
+        <img id="headerLogo" class="logo" alt="" hidden>
+    </header>
+
+    <div class="page-top">
+        <div class="page-top-inner">
+            <section id="subsidiary-company-section">
+                <div class="subsidiary-card">
+                    <div class="subsidiary-card-header">
+                        <div class="subsidiary-card-titles">
+                            <h2 id="companyBrandTitle" class="subsidiary-card-title">الشركة التابعة</h2>
+                            <span id="companyBrandSubtitle" class="subsidiary-field-label">SUBCOMPANY</span>
+                        </div>
+                        <div class="subsidiary-card-actions">
+                            <button type="button" id="subsidiaryChangeBtn" class="subsidiary-change-btn">تغيير</button>
+                            <div class="subsidiary-bulk-actions">
+                                <button type="button" id="subsidiarySelectAllBtn" class="subsidiary-bulk-btn">SELECT ALL</button>
+                                <button type="button" id="subsidiaryDeselectAllBtn" class="subsidiary-bulk-btn">DESELECT ALL</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="subsidiaryList" class="subsidiary-list" role="listbox" aria-multiselectable="true" aria-label="شركة"></div>
+                    <button type="button" id="subsidiaryStatusPill" class="subsidiary-status-pill">جميع الشركات (الفلتر اختياري — غير مفعّل)</button>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <main class="container">
+        <section class="top-charts">
+            <div class="chart-card">
+                <h3 class="chart-title">الحالة</h3>
+                <div class="chart-wrap"><canvas id="statusChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">السنوات</h3>
+                <div class="chart-wrap"><canvas id="yearChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">تصنيف المخاطر المتبقية</h3>
+                <div class="chart-wrap"><canvas id="residualChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">فئة الضوابط الرقابية</h3>
+                <div class="chart-wrap"><canvas id="controlCategoryChart"></canvas></div>
+            </div>
+        </section>
+
+        <p class="hint">اضغط لتفعيل الفلترة؛ يمكنك الجمع بين أكثر من قيمة في نفس الفئة (او). الضغط مرة ثانية يلغي ذلك الخيار.</p>
+        <div class="toolbar">
+            <button id="clearFiltersBtn" class="tool-btn" type="button">مسح جميع الفلاتر</button>
+        </div>
+
+        <section class="filter-row compliance-status-section">
+            <h2 class="row-title">حالة الالتزام</h2>
+            <div class="compliance-row-wrap">
+                <div class="compliance-sparkline-wrap" aria-label="ملخص خطي لتوزيع حالة الالتزام">
+                    <span class="compliance-sparkline-label">حالة الالتزام</span>
+                    <canvas id="complianceStatusLineChart"></canvas>
+                </div>
+                <div id="complianceSegBar" class="row-track" dir="rtl"></div>
+            </div>
+        </section>
+
+        <section class="filter-row">
+            <h2 class="row-title">الحالة</h2>
+            <div id="row-status" class="row-track"></div>
+        </section>
+
+        <section class="filter-row">
+            <h2 class="row-title">تصنيف المخاطر المتبقية</h2>
+            <div id="row-residual" class="row-track"></div>
+        </section>
+
+        <section class="filter-row">
+            <h2 class="row-title">فئة الضوابط الرقابية</h2>
+            <div id="row-control-category" class="row-track"></div>
+        </section>
+
+        <section class="filter-row">
+            <h2 class="row-title">السنوات</h2>
+            <div id="row-year" class="row-track"></div>
+        </section>
+
+        <section class="filter-row">
+            <div id="fieldBoxes" class="field-boxes"></div>
+            <div id="fieldOptions" class="field-options" style="display:none;"></div>
+        </section>
+
+        <section class="legal-text-row">
+            <section class="legal-text-filter">
+                <label for="legalTextDropdownBtn">النص النظامي</label>
+                <p class="legal-text-hint">اضغط لفتح القائمة (وتدعم تعدد الاختيار).</p>
+                <div id="legalTextDropdown" class="legal-dropdown">
+                    <button id="legalTextDropdownBtn" type="button" class="legal-dropdown-btn">الكل</button>
+                    <div id="legalTextDropdownMenu" class="legal-dropdown-menu"></div>
+                </div>
+            </section>
+        </section>
+        <section class="control-panel-row">
+            <div class="header-controls">
+                <div class="control-group">
+                    <label for="agingReferenceDate">تاريخ المرجع</label>
+                    <input type="date" id="agingReferenceDate" />
+                </div>
+                <div class="control-group">
+                    <span class="control-caption">ملخص التقادم</span>
+                    <label class="inline-radio aging-source-radio">
+                        <input type="radio" name="agingDateSource" id="audit-aging-matrix-cb" value="target">
+                        تاريخ التصحيح المستهدف
+                    </label>
+                    <label class="inline-radio aging-source-radio">
+                        <input type="radio" name="agingDateSource" id="audit-aging-revised-cb" value="modified">
+                        تاريخ التصحيح المعدل
+                    </label>
+                </div>
+                <label class="inline-check">
+                    <input type="checkbox" id="agingToggle">
+                    التقادم
+                </label>
+                <label class="inline-check audit">
+                    <input type="checkbox" id="compliancePlanToggle">
+                    حالة خطة الالتزام
+                </label>
+            </div>
+        </section>
+        
+    </main>
+
+    <div id="legalModal" class="modal-overlay" role="dialog" aria-modal="true">
+        <div class="modal legal-detail-modal">
+            <div class="modal-header">
+                <h3 id="legalModalTitle" class="modal-title">النص النظامي</h3>
+                <div class="modal-header-actions">
+                    <button id="legalModalDownloadPptx" type="button" class="modal-tool-btn" disabled>تنزيل PowerPoint</button>
+                    <button id="legalModalClose" type="button" class="modal-close">إغلاق</button>
+                </div>
+            </div>
+            <div class="legal-detail-scroll">
+                <div id="legalModalBody" class="modal-body">
+                    <div id="legalModalTextPanel" class="legal-modal-text-panel" hidden>
+                        <p id="legalModalFullText" class="legal-modal-full-text">—</p>
+                    </div>
+                    <div id="legalModalDetailMount"></div>
+                    <div id="legalModalEmailBar" class="legal-modal-email-bar">
+                        <div class="legal-modal-email-preview-wrap">
+                            <span class="legal-modal-email-hint">البريد المستهدف (عمود email اختياري — نفس صف السجل)</span>
+                            <strong id="legalModalEmailPreview" class="legal-modal-email-preview">—</strong>
+                        </div>
+                        <button id="legalModalSendEmail" type="button" class="modal-tool-btn legal-modal-send-btn">إرسال بالبريد</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="agingModal" class="modal-overlay" role="dialog" aria-modal="true" style="z-index: 60;">
+        <div class="modal modal-wide">
+            <div class="modal-header" style="background:#fff; border-bottom:1px solid #e5e7eb;">
+                <h3 id="agingModalTitle" class="modal-title" style="font-size:20px;">ملخص التقادم</h3>
+                <button id="agingModalClose" type="button" class="modal-close">إغلاق</button>
+            </div>
+            <div id="agingModalBody" class="modal-body"></div>
+        </div>
+    </div>
+
+    <div id="compliancePlanModal" class="modal-overlay" role="dialog" aria-modal="true" style="z-index: 65;">
+        <div class="modal modal-wide">
+            <div class="modal-header" style="background:#ecfdf5; border-bottom:1px solid #0f766e;">
+                <h3 class="modal-title" style="font-size:20px;">حالة خطة الالتزام</h3>
+                <div class="modal-toolbar">
+                    <button id="compliancePlanSaveHtmlBtn" type="button" class="modal-close" style="background:#0f766e;color:#fff;border-color:#0f766e;">حفظ HTML</button>
+                    <button id="compliancePlanModalClose" type="button" class="modal-close">إغلاق</button>
+                </div>
+            </div>
+            <div id="compliancePlanModalBody" class="modal-body">
+                <div class="control-group" style="margin-bottom:10px;">
+                    <label for="compliancePlanFileInput">رفع ملف إكسل</label>
+                    <input id="compliancePlanFileInput" type="file" accept=".xlsx,.xls" />
+                    <label for="compliancePlanSheetSelect">الورقة</label>
+                    <select id="compliancePlanSheetSelect"></select>
+                    <label for="compliancePlanColor">لون الخلية</label>
+                    <input id="compliancePlanColor" type="color" value="#fff59d" />
+                    <button id="compliancePlanApplyColorBtn" class="tool-btn" type="button">تلوين</button>
+                    <button id="compliancePlanClearColorBtn" class="tool-btn" type="button">إزالة اللون</button>
+                </div>
+                <div id="compliancePlanEditor" class="aging-matrix-wrap"></div>
+            </div>
+        </div>
+    </div>

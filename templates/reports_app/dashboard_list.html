@@ -93,14 +93,21 @@
             <span class="badge badge-status-draft"><i class="bi bi-pencil-square me-1"></i>{{ ui.wf_status_draft }}</span>
             {% elif db.status == "under_review" %}
             <span class="badge badge-status-review"><i class="bi bi-hourglass-split me-1"></i>{{ ui.wf_status_under_review }}</span>
-            {% elif db.status == "in_workflow" %}
-            <span class="badge badge-status-workflow"><i class="bi bi-diagram-3 me-1"></i>{{ ui.wf_status_in_workflow }}</span>
             {% elif db.status == "rejected" %}
             <span class="badge badge-status-rejected"><i class="bi bi-x-circle me-1"></i>{{ ui.wf_status_rejected }}</span>
             {% else %}
             <span class="badge badge-status-published"><i class="bi bi-check-circle me-1"></i>{{ ui.wf_status_published }}</span>
             {% endif %}
             <span class="badge badge-template">{{ db.get_template_display_name }}</span>
+            {% if db.pk in returnable_dashboard_ids %}
+            <div class="wf-actions">
+                <button type="button" class="btn btn-outline-warning btn-sm js-return-review-btn"
+                        data-return-url="{% url 'dashboard_return_to_review' db.pk %}"
+                        data-name="{{ db.name|escape }}">
+                    <i class="bi bi-arrow-counterclockwise"></i> {{ ui.wf_return_to_review_btn }}
+                </button>
+            </div>
+            {% endif %}
             {% if can_review_dashboards and db.status == "under_review" %}
             <div class="wf-actions">
                 <button type="button" class="btn btn-success btn-sm js-approve-btn"
@@ -114,6 +121,14 @@
                     <i class="bi bi-x-lg"></i> {{ ui.wf_reject_btn }}
                 </button>
             </div>
+            {% endif %}
+            {% if db.pk in manageable_viewer_dashboard_ids %}
+            <button type="button" class="btn btn-outline-primary btn-sm js-viewers-btn"
+                    data-viewers-url="{% url 'dashboard_viewers' db.pk %}"
+                    data-bs-toggle="modal" data-bs-target="#viewersModal"
+                    title="{{ ui.dv_btn }}" aria-label="{{ ui.dv_btn }}: {{ db.name }}">
+                <i class="bi bi-people-fill"></i>
+            </button>
             {% endif %}
             {% if can_delete_dashboards and db.pk in deletable_dashboard_ids %}
             <form method="post" action="{% url 'dashboard_delete' db.pk %}" class="db-card-delete js-super-delete-form"
@@ -190,11 +205,37 @@
         </div>
     </div>
 </div>
+<div class="modal fade" id="returnToReviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="returnToReviewForm" method="post" action="">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-arrow-counterclockwise me-1 text-warning"></i>{{ ui.wf_return_to_review_title }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ ui.wf_cancel }}"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fw-semibold mb-2" id="returnToReviewDashName"></p>
+                    <p class="mb-0">{{ ui.wf_return_to_review_confirm }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
+                    <button type="submit" class="btn btn-warning">{{ ui.wf_return_to_review_submit }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if manageable_viewer_dashboard_ids %}
+{% include "reports_app/_dashboard_viewers_modal.html" %}
 {% endif %}
 
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/dashboard_viewers.js' %}"></script>
 <script>
 (function () {
     function getCsrfToken() {
@@ -279,7 +320,40 @@
         });
     });
 })();
+(function () {
+    var modalEl = document.getElementById('returnToReviewModal');
+    if (!modalEl) return;
+    var modal = new bootstrap.Modal(modalEl);
+    var form = document.getElementById('returnToReviewForm');
+    var nameEl = document.getElementById('returnToReviewDashName');
+    form.addEventListener('submit', function () {
+        var submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+    });
+    document.querySelectorAll('.js-return-review-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var returnUrl = btn.getAttribute('data-return-url') || '';
+            var name = btn.getAttribute('data-name') || '';
+            form.action = returnUrl;
+            if (nameEl) nameEl.textContent = name;
+            var submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = false;
+            modal.show();
+        });
+    });
+})();
 {% endif %}
+if (window.initDashboardViewersModal) {
+    window.initDashboardViewersModal({
+        modalId: 'viewersModal',
+        saveBtnId: 'viewersSaveBtn',
+        errorId: 'viewersError',
+        triggerSelector: '.js-viewers-btn',
+        emptyText: '{{ ui.dv_empty|escapejs }}',
+        errorText: '{{ ui.dv_error|escapejs }}',
+        csrfToken: '{{ csrf_token }}'
+    });
+}
 var inp = document.getElementById('dbSearch');
 if (inp) {
     inp.addEventListener('input', function () {

@@ -14,6 +14,7 @@ from accounts_app.models import (
     MIN_OTP_TTL_SECONDS,
     ProjectSecuritySettings,
 )
+from accounts_app.services.project_timezone import project_timezone_choices
 
 
 class ProjectSecuritySettingsForm(forms.ModelForm):
@@ -26,10 +27,25 @@ class ProjectSecuritySettingsForm(forms.ModelForm):
             "Users must wait the same time before requesting a resend."
         ),
     )
+    timezone = forms.ChoiceField(
+        choices=project_timezone_choices,
+        label=_("Project timezone"),
+        help_text=_(
+            "All dates and times shown in the application, admin panel, "
+            "and generated reports use this timezone."
+        ),
+        widget=forms.Select(
+            attrs={
+                "class": "admin-searchable-select",
+                "data-search-placeholder": _("Search timezone…"),
+                "data-no-results": _("No matching timezones"),
+            }
+        ),
+    )
 
     class Meta:
         model = ProjectSecuritySettings
-        fields = ("otp_ttl_minutes",)
+        fields = ("otp_ttl_minutes", "timezone")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -49,7 +65,8 @@ class ProjectSecuritySettingsAdmin(AdminChangeFormV2Mixin, admin.ModelAdmin):
     form = ProjectSecuritySettingsForm
     cl_v2_page_title = _("Project security settings")
     cl_v2_subtitle = _(
-        "Configure email OTP validity and sign-in verification behavior for all users."
+        "Configure email OTP validity, project timezone, and sign-in verification "
+        "behavior for all users."
     )
     fieldsets = (
         (
@@ -62,6 +79,16 @@ class ProjectSecuritySettingsAdmin(AdminChangeFormV2Mixin, admin.ModelAdmin):
                 ),
             },
         ),
+        (
+            _("Date and time"),
+            {
+                "fields": ("timezone",),
+                "description": _(
+                    "Sets the timezone used for all dates and times across the "
+                    "dashboard, admin panel, emails, and generated reports."
+                ),
+            },
+        ),
     )
 
     def has_add_permission(self, request):
@@ -69,6 +96,28 @@ class ProjectSecuritySettingsAdmin(AdminChangeFormV2Mixin, admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    def has_view_permission(self, request, obj=None):
+        return (
+            request.user.has_perm("accounts_app.view_projectsecuritysettings")
+            or self.has_change_permission(request, obj)
+        )
+
+    def has_change_permission(self, request, obj=None):
+        if not request.user.is_active:
+            return False
+        return (
+            request.user.has_perm("accounts_app.change_projectsecuritysettings")
+            or request.user.has_perm("accounts_app.manage_project_timezone")
+        )
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly: list[str] = []
+        if not request.user.has_perm("accounts_app.change_projectsecuritysettings"):
+            readonly.append("otp_ttl_minutes")
+        if not request.user.has_perm("accounts_app.manage_project_timezone"):
+            readonly.append("timezone")
+        return readonly
 
     def changelist_view(self, request, extra_context=None):
         settings_obj = ProjectSecuritySettings.load()

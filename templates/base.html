@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "includes/robots_noindex.html" %}
     <title>{% block title %}{{ ui.brand_name }}{% endblock %}</title>
     {% if is_rtl %}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css">
@@ -152,11 +153,36 @@
             position: sticky; top: 0; z-index: 200;
             gap: 1rem;
         }
+        .topbar-start {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            min-width: 0;
+            flex: 0 1 auto;
+        }
+        .topbar-center {
+            flex: 1 1 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 0;
+            padding: 0 .75rem;
+            pointer-events: none;
+        }
+        .topbar-company-logo {
+            display: block;
+            max-height: 44px;
+            max-width: min(220px, 36vw);
+            width: auto;
+            height: auto;
+            object-fit: contain;
+        }
         .topbar-title {
             font-weight: 600; font-size: .92rem; color: var(--text);
             display: flex; align-items: center; gap: .5rem;
+            min-width: 0;
         }
-        .topbar-actions { display: flex; align-items: center; gap: .6rem; }
+        .topbar-actions { display: flex; align-items: center; gap: .6rem; flex: 0 0 auto; }
         .topbar-date { color: var(--muted); font-size: .78rem; }
         .btn-lang {
             display: inline-flex; align-items: center; gap: .3rem;
@@ -337,17 +363,32 @@
 <!-- ── Main ─────────────────────────────────────────── -->
 <div class="main-wrap">
     <header class="topbar">
-        <button type="button" class="btn-sidebar-toggle js-sidebar-toggle" aria-label="Menu" aria-expanded="false">
-            <i class="bi bi-list"></i>
-        </button>
-        <div class="topbar-title">{% block page_title %}{% endblock %}</div>
+        <div class="topbar-start">
+            <button type="button" class="btn-sidebar-toggle js-sidebar-toggle" aria-label="Menu" aria-expanded="false">
+                <i class="bi bi-list"></i>
+            </button>
+            <div class="topbar-title">{% block page_title %}{% endblock %}</div>
+        </div>
+        <div class="topbar-center" aria-hidden="{% if not active_company_logo_url %}true{% else %}false{% endif %}">
+            {% if active_company_logo_url and active_company %}
+            <img
+                src="{{ active_company_logo_url }}"
+                alt="{{ active_company.name }}"
+                class="topbar-company-logo"
+                decoding="async"
+            >
+            {% endif %}
+        </div>
         <div class="topbar-actions">
             {% if show_company_switcher and user_companies %}
             <form method="post" action="{% url 'switch_company' %}" class="d-flex align-items-center gap-2 me-2">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.path }}">
                 <label for="companySwitch" class="small text-muted mb-0">{{ ui.company_switch_label }}</label>
-                <select id="companySwitch" name="company_id" class="form-select form-select-sm" style="width:auto; min-width:120px;" onchange="this.form.submit()">
+                <select id="companySwitch" name="company_id" class="form-select form-select-sm" style="width:auto; min-width:120px;" onchange="if(this.value){this.form.submit()}">
+                    {% if needs_company_selection or not active_company %}
+                    <option value="" selected disabled hidden>{{ ui.company_switch_placeholder }}</option>
+                    {% endif %}
                     {% for co in user_companies %}
                     <option value="{{ co.pk }}" {% if active_company and active_company.pk == co.pk %}selected{% endif %}>{{ co.code }}</option>
                     {% endfor %}

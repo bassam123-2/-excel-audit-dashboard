@@ -14,6 +14,9 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'css/dashboard-pages.css' %}">
+{% if can_manage_review_attachments %}
+<link rel="stylesheet" href="{% static 'css/upload-page.css' %}">
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -34,14 +37,6 @@
     <span class="badge badge-status-draft"><i class="bi bi-pencil-square me-1"></i>{{ ui.wf_status_draft }}</span>
     {% elif dashboard.status == "under_review" %}
     <span class="badge badge-status-review"><i class="bi bi-hourglass-split me-1"></i>{{ ui.wf_status_under_review }}</span>
-    {% elif dashboard.status == "in_workflow" %}
-    <span class="badge badge-status-workflow"><i class="bi bi-diagram-3 me-1"></i>{{ ui.wf_status_in_workflow }}</span>
-    {% if workflow_progress %}
-    <span class="meta-pill"><i class="bi bi-list-ol"></i> {{ workflow_progress }}</span>
-    {% endif %}
-    {% if workflow_assignee_name %}
-    <span class="meta-pill"><i class="bi bi-person-check"></i> {{ workflow_assignee_name }}</span>
-    {% endif %}
     {% elif dashboard.status == "rejected" %}
     <span class="badge badge-status-rejected"><i class="bi bi-x-circle me-1"></i>{{ ui.wf_status_rejected }}</span>
     {% else %}
@@ -49,10 +44,11 @@
     {% endif %}
 
     <div class="toolbar-actions {% if is_rtl %}me-auto{% else %}ms-auto{% endif %}">
-        {% if can_acknowledge %}
-        <button type="button" class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                data-bs-toggle="modal" data-bs-target="#ackModal">
-            <i class="bi bi-eye-fill"></i> {{ ui.wf_ack_btn }}
+        {% if can_manage_dashboard_viewers %}
+        <button type="button" class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1 js-viewers-btn"
+                data-viewers-url="{% url 'dashboard_viewers' dashboard.pk %}"
+                data-bs-toggle="modal" data-bs-target="#viewersModal">
+            <i class="bi bi-people-fill"></i> {{ ui.dv_btn }}
         </button>
         {% endif %}
         {% if can_submit_for_review %}
@@ -61,17 +57,17 @@
             <i class="bi bi-send-fill"></i> {{ ui.wf_submit_btn }}
         </button>
         {% endif %}
+        {% if can_return_to_review and dashboard.status == "published" %}
+        <button type="button" class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1"
+                data-bs-toggle="modal" data-bs-target="#returnToReviewModal">
+            <i class="bi bi-arrow-counterclockwise"></i> {{ ui.wf_return_to_review_btn }}
+        </button>
+        {% endif %}
         {% if can_approve_reject and dashboard.status == "under_review" %}
         <button type="button" class="btn btn-sm btn-success d-flex align-items-center gap-1"
                 data-bs-toggle="modal" data-bs-target="#approveModal">
             <i class="bi bi-check-lg"></i> {{ ui.wf_approve_btn }}
         </button>
-        <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
-                data-bs-toggle="modal" data-bs-target="#rejectModal">
-            <i class="bi bi-x-lg"></i> {{ ui.wf_reject_btn }}
-        </button>
-        {% endif %}
-        {% if can_approve_reject and dashboard.status == "in_workflow" %}
         <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
                 data-bs-toggle="modal" data-bs-target="#rejectModal">
             <i class="bi bi-x-lg"></i> {{ ui.wf_reject_btn }}
@@ -96,29 +92,10 @@
     </div>
 </div>
 
-{% if can_acknowledge %}
-<div class="modal fade" id="ackModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <form method="post" action="{% url 'dashboard_acknowledge' dashboard.pk %}" id="ackDetailForm">
-                {% csrf_token %}
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-eye-fill me-1 text-primary"></i>{{ ui.wf_ack_title }}</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ ui.wf_cancel }}"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="fw-semibold mb-2">{{ dashboard.name }}</p>
-                    <p class="mb-0">{{ ui.wf_ack_confirm }}</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
-                    <button type="submit" class="btn btn-primary">{{ ui.wf_ack_submit }}</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+{% if can_manage_dashboard_viewers %}
+{% include "reports_app/_dashboard_viewers_modal.html" %}
 {% endif %}
+
 {% if can_submit_for_review %}
 <div class="modal fade" id="submitModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -136,6 +113,30 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
                     <button type="submit" class="btn btn-info">{{ ui.wf_submit_submit }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if can_return_to_review and dashboard.status == "published" %}
+<div class="modal fade" id="returnToReviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{% url 'dashboard_return_to_review' dashboard.pk %}" id="returnToReviewDetailForm">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-arrow-counterclockwise me-1 text-warning"></i>{{ ui.wf_return_to_review_title }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ ui.wf_cancel }}"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fw-semibold mb-2">{{ dashboard.name }}</p>
+                    <p class="mb-0">{{ ui.wf_return_to_review_confirm }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
+                    <button type="submit" class="btn btn-warning">{{ ui.wf_return_to_review_submit }}</button>
                 </div>
             </form>
         </div>
@@ -165,9 +166,6 @@
         </div>
     </div>
 </div>
-{% endif %}
-{% if can_approve_reject %}
-{% if dashboard.status == "under_review" or dashboard.status == "in_workflow" %}
 <div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -191,10 +189,74 @@
     </div>
 </div>
 {% endif %}
+
+{% if can_manage_review_attachments %}
+<details class="review-attach-card card mb-3" id="reviewAttachPanel"{% if request.GET.attachments_updated %} open{% endif %}>
+    <summary class="review-attach-card__summary card-header d-flex align-items-center gap-2 py-2">
+        <i class="bi bi-paperclip review-attach-card__icon"></i>
+        <span class="review-attach-card__title fw-semibold">{{ ui.wf_review_attach_title }}</span>
+        <i class="bi bi-chevron-down review-attach-card__chevron {% if is_rtl %}me-auto{% else %}ms-auto{% endif %}"></i>
+    </summary>
+    <div class="card-body p-3">
+        <p class="small text-muted mb-3">{{ ui.wf_review_attach_hint }}</p>
+        <form method="post" action="{% url 'dashboard_review_attachments' dashboard.pk %}" enctype="multipart/form-data" id="reviewAttachmentsForm">
+            {% csrf_token %}
+            <div id="reviewAttachmentSections">
+            {% for slot in review_attachment_slots %}
+            <div class="form-section js-attachment-slot mb-3">
+                <details id="review-{{ slot.details_id }}"{% if slot.has_existing %} open{% endif %}>
+                    <summary>
+                        <i class="bi {{ slot.summary_icon }} me-1"></i>
+                        {{ slot.label }}
+                    </summary>
+                    {% if slot.hint %}
+                    <p class="attach-details-hint">{{ slot.hint }}</p>
+                    {% endif %}
+                    {% if slot.has_existing %}
+                    <div class="attach-existing" id="review-{{ slot.kind }}ExistingPanel">
+                        <i class="bi bi-paperclip text-success"></i>
+                        <span>{{ ui.upload_attach_current }}:</span>
+                        <span class="attach-existing__name" id="review-{{ slot.kind }}ExistingName">{{ slot.existing_name }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-danger ms-auto"
+                                onclick="markReviewAttachmentRemove('{{ slot.kind }}', '{{ slot.field_prefix }}')">
+                            <i class="bi bi-trash me-1"></i>{{ ui.upload_attach_remove_btn }}
+                        </button>
+                        <p class="attach-existing__meta mb-0">{{ ui.upload_attach_keep_hint }}</p>
+                        <input type="hidden" name="remove_{{ slot.field_prefix }}" id="review-remove-{{ slot.kind }}" value="0">
+                    </div>
+                    <div class="attach-removed-notice" id="review-{{ slot.kind }}RemovedNotice">
+                        <i class="bi bi-exclamation-circle me-1"></i>{{ ui.upload_attach_removed }}
+                    </div>
+                    {% endif %}
+                    <p class="attach-replace-hint" id="review-{{ slot.kind }}ReplaceHint">
+                        <i class="bi bi-arrow-repeat me-1"></i>{{ ui.upload_attach_replace_hint }}
+                    </p>
+                    <div class="file-zone file-zone--compact" id="review-{{ slot.kind }}Zone">
+                        <input type="file" name="{{ slot.field_prefix }}1" id="review-id_{{ slot.field_prefix }}"
+                               accept=".pptx,.ppt,.pdf"
+                               onchange="onReviewAttachmentFile(this,'{{ slot.kind }}','{{ slot.field_prefix }}')">
+                        <div class="fz-icon"><i class="bi {{ slot.zone_icon }}"></i></div>
+                        <div class="fz-text">{{ slot.drop }}</div>
+                        <div class="fz-selected" id="review-{{ slot.kind }}Selected">
+                            <i class="bi bi-check-circle-fill me-1"></i><span id="review-{{ slot.kind }}Name"></span>
+                        </div>
+                    </div>
+                </details>
+            </div>
+            {% endfor %}
+            </div>
+            <div class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-warning btn-sm d-flex align-items-center gap-1">
+                    <i class="bi bi-save-fill"></i> {{ ui.wf_review_attach_save }}
+                </button>
+            </div>
+        </form>
+    </div>
+</details>
 {% endif %}
 
 <iframe id="dashFrame"
-        src="{% url 'dashboard_serve' dashboard.pk %}"
+        src="{% url 'dashboard_serve' dashboard.pk %}{% if request.GET.attachments_updated %}?nocache=1{% endif %}"
         class="dash-frame"
         style="height:calc(100vh - 130px);"
         title="{{ dashboard.name }}">
@@ -221,6 +283,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/dashboard_viewers.js' %}"></script>
 <script>
 (function () {
     var f = document.getElementById('dashFrame');
@@ -246,6 +309,14 @@
         });
     }
 
+    var returnToReviewForm = document.getElementById('returnToReviewDetailForm');
+    if (returnToReviewForm) {
+        returnToReviewForm.addEventListener('submit', function () {
+            var btn = returnToReviewForm.querySelector('button[type="submit"]');
+            if (btn) btn.disabled = true;
+        });
+    }
+
     var submitForm = document.getElementById('submitDetailForm');
     if (submitForm) {
         submitForm.addEventListener('submit', function () {
@@ -254,13 +325,75 @@
         });
     }
 
-    var ackForm = document.getElementById('ackDetailForm');
-    if (ackForm) {
-        ackForm.addEventListener('submit', function () {
-            var btn = ackForm.querySelector('button[type="submit"]');
+    if (window.initDashboardViewersModal) {
+        window.initDashboardViewersModal({
+            modalId: 'viewersModal',
+            saveBtnId: 'viewersSaveBtn',
+            errorId: 'viewersError',
+            triggerSelector: '.js-viewers-btn',
+            emptyText: '{{ ui.dv_empty|escapejs }}',
+            errorText: '{{ ui.dv_error|escapejs }}',
+            csrfToken: '{{ csrf_token }}'
+        });
+    }
+
+    var reviewAttachForm = document.getElementById('reviewAttachmentsForm');
+    if (reviewAttachForm) {
+        reviewAttachForm.addEventListener('submit', function () {
+            var btn = reviewAttachForm.querySelector('button[type="submit"]');
             if (btn) btn.disabled = true;
         });
     }
+
+    var reviewAttachPanel = document.getElementById('reviewAttachPanel');
+    if (reviewAttachPanel) {
+        reviewAttachPanel.addEventListener('toggle', resize);
+    }
 })();
+
+function markReviewAttachmentRemove(kind, fieldPrefix) {
+    var removeIn = document.getElementById('review-remove-' + kind);
+    var panel = document.getElementById('review-' + kind + 'ExistingPanel');
+    var notice = document.getElementById('review-' + kind + 'RemovedNotice');
+    var replaceHint = document.getElementById('review-' + kind + 'ReplaceHint');
+    var selected = document.getElementById('review-' + kind + 'Selected');
+    var zone = document.getElementById('review-' + kind + 'Zone');
+    var fileIn = document.getElementById('review-id_' + fieldPrefix);
+    if (removeIn) removeIn.value = '1';
+    if (panel) panel.style.display = 'none';
+    if (notice) notice.style.display = 'block';
+    if (replaceHint) replaceHint.style.display = 'none';
+    if (selected) selected.style.display = 'none';
+    if (zone) {
+        zone.classList.remove('is-filled');
+        zone.classList.remove('is-invalid-zone');
+    }
+    if (fileIn) fileIn.value = '';
+}
+
+function onReviewAttachmentFile(input, kind, fieldPrefix) {
+    var nameEl = document.getElementById('review-' + kind + 'Name');
+    var selected = document.getElementById('review-' + kind + 'Selected');
+    var zone = document.getElementById('review-' + kind + 'Zone');
+    var removeIn = document.getElementById('review-remove-' + kind);
+    var panel = document.getElementById('review-' + kind + 'ExistingPanel');
+    var notice = document.getElementById('review-' + kind + 'RemovedNotice');
+    var replaceHint = document.getElementById('review-' + kind + 'ReplaceHint');
+    if (!zone) return;
+    if (input.files && input.files.length) {
+        var hadRemove = removeIn && removeIn.value === '1';
+        if (removeIn) removeIn.value = '0';
+        if (notice) notice.style.display = 'none';
+        if (panel) panel.style.display = hadRemove ? 'none' : '';
+        if (replaceHint) replaceHint.style.display = (!hadRemove && panel) ? 'block' : 'none';
+        if (nameEl) nameEl.textContent = input.files[0].name;
+        if (selected) selected.style.display = 'block';
+        zone.classList.add('is-filled');
+        zone.classList.remove('is-invalid-zone');
+    } else {
+        if (selected) selected.style.display = 'none';
+        zone.classList.remove('is-filled');
+    }
+}
 </script>
 {% endblock %}

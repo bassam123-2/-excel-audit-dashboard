@@ -64,9 +64,12 @@ def test_credentials_email_contains_set_password_link_not_password():
     )
     joined = content["plain"] + content["html"]
     assert "newuser" in joined
+    assert "newuser" in content["subject"]
     assert "https://dash-audit.alissa-ia.com/set-password/abc123/" in joined
     assert "ComplexPass1!" not in joined
     assert "Set Password" in content["html"]
+    assert "اسم المستخدم" in content["html"]
+    assert "Username</p>" in content["html"]
 
 
 @pytest.mark.unit
@@ -77,6 +80,7 @@ def test_credentials_email_escapes_html_special_chars():
     )
     html = content["html"]
     assert "user&lt;test&gt;" in html
+    assert "user<test>" not in html
     assert "https://example.com/set-password/x?a=1&amp;b=2" in html
     assert content["subject"].startswith("[Audit Dashboard]")
 

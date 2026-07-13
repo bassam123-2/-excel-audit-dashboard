@@ -6,6 +6,11 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from .dashboard_template_codes import (
+    DEFAULT_DASHBOARD_TEMPLATE_CODE,
+    TEMPLATE_TYPE_SEEDS,
+)
+
 COMPANY_KIND_MAIN = "main"
 COMPANY_KIND_SUBSIDIARY = "subsidiary"
 COMPANY_KIND_CHOICES = [
@@ -21,6 +26,7 @@ ATTACHMENT_KIND_CHOICES = [
     ("missingVehicle", _("Missing Vehicle Report")),
     ("internalAuditQuarterly", _("Internal Audit Quarterly Report")),
     ("specialAssignment", _("Special Assignment Report")),
+    ("accApprovedMoM", _("ACC Aproved MoM")),
 ]
 
 ATTACHMENT_KIND_CODES = [code for code, _ in ATTACHMENT_KIND_CHOICES]
@@ -226,10 +232,12 @@ class CompanyMembership(AdminSoftDeleteFields):
         default=False,
         verbose_name=_("Can upload files and create dashboards"),
     )
-    can_view = models.BooleanField(
+    can_assign_dashboard_viewers = models.BooleanField(
         default=False,
-        verbose_name=_("Can view dashboards"),
-        help_text=_("View all published dashboards in this company."),
+        verbose_name=_("Can assign dashboard viewers"),
+        help_text=_(
+            "Assign or remove which company members can view each published dashboard."
+        ),
     )
     can_view_own_only = models.BooleanField(
         default=False,
@@ -293,7 +301,11 @@ class CompanyAttachmentSetting(models.Model):
 class UploadSession(AdminSoftDeleteFields):
     source_name = models.CharField(max_length=255, verbose_name=_("Source name"))
     sheet_name = models.CharField(max_length=255, blank=True, verbose_name=_("Sheet name"))
-    mode = models.CharField(max_length=32, default="ai", verbose_name=_("Mode"))
+    mode = models.CharField(
+        max_length=32,
+        default=DEFAULT_DASHBOARD_TEMPLATE_CODE,
+        verbose_name=_("Mode"),
+    )
     locale = models.CharField(max_length=8, default="ar", verbose_name=_("Locale"))
     content_sha256 = models.CharField(max_length=64, blank=True, verbose_name=_("Content hash"))
     raw_data_json = models.TextField(
@@ -375,7 +387,7 @@ class DashboardTemplateType(AdminSoftDeleteFields):
         max_length=32,
         unique=True,
         verbose_name=_("Type code"),
-        help_text=_("Internal slug without spaces, e.g. ai"),
+        help_text=_("Internal slug without spaces, e.g. IAD"),
     )
     name = models.CharField(
         max_length=128,
@@ -413,14 +425,13 @@ ICON_CHOICES = [
 ]
 
 TEMPLATE_TYPE_CHOICES = [
-    ("ai", _("AI analytical dashboard")),
+    (seed["code"], _(seed["name"])) for seed in TEMPLATE_TYPE_SEEDS
 ]
 
 
 class DashboardStatus(models.TextChoices):
     DRAFT = "draft", _("Draft")
     UNDER_REVIEW = "under_review", _("Under review")
-    IN_WORKFLOW = "in_workflow", _("In workflow")
     PUBLISHED = "published", _("Published")
     REJECTED = "rejected", _("Rejected")
 
@@ -439,7 +450,7 @@ class Dashboard(models.Model):
     template_type = models.CharField(
         max_length=32,
         choices=TEMPLATE_TYPE_CHOICES,
-        default="ai",
+        default=DEFAULT_DASHBOARD_TEMPLATE_CODE,
         verbose_name=_("Template type"),
     )
     report_id = models.CharField(max_length=64, unique=True, verbose_name=_("Report ID"))
@@ -447,6 +458,12 @@ class Dashboard(models.Model):
         max_length=512, blank=True, default="", verbose_name=_("Cached HTML file")
     )
     source_files = models.JSONField(default=list, blank=True, verbose_name=_("Source files"))
+    user_edits_json = models.TextField(
+        blank=True,
+        default="",
+        verbose_name=_("Dashboard user edits (JSON)"),
+        help_text=_("Persisted audit plan table, cell colors, and review notes."),
+    )
     company = models.ForeignKey(
         Company,
         on_delete=models.PROTECT,
@@ -582,170 +599,39 @@ class DashboardRejectionLog(AdminSoftDeleteFields):
         return f"Rejection #{self.pk} on dashboard {self.dashboard_id}"
 
 
-class WorkflowTemplate(AdminSoftDeleteFields):
-    """Per-company configurable acknowledgment chain before publish."""
+class DashboardViewer(models.Model):
+    """Per-dashboard viewer grant for published dashboards."""
 
-    company = models.ForeignKey(
-        Company,
-        on_delete=models.CASCADE,
-        related_name="workflow_templates",
-        verbose_name=_("Company"),
-    )
-    name = models.CharField(max_length=128, default=_("Default"), verbose_name=_("Name"))
-    version = models.PositiveIntegerField(
-        default=1,
-        verbose_name=_("Version"),
-        editable=False,
-    )
-    is_active = models.BooleanField(
-        default=True,
-        verbose_name=_("Active"),
-        editable=False,
-    )
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created at"))
-    updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Updated at"))
-
-    class Meta:
-        verbose_name = _("Workflow template")
-        verbose_name_plural = _("Workflow templates")
-        ordering = ["company__code", "-version"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["company", "version"],
-                name="uniq_workflow_template_company_version",
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.company.code} v{self.version}"
-
-
-class WorkflowTemplateStep(models.Model):
-    """Ordered assignee in a workflow template."""
-
-    template = models.ForeignKey(
-        WorkflowTemplate,
-        on_delete=models.CASCADE,
-        related_name="steps",
-        verbose_name=_("Template"),
-    )
-    step_order = models.PositiveIntegerField(verbose_name=_("Step order"))
-    assignee = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name="workflow_template_steps",
-        verbose_name=_("Assignee"),
-    )
-
-    class Meta:
-        verbose_name = _("Workflow template step")
-        verbose_name_plural = _("Workflow template steps")
-        ordering = ["template_id", "step_order"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["template", "step_order"],
-                name="uniq_workflow_template_step_order",
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.template} step {self.step_order}"
-
-
-class DashboardWorkflowInstance(AdminSoftDeleteFields):
-    """Frozen workflow run for a single dashboard (snapshot of template version)."""
-
-    dashboard = models.OneToOneField(
+    dashboard = models.ForeignKey(
         Dashboard,
         on_delete=models.CASCADE,
-        related_name="workflow_instance",
+        related_name="viewers",
         verbose_name=_("Dashboard"),
     )
-    template_version = models.PositiveIntegerField(verbose_name=_("Template version"))
-    current_step_index = models.PositiveIntegerField(default=0, verbose_name=_("Current step"))
-    total_steps = models.PositiveIntegerField(default=0, verbose_name=_("Total steps"))
-    current_assignee = models.ForeignKey(
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="dashboard_viewer_grants",
+        verbose_name=_("User"),
+    )
+    granted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="assigned_workflow_dashboards",
-        verbose_name=_("Current assignee"),
+        related_name="dashboard_viewer_grants_given",
+        verbose_name=_("Granted by"),
     )
-    is_complete = models.BooleanField(default=False, verbose_name=_("Complete"))
-    started_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Started at"))
-    completed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name=_("Completed at"),
-    )
+    granted_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Granted at"))
 
     class Meta:
-        verbose_name = _("Dashboard workflow instance")
-        verbose_name_plural = _("Dashboard workflow instances")
-
-    def __str__(self) -> str:
-        return f"Workflow for dashboard {self.dashboard_id}"
-
-
-class DashboardWorkflowStepSnapshot(models.Model):
-    """Frozen step assignees when a workflow instance starts."""
-
-    instance = models.ForeignKey(
-        DashboardWorkflowInstance,
-        on_delete=models.CASCADE,
-        related_name="step_snapshots",
-        verbose_name=_("Workflow instance"),
-    )
-    step_order = models.PositiveIntegerField(verbose_name=_("Step order"))
-    assignee = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name="workflow_step_snapshots",
-        verbose_name=_("Assignee"),
-    )
-
-    class Meta:
-        verbose_name = _("Workflow step snapshot")
-        verbose_name_plural = _("Workflow step snapshots")
-        ordering = ["instance_id", "step_order"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["instance", "step_order"],
-                name="uniq_workflow_instance_step_order",
-            ),
+        verbose_name = _("Dashboard viewer")
+        verbose_name_plural = _("Dashboard viewers")
+        unique_together = ("dashboard", "user")
+        ordering = ["dashboard_id", "user__username"]
+        indexes = [
+            models.Index(fields=["user", "dashboard"]),
         ]
 
-
-class DashboardWorkflowStepLog(AdminSoftDeleteFields):
-    """Audit trail when an assignee clicks «acknowledged»."""
-
-    instance = models.ForeignKey(
-        DashboardWorkflowInstance,
-        on_delete=models.CASCADE,
-        related_name="step_logs",
-        verbose_name=_("Workflow instance"),
-    )
-    step_order = models.PositiveIntegerField(verbose_name=_("Step order"))
-    assignee = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="workflow_acknowledgments",
-        verbose_name=_("Assignee"),
-    )
-    acknowledged_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="workflow_acknowledgments_performed",
-        verbose_name=_("Acknowledged by"),
-    )
-    acknowledged_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Acknowledged at"))
-
-    class Meta:
-        verbose_name = _("Workflow step log")
-        verbose_name_plural = _("Workflow step logs")
-        ordering = ["-acknowledged_at"]
+    def __str__(self) -> str:
+        return f"{self.user} → dashboard {self.dashboard_id}"

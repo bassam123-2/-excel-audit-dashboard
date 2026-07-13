@@ -1,10 +1,10 @@
 """Shared helpers for Django admin display."""
 from __future__ import annotations
 
+import re
+
 from django.contrib import admin
-from django.contrib.admin.widgets import AutocompleteSelect
 from django.contrib.auth.models import User
-from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.translation import gettext as _
 
@@ -82,18 +82,24 @@ def install_boolean_icon_list_columns(
     return tuple(display_names)
 
 
-class WorkflowAssigneeAutocompleteWidget(AutocompleteSelect):
-    """Workflow step assignee search with custom labels and duplicate exclusion."""
+def company_parent_autocomplete_exclude_pk(request) -> int | None:
+    """Resolve company pk to omit from parent-company autocomplete (self on change form)."""
+    raw = (request.GET.get("exclude_pk") or "").strip()
+    if raw:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
 
-    def get_url(self):
-        return reverse("admin:audit_app_workflowtemplate_assignee_autocomplete")
-
-    def build_attrs(self, base_attrs, extra_attrs=None):
-        built = super().build_attrs(base_attrs, extra_attrs=extra_attrs)
-        built["data-ajax--cache"] = "false"
-        css_class = built.get("class", "")
-        css_class = " ".join(
-            token for token in css_class.split() if token != "admin-autocomplete"
-        )
-        built["class"] = (css_class + " wf-assignee-autocomplete").strip()
-        return built
+    referer = request.META.get("HTTP_REFERER") or ""
+    for pattern in (
+        r"/audit_app/company/(\d+)/change/?",
+        r"/company/(\d+)/change/?",
+    ):
+        match = re.search(pattern, referer)
+        if match:
+            try:
+                return int(match.group(1))
+            except (TypeError, ValueError):
+                pass
+    return None

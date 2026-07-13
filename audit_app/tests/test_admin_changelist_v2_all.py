@@ -6,25 +6,22 @@ import pytest
 from django.urls import reverse
 
 ADMIN_V2_CHANGE_LISTS = (
-    ("admin:auth_group_changelist", {}),
-    ("admin:auth_user_changelist", {"deleted": "active"}),
-    ("admin:audit_app_company_changelist", {"deleted": "active"}),
-    ("admin:audit_app_companymembership_changelist", {"deleted": "active"}),
-    ("admin:audit_app_observationrecord_changelist", {"deleted": "active"}),
-    ("admin:audit_app_dashboardrejectionlog_changelist", {"deleted": "active"}),
-    ("admin:audit_app_dashboardtemplatetype_changelist", {"deleted": "active"}),
-    ("admin:audit_app_dashboardworkflowinstance_changelist", {"deleted": "active"}),
-    ("admin:audit_app_dashboard_changelist", {"deleted": "active"}),
-    ("admin:audit_app_reportartifact_changelist", {"deleted": "active"}),
-    ("admin:audit_app_uploadsession_changelist", {"deleted": "active"}),
-    ("admin:audit_app_dashboardworkflowsteplog_changelist", {"deleted": "active"}),
-    ("admin:audit_app_workflowtemplate_changelist", {"deleted": "active"}),
+    ("admin:auth_group_changelist", {}, True),
+    ("admin:auth_user_changelist", {"deleted": "active"}, True),
+    ("admin:audit_app_company_changelist", {"deleted": "active"}, True),
+    ("admin:audit_app_companymembership_changelist", {"deleted": "active"}, True),
+    ("admin:audit_app_observationrecord_changelist", {"deleted": "active"}, True),
+    ("admin:audit_app_dashboardrejectionlog_changelist", {"deleted": "active"}, True),
+    ("admin:audit_app_dashboardtemplatetype_changelist", {"deleted": "active"}, False),
+    ("admin:audit_app_dashboard_changelist", {"deleted": "active"}, True),
+    ("admin:audit_app_reportartifact_changelist", {"deleted": "active"}, True),
+    ("admin:audit_app_uploadsession_changelist", {"deleted": "active"}, True),
 )
 
 
-@pytest.mark.parametrize("url_name,query", ADMIN_V2_CHANGE_LISTS)
+@pytest.mark.parametrize("url_name,query,expect_add_button", ADMIN_V2_CHANGE_LISTS)
 @pytest.mark.django_db
-def test_admin_changelist_renders_v2_layout(admin_client, url_name, query):
+def test_admin_changelist_renders_v2_layout(admin_client, url_name, query, expect_add_button):
     url = reverse(url_name)
     if query:
         url = f"{url}?{'&'.join(f'{k}={v}' for k, v in query.items())}"
@@ -36,4 +33,7 @@ def test_admin_changelist_renders_v2_layout(admin_client, url_name, query):
     assert "admin-cl-v2__table-panel" in html
     assert "admin_changelist_v2.css" in html
     assert "admin_changelist_v2.js" in html
-    assert "Add New" in html
+    if expect_add_button:
+        assert "Add New" in html
+    else:
+        assert "Add New" not in html

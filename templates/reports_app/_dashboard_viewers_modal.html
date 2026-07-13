@@ -1,0 +1,61 @@
+<div class="modal fade" id="viewersModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable viewers-modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-people-fill me-1 text-primary"></i>{{ ui.dv_title }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ ui.wf_cancel }}"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">{{ ui.dv_hint }}</p>
+                <div class="dv-transfer d-none{% if is_rtl %} dv-transfer--rtl{% endif %}" id="viewersTransfer">
+                    <div class="dv-transfer-col">
+                        <div class="dv-transfer-col-head">{{ ui.dv_available }}</div>
+                        <p class="dv-transfer-help">{{ ui.dv_available_help }}</p>
+                        <div class="dv-filter-wrap">
+                            <i class="bi bi-search"></i>
+                            <input type="search" class="form-control form-control-sm dv-filter-input"
+                                   id="viewersAvailableFilter" placeholder="{{ ui.dv_filter }}" autocomplete="off">
+                        </div>
+                        <ul class="dv-picker-list" id="viewersAvailableList" role="listbox" aria-multiselectable="true"
+                            aria-label="{{ ui.dv_available }}"></ul>
+                        <button type="button" class="dv-transfer-link" id="viewersChooseAll">
+                            {{ ui.dv_choose_all }}
+                            <i class="bi bi-chevron-{% if is_rtl %}left{% else %}right{% endif %}"></i>
+                        </button>
+                    </div>
+                    <div class="dv-transfer-actions" aria-hidden="true">
+                        <button type="button" class="btn btn-primary btn-sm dv-transfer-arrow" id="viewersChooseBtn"
+                                title="{{ ui.dv_choose_selected }}">
+                            <i class="bi bi-chevron-{% if is_rtl %}left{% else %}right{% endif %}"></i>
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm dv-transfer-arrow" id="viewersRemoveBtn"
+                                title="{{ ui.dv_remove_selected }}">
+                            <i class="bi bi-chevron-{% if is_rtl %}right{% else %}left{% endif %}"></i>
+                        </button>
+                    </div>
+                    <div class="dv-transfer-col dv-transfer-col--chosen">
+                        <div class="dv-transfer-col-head dv-transfer-col-head--chosen">{{ ui.dv_chosen }}</div>
+                        <p class="dv-transfer-help">{{ ui.dv_chosen_help }}</p>
+                        <div class="dv-filter-wrap">
+                            <i class="bi bi-search"></i>
+                            <input type="search" class="form-control form-control-sm dv-filter-input"
+                                   id="viewersChosenFilter" placeholder="{{ ui.dv_filter }}" autocomplete="off">
+                        </div>
+                        <ul class="dv-picker-list" id="viewersChosenList" role="listbox" aria-multiselectable="true"
+                            aria-label="{{ ui.dv_chosen }}"></ul>
+                        <button type="button" class="dv-transfer-link" id="viewersRemoveAll">
+                            <i class="bi bi-chevron-{% if is_rtl %}right{% else %}left{% endif %}"></i>
+                            {{ ui.dv_remove_all }}
+                        </button>
+                    </div>
+                </div>
+                <div id="viewersLoading" class="text-muted small py-3">{{ ui.dv_loading }}</div>
+                <div id="viewersError" class="alert alert-danger mt-2 d-none" role="alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ ui.wf_cancel }}</button>
+                <button type="button" class="btn btn-primary" id="viewersSaveBtn" disabled>{{ ui.dv_save }}</button>
+            </div>
+        </div>
+    </div>
+</div>

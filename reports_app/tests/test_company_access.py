@@ -7,7 +7,7 @@ from django.test import Client, TestCase
 from django.utils import timezone
 
 from accounts_app.services import two_factor
-from audit_app.models import Company, CompanyAttachmentSetting, CompanyMembership, Dashboard, DashboardStatus
+from audit_app.models import Company, CompanyAttachmentSetting, CompanyMembership, Dashboard, DashboardStatus, DashboardViewer
 from reports_app.dashboard_workflow import dashboards_queryset_for_user, has_upload_perm
 
 
@@ -34,7 +34,6 @@ class CompanyAccessTests(TestCase):
             user=self.btc_uploader,
             company=self.btc,
             can_upload=True,
-            can_view=True,
         )
 
         self.nat_viewer = User.objects.create_user(
@@ -46,7 +45,6 @@ class CompanyAccessTests(TestCase):
         CompanyMembership.objects.create(
             user=self.nat_viewer,
             company=self.nat,
-            can_view=True,
         )
 
     def _dashboard(self, company, creator, name="Dash"):
@@ -116,7 +114,7 @@ class CompanyAccessTests(TestCase):
         self.assertEqual(owner_ids, {own_dash.pk})
         self.assertNotIn(other_dash.pk, owner_ids)
 
-    def test_view_all_sees_published_company_dashboards(self):
+    def test_assigned_viewer_sees_published_dashboards(self):
         viewer = User.objects.create_user(
             "btc_viewer", password="Test@1234", email="viewer@example.com"
         )
@@ -125,7 +123,6 @@ class CompanyAccessTests(TestCase):
         CompanyMembership.objects.create(
             user=viewer,
             company=self.btc,
-            can_view=True,
         )
 
         creator = User.objects.create_user(
@@ -136,6 +133,8 @@ class CompanyAccessTests(TestCase):
 
         dash_a = self._dashboard(self.btc, creator, "Published A")
         dash_b = self._dashboard(self.btc, self.btc_uploader, "Published B")
+        DashboardViewer.objects.create(dashboard=dash_a, user=viewer, granted_by=creator)
+        DashboardViewer.objects.create(dashboard=dash_b, user=viewer, granted_by=creator)
 
         viewer_ids = set(
             dashboards_queryset_for_user(viewer, self.btc).values_list("pk", flat=True)
@@ -182,7 +181,6 @@ class CompanyAccessTests(TestCase):
         CompanyMembership.objects.create(
             user=owner,
             company=self.btc,
-            can_view=True,
             can_delete_drafts=True,
         )
         dash = self._dashboard(self.btc, owner, "Published")
@@ -386,13 +384,11 @@ class CompanyAccessTests(TestCase):
             user=multi,
             company=self.btc,
             can_upload=True,
-            can_view=True,
         )
         CompanyMembership.objects.create(
             user=multi,
             company=self.nat,
             can_upload=True,
-            can_view=True,
         )
 
         client = Client()
@@ -415,13 +411,11 @@ class CompanyAccessTests(TestCase):
             user=multi,
             company=self.btc,
             can_upload=True,
-            can_view=True,
         )
         CompanyMembership.objects.create(
             user=multi,
             company=self.nat,
             can_upload=True,
-            can_view=True,
         )
 
         client = Client()
@@ -456,13 +450,11 @@ class CompanyAccessTests(TestCase):
             user=multi,
             company=self.btc,
             can_upload=True,
-            can_view=True,
         )
         CompanyMembership.objects.create(
             user=multi,
             company=self.nat,
             can_upload=True,
-            can_view=True,
         )
         return multi
 
@@ -528,6 +520,23 @@ class CompanyAccessTests(TestCase):
         with self.assertRaises(ValueError):
             validate_excel_subcompanies_for_tenant(self.btc, names, locale="en")
 
+    def test_excel_subcompany_validation_accepts_main_company_name(self):
+        import pandas as pd
+
+        from audit_app.company_access import (
+            extract_excel_subcompany_names_from_df,
+            validate_excel_subcompanies_for_tenant,
+        )
+
+        df = pd.DataFrame(
+            {
+                "Company": ["BTC"],
+                "Subcompany": ["BTC"],
+            }
+        )
+        names = extract_excel_subcompany_names_from_df(df)
+        validate_excel_subcompanies_for_tenant(self.btc, names, locale="en")
+
     def test_subsidiary_not_selectable_as_active_company(self):
         from audit_app.company_access import set_active_company, user_companies
 
@@ -542,7 +551,6 @@ class CompanyAccessTests(TestCase):
             user=self.btc_uploader,
             company=sub,
             can_upload=True,
-            can_view=True,
         )
         self.assertNotIn(sub.pk, list(user_companies(self.btc_uploader).values_list("pk", flat=True)))
 

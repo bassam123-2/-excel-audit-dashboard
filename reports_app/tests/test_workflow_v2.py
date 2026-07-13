@@ -1,4 +1,4 @@
-"""Tests for dashboard workflow v2 (submit, review, acknowledgment chain)."""
+"""Tests for dashboard workflow v2 (submit, publish, per-dashboard viewers)."""
 from __future__ import annotations
 
 from django.contrib.auth.models import User
@@ -9,21 +9,25 @@ from audit_app.models import (
     CompanyMembership,
     Dashboard,
     DashboardStatus,
-    WorkflowTemplate,
-    WorkflowTemplateStep,
+    DashboardViewer,
 )
 from reports_app.dashboard_workflow import (
     FILTER_PENDING_REVIEW,
+    approve_dashboard,
     available_dashboard_filters,
     can_user_delete_dashboard,
+    can_user_manage_dashboard_viewers,
+    can_user_return_published_to_review,
     can_user_review,
     can_user_submit,
     dashboards_queryset_for_user,
     filter_dashboards_queryset,
+    reject_dashboard,
+    return_published_dashboard_to_review,
+    set_dashboard_viewers,
     submit_dashboard,
     user_can_see_dashboard,
 )
-from reports_app.workflow_engine import acknowledge_workflow_step, start_workflow_after_approval
 
 
 class WorkflowV2Tests(TestCase):
@@ -38,8 +42,7 @@ class WorkflowV2Tests(TestCase):
         self.creator = self._user("wf_creator", "creator@example.com")
         self.reviewer = self._user("wf_reviewer", "reviewer@example.com")
         self.viewer = self._user("wf_viewer", "viewer@example.com")
-        self.assignee1 = self._user("wf_assign1", "assign1@example.com")
-        self.assignee2 = self._user("wf_assign2", "assign2@example.com")
+        self.assigner = self._user("wf_assigner", "assigner@example.com")
 
         CompanyMembership.objects.create(
             user=self.creator, company=self.company, can_upload=True
@@ -48,23 +51,14 @@ class WorkflowV2Tests(TestCase):
             user=self.reviewer,
             company=self.company,
             can_review=True,
-            can_view=True,
         )
         CompanyMembership.objects.create(
-            user=self.viewer, company=self.company, can_view=True
+            user=self.viewer, company=self.company
         )
-
-        self.template = WorkflowTemplate.objects.create(
+        CompanyMembership.objects.create(
+            user=self.assigner,
             company=self.company,
-            name="Default",
-            version=1,
-            is_active=True,
-        )
-        WorkflowTemplateStep.objects.create(
-            template=self.template, step_order=1, assignee=self.assignee1
-        )
-        WorkflowTemplateStep.objects.create(
-            template=self.template, step_order=2, assignee=self.assignee2
+            can_assign_dashboard_viewers=True,
         )
 
     def _user(self, username: str, email: str) -> User:
@@ -78,7 +72,7 @@ class WorkflowV2Tests(TestCase):
         creator = creator or self.creator
         return Dashboard.objects.create(
             name=f"Dash-{status}",
-            report_id=f"rid-{status}-{creator.username}",
+            report_id=f"rid-{status}-{creator.username}-{Dashboard.objects.count()}",
             company=self.company,
             created_by=creator,
             status=status,
@@ -87,12 +81,6 @@ class WorkflowV2Tests(TestCase):
     def test_reviewer_cannot_see_creator_draft(self):
         draft = self._dashboard(status=DashboardStatus.DRAFT)
         self.assertFalse(user_can_see_dashboard(self.reviewer, draft, self.company))
-        ids = set(
-            dashboards_queryset_for_user(self.reviewer, self.company).values_list(
-                "pk", flat=True
-            )
-        )
-        self.assertNotIn(draft.pk, ids)
 
     def test_creator_sees_own_draft_and_rejected(self):
         draft = self._dashboard(status=DashboardStatus.DRAFT)
@@ -105,7 +93,7 @@ class WorkflowV2Tests(TestCase):
         self.assertIn(draft.pk, ids)
         self.assertIn(rejected.pk, ids)
 
-    def test_submit_moves_to_under_review_and_notifies_path(self):
+    def test_submit_moves_to_under_review(self):
         draft = self._dashboard()
         self.assertTrue(can_user_submit(self.creator, draft, self.company))
         submit_dashboard(self.creator, draft, self.company)
@@ -114,31 +102,57 @@ class WorkflowV2Tests(TestCase):
         self.assertIsNotNone(draft.submitted_at)
         self.assertTrue(user_can_see_dashboard(self.reviewer, draft, self.company))
 
-    def test_approve_starts_workflow_with_template(self):
+    def test_approve_publishes_directly(self):
         dash = self._dashboard(status=DashboardStatus.UNDER_REVIEW)
-        started = start_workflow_after_approval(dash, self.reviewer)
-        self.assertTrue(started)
-        dash.refresh_from_db()
-        self.assertEqual(dash.status, DashboardStatus.IN_WORKFLOW)
-        instance = dash.workflow_instance
-        self.assertEqual(instance.total_steps, 2)
-        self.assertEqual(instance.current_assignee_id, self.assignee1.id)
-
-    def test_acknowledge_chain_publishes(self):
-        dash = self._dashboard(status=DashboardStatus.UNDER_REVIEW)
-        start_workflow_after_approval(dash, self.reviewer)
-        dash.refresh_from_db()
-
-        published = acknowledge_workflow_step(dash, self.assignee1)
-        self.assertFalse(published)
-        dash.refresh_from_db()
-        self.assertEqual(dash.workflow_instance.current_assignee_id, self.assignee2.id)
-
-        published = acknowledge_workflow_step(dash, self.assignee2)
-        self.assertTrue(published)
+        result = approve_dashboard(dash, self.reviewer)
+        self.assertEqual(result, "published")
         dash.refresh_from_db()
         self.assertEqual(dash.status, DashboardStatus.PUBLISHED)
         self.assertIsNotNone(dash.published_at)
+
+    def test_published_visible_only_to_assigned_viewers(self):
+        dash = self._dashboard(status=DashboardStatus.PUBLISHED)
+        self.assertFalse(user_can_see_dashboard(self.viewer, dash, self.company))
+        DashboardViewer.objects.create(
+            dashboard=dash,
+            user=self.viewer,
+            granted_by=self.assigner,
+        )
+        self.assertTrue(user_can_see_dashboard(self.viewer, dash, self.company))
+
+    def test_reject_clears_viewer_assignments(self):
+        dash = self._dashboard(status=DashboardStatus.PUBLISHED)
+        DashboardViewer.objects.create(
+            dashboard=dash,
+            user=self.viewer,
+            granted_by=self.assigner,
+        )
+        reject_dashboard(dash, self.reviewer, "Needs changes")
+        self.assertFalse(DashboardViewer.objects.filter(dashboard=dash).exists())
+        self.assertFalse(user_can_see_dashboard(self.viewer, dash, self.company))
+
+    def test_set_dashboard_viewers(self):
+        dash = self._dashboard(status=DashboardStatus.PUBLISHED)
+        added, removed = set_dashboard_viewers(
+            dash,
+            [self.viewer.pk],
+            granted_by=self.assigner,
+        )
+        self.assertEqual(added, {self.viewer.pk})
+        self.assertEqual(removed, set())
+        self.assertTrue(
+            DashboardViewer.objects.filter(dashboard=dash, user=self.viewer).exists()
+        )
+
+    def test_can_manage_viewers_only_when_published(self):
+        draft = self._dashboard(status=DashboardStatus.DRAFT)
+        published = self._dashboard(status=DashboardStatus.PUBLISHED)
+        self.assertFalse(
+            can_user_manage_dashboard_viewers(self.assigner, draft, self.company)
+        )
+        self.assertTrue(
+            can_user_manage_dashboard_viewers(self.assigner, published, self.company)
+        )
 
     def test_reviewer_filter_pending_review(self):
         draft = self._dashboard()
@@ -183,8 +197,67 @@ class WorkflowV2Tests(TestCase):
         rejected = self._dashboard(status=DashboardStatus.REJECTED)
         self.assertFalse(user_can_see_dashboard(self.reviewer, rejected, self.company))
 
+    def test_superuser_sees_all_drafts_in_company(self):
+        superuser = User.objects.create_superuser(
+            "wf_super", "super@example.com", "Test@1234"
+        )
+        profile = superuser.profile
+        profile.two_factor_enabled = False
+        profile.save(update_fields=["two_factor_enabled"])
+        draft = self._dashboard(status=DashboardStatus.DRAFT)
+        ids = set(
+            dashboards_queryset_for_user(superuser, self.company).values_list(
+                "pk", flat=True
+            )
+        )
+        self.assertIn(draft.pk, ids)
+        self.assertTrue(user_can_see_dashboard(superuser, draft, self.company))
+
     def test_can_review_legacy_draft_when_v2_disabled(self):
         self.company.use_workflow_v2 = False
         self.company.save(update_fields=["use_workflow_v2"])
         draft = self._dashboard()
         self.assertTrue(can_user_review(self.reviewer, draft, self.company))
+
+    def test_return_published_to_review(self):
+        dash = self._dashboard(status=DashboardStatus.PUBLISHED)
+        dash.submitted_at = dash.created_at
+        dash.published_at = dash.created_at
+        dash.save(update_fields=["submitted_at", "published_at"])
+        DashboardViewer.objects.create(
+            dashboard=dash,
+            user=self.viewer,
+            granted_by=self.assigner,
+        )
+        self.assertTrue(
+            can_user_return_published_to_review(self.reviewer, dash, self.company)
+        )
+        return_published_dashboard_to_review(self.reviewer, dash, self.company)
+        dash.refresh_from_db()
+        self.assertEqual(dash.status, DashboardStatus.UNDER_REVIEW)
+        self.assertIsNone(dash.published_at)
+        self.assertIsNotNone(dash.submitted_at)
+        self.assertFalse(DashboardViewer.objects.filter(dashboard=dash).exists())
+        self.assertFalse(user_can_see_dashboard(self.viewer, dash, self.company))
+
+        qs = dashboards_queryset_for_user(self.reviewer, self.company)
+        filtered = filter_dashboards_queryset(
+            qs, self.reviewer, self.company, FILTER_PENDING_REVIEW
+        )
+        self.assertIn(dash.pk, set(filtered.values_list("pk", flat=True)))
+
+    def test_return_published_to_review_forbidden_for_viewer(self):
+        published = self._dashboard(status=DashboardStatus.PUBLISHED)
+        self.assertFalse(
+            can_user_return_published_to_review(self.viewer, published, self.company)
+        )
+
+    def test_return_published_to_review_endpoint(self):
+        dash = self._dashboard(status=DashboardStatus.PUBLISHED)
+        client = Client()
+        client.post("/login/", {"username": "wf_reviewer", "password": "Test@1234"})
+        client.post("/select-company/", {"company_id": self.company.pk})
+        response = client.post(f"/dashboards/{dash.pk}/return-to-review/")
+        self.assertEqual(response.status_code, 302)
+        dash.refresh_from_db()
+        self.assertEqual(dash.status, DashboardStatus.UNDER_REVIEW)

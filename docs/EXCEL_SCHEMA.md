@@ -41,6 +41,42 @@ Rows are included in the audit observation chart when they have **either**:
 
 Rows that only have **IA Status** (e.g. `Closed`) with no year and no observation title are **excluded**. That avoids a `(blank)` bucket in the Audit Year strip when Excel has trailing placeholder rows.
 
+## Arabic compliance template (`ar_compliance`)
+
+Upload **one** Excel file (`.xlsx`, `.xls`, `.xlsm`). See `arabic_compliance_dashboard/schema.py`.
+
+### Required columns (11)
+
+| Arabic header | Aliases |
+|---------------|---------|
+| تصنيف المخاطر الكامنة | — |
+| تصنيف المخاطر المتبقية | — |
+| الحالة | — |
+| الإدارة المسؤولة | — |
+| المشرع | — |
+| اسم النظام | `النظام` |
+| الهيئة التابعة | — |
+| اللائحة | — |
+| النص النظامي | `النص بالكامل` |
+| حالة الالتزام | — |
+| فئة الضوابط الرقابية | — |
+
+### Optional columns (10)
+
+| Arabic header | Notes |
+|---------------|-------|
+| السنوات / السنة | normalized to `السنة` |
+| تاريخ التصحيح المستهدف | aging |
+| تاريخ التصحيح المعدل | aging |
+| الشركة القابضة | tenant validation if present |
+| الشركة التابعة | tenant validation if present |
+| مالك المهمة / مالك الإجراء | — |
+| الشخص المسؤول | — |
+| الخطة التصحيحية | — |
+| ملاحظات الإدارة | — |
+| ملاحظات الإلتزام / ملاحظات الالتزام | — |
+| email | optional, for legal-text email |
+
 ## Company logos
 
 PNG files under `assets/logos/` map to filters:
