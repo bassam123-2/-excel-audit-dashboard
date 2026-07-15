@@ -1402,12 +1402,20 @@ def build_audit_observation_payload(
             "agingTfNotDue": tr(loc, "audit_aging_tf_not_due"),
             "agingTfLt6Months": tr(loc, "audit_aging_tf_lt_6_months"),
             "agingTfLtYear": tr(loc, "audit_aging_tf_lt_year"),
+            "agingTfOverYear": tr(loc, "audit_aging_tf_over_year"),
             "agingTf1To2Years": tr(loc, "audit_aging_tf_1_to_2_years"),
             "agingTf2To3Years": tr(loc, "audit_aging_tf_2_to_3_years"),
             "agingTf3To4Years": tr(loc, "audit_aging_tf_3_to_4_years"),
             "agingTf4To5Years": tr(loc, "audit_aging_tf_4_to_5_years"),
             "agingTfOver5Years": tr(loc, "audit_aging_tf_over_5_years"),
             "agingColTotal": tr(loc, "audit_aging_col_total"),
+            "agingColObservation": tr(loc, "audit_aging_col_observation"),
+            "agingDrillTitleTpl": tr(loc, "audit_aging_drill_title_tpl"),
+            "agingDrillAllRatings": tr(loc, "audit_aging_drill_all_ratings"),
+            "agingDrillAllFrames": tr(loc, "audit_aging_drill_all_frames"),
+            "agingDrillEmpty": tr(loc, "audit_aging_drill_empty"),
+            "agingDrillOpenHint": tr(loc, "audit_aging_drill_open_hint"),
+            "agingDrillBack": tr(loc, "audit_aging_drill_back"),
             "agingTitleAsOfTpl": tr(loc, "audit_aging_title_as_of_tpl"),
             "agingMatrixHint": tr(loc, "audit_aging_matrix_hint"),
             "agingRevisedToggleLabel": tr(loc, "audit_aging_revised_toggle_label"),
@@ -1968,6 +1976,7 @@ def build_multi_dashboard_shell(
       var ids = [
         'audit-deck-modal',
         'audit-aging-panel',
+        'audit-aging-drill-panel',
         'audit-plan-panel',
         'audit-reviews-panel',
         'audit-obs-detail-panel'
@@ -4766,6 +4775,123 @@ def generate_finance_report(
       background: rgba(191, 219, 254, 0.85);
       font-weight: 800;
     }}
+    .audit-aging-table tr.audit-aging-row-expandable {{
+      cursor: pointer;
+    }}
+    .audit-aging-table tr.audit-aging-row-expandable:hover td {{
+      background: rgba(147, 197, 253, 0.55);
+    }}
+    .audit-aging-table tr.audit-aging-row-expandable td:first-child {{
+      user-select: none;
+    }}
+    .audit-aging-expand-label {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }}
+    .audit-aging-expand-caret {{
+      display: inline-block;
+      width: 0.65rem;
+      font-size: 0.7rem;
+      line-height: 1;
+      color: #1e3a8a;
+      transition: transform 0.15s ease;
+    }}
+    .audit-aging-table tr.audit-aging-row-expandable[aria-expanded="true"] .audit-aging-expand-caret {{
+      transform: rotate(90deg);
+    }}
+    .audit-aging-table tr.audit-aging-row-child td:first-child {{
+      padding-left: 1.55rem;
+      font-weight: 600;
+      background: rgba(219, 234, 254, 0.55);
+    }}
+    .audit-aging-table tr.audit-aging-row-child td {{
+      background: rgba(248, 250, 252, 0.92);
+      font-weight: 500;
+    }}
+    #audit-aging-drill-backdrop {{
+      z-index: 242;
+    }}
+    #audit-aging-drill-panel {{
+      z-index: 243;
+      width: min(64rem, calc(100vw - 2 * var(--page-pad)));
+      max-height: min(90vh, 52rem);
+    }}
+    .audit-aging-table td.audit-aging-cell-drill {{
+      cursor: pointer;
+      font-weight: 700;
+      color: #1e3a8a;
+    }}
+    .audit-aging-table td.audit-aging-cell-drill:hover {{
+      background: rgba(147, 197, 253, 0.45) !important;
+    }}
+    .audit-aging-table td.audit-aging-cell-drill:focus-visible {{
+      outline: 2px solid rgba(37, 99, 235, 0.65);
+      outline-offset: -2px;
+    }}
+    .audit-aging-drill-table tr.audit-aging-drill-row {{
+      cursor: pointer;
+    }}
+    .audit-aging-drill-table tr.audit-aging-drill-row:hover td {{
+      background: rgba(241, 245, 249, 0.98);
+    }}
+    .audit-aging-drill-table td:first-child {{
+      text-align: left;
+      font-weight: 600;
+    }}
+    .audit-aging-drill-rating {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 4.5rem;
+      border-radius: 999px;
+      padding: 0.18rem 0.55rem;
+      font-size: 0.82rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }}
+    .audit-aging-drill-rating.audit-aging-th-critical {{ background: rgba(192,0,0,0.88); color:#fff; }}
+    .audit-aging-drill-rating.audit-aging-th-high {{ background: rgba(255,51,0,0.86); color:#fff; }}
+    .audit-aging-drill-rating.audit-aging-th-medium {{ background: rgba(255,192,0,0.9); color:#111827; }}
+    .audit-aging-drill-rating.audit-aging-th-low {{ background: rgba(112,173,71,0.88); color:#fff; }}
+    .audit-aging-drill-empty {{
+      margin: 0.75rem 0 0;
+      text-align: center;
+      color: #64748b;
+      font-size: 0.92rem;
+    }}
+    .audit-aging-drill-head-main {{
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      min-width: 0;
+      flex: 1 1 auto;
+      padding-right: 0.5rem;
+    }}
+    .audit-aging-drill-back {{
+      flex-shrink: 0;
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #1e3a8a;
+      background: rgba(191, 219, 254, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.55);
+      padding: 0.35rem 0.7rem;
+      border-radius: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+    }}
+    .audit-aging-drill-back:hover {{
+      background: rgba(147, 197, 253, 0.65);
+      border-color: rgba(59, 130, 246, 0.45);
+    }}
+    .audit-aging-drill-back:focus-visible {{
+      outline: 2px solid rgba(37, 99, 235, 0.65);
+      outline-offset: 2px;
+    }}
+    #audit-aging-drill-panel .audit-aging-title {{
+      min-width: 0;
+    }}
     #audit-plan-table.audit-aging-table,
     #audit-plan-table.audit-aging-table th,
     #audit-plan-table.audit-aging-table td {{
@@ -5904,6 +6030,25 @@ def generate_finance_report(
         </div>
       </div>
     </div>
+    <div class="audit-aging-backdrop" id="audit-aging-drill-backdrop" style="display:none" aria-hidden="true"></div>
+    <div class="audit-aging-panel audit-aging-drill-panel" id="audit-aging-drill-panel" role="dialog" aria-modal="true" aria-labelledby="audit-aging-drill-title" aria-hidden="true" style="display:none">
+      <div class="audit-aging-inner">
+        <div class="audit-aging-head">
+          <div class="audit-aging-drill-head-main">
+            <button type="button" class="audit-aging-drill-back" id="audit-aging-drill-back"></button>
+            <h3 class="audit-aging-title" id="audit-aging-drill-title"></h3>
+          </div>
+          <button type="button" class="audit-aging-close" id="audit-aging-drill-close" aria-label="{html.escape(tr(loc, "audit_obs_detail_close"))}">×</button>
+        </div>
+        <div class="audit-aging-body">
+          <table class="audit-aging-table audit-aging-drill-table" id="audit-aging-drill-table">
+            <thead id="audit-aging-drill-head"></thead>
+            <tbody id="audit-aging-drill-body"></tbody>
+          </table>
+          <p class="audit-aging-drill-empty" id="audit-aging-drill-empty" hidden></p>
+        </div>
+      </div>
+    </div>
     <div class="audit-aging-backdrop" id="audit-plan-backdrop" style="display:none" aria-hidden="true"></div>
     <div class="audit-aging-panel" id="audit-plan-panel" role="dialog" aria-modal="true" aria-hidden="true" style="display:none">
       <div class="audit-aging-inner">
@@ -6609,6 +6754,17 @@ def generate_finance_report(
       const agingHintEl = document.getElementById("audit-aging-hint");
       const agingHeadRow = document.getElementById("audit-aging-head-row");
       const agingBodyRows = document.getElementById("audit-aging-body-rows");
+      const agingDrillBackdrop = document.getElementById("audit-aging-drill-backdrop");
+      const agingDrillPanel = document.getElementById("audit-aging-drill-panel");
+      const agingDrillClose = document.getElementById("audit-aging-drill-close");
+      const agingDrillBack = document.getElementById("audit-aging-drill-back");
+      const agingDrillTitle = document.getElementById("audit-aging-drill-title");
+      const agingDrillHead = document.getElementById("audit-aging-drill-head");
+      const agingDrillBody = document.getElementById("audit-aging-drill-body");
+      const agingDrillEmpty = document.getElementById("audit-aging-drill-empty");
+      if (agingDrillBack) {{
+        agingDrillBack.textContent = ui.agingDrillBack || "Back to aging summary";
+      }}
       const planCb = document.getElementById("audit-plan-status-cb");
       const planLbl = document.getElementById("audit-plan-status-label");
       const reviewsCb = document.getElementById("audit-reviews-cb");
@@ -6698,6 +6854,7 @@ def generate_finance_report(
       let deckPdfPage = 1;
       const emptyMark = ui.obsDetailEmpty || "—";
       let agingMatrixUseRevised = false;
+      let agingOverYearExpanded = false;
       const hasStandardAgingDates = AO.has_implementation_due === true;
       const hasRevisedDateCol = AO.has_revised_date === true;
       const hasAgingDateSource = !!(hasStandardAgingDates || hasRevisedDateCol);
@@ -6801,10 +6958,16 @@ def generate_finance_report(
           detailPanel.classList.remove("audit-obs-detail-panel--open");
           detailPanel.style.display = "none";
           detailPanel.setAttribute("aria-hidden", "true");
+          detailPanel.style.zIndex = "";
         }}
-        document.body.style.overflow = "";
+        if (detailBackdrop) {{
+          detailBackdrop.style.zIndex = "";
+        }}
+        const agingStillOpen = agingPanel && agingPanel.style.display !== "none" && agingPanel.getAttribute("aria-hidden") !== "true";
+        const drillStillOpen = agingDrillPanel && agingDrillPanel.style.display !== "none" && agingDrillPanel.getAttribute("aria-hidden") !== "true";
+        if (!agingStillOpen && !drillStillOpen) document.body.style.overflow = "";
       }}
-      function openAuditObsDetail(row) {{
+      function openAuditObsDetail(row, fromAgingDrill) {{
         if (!detailPanel || !detailTitle) return;
         const name = row.obs == null ? "" : String(row.obs);
         detailTitle.textContent = name || emptyMark;
@@ -6845,6 +7008,13 @@ def generate_finance_report(
         if (detailRec) {{
           detailRec.textContent = dr;
           detailRec.classList.toggle("audit-detail-v--muted", dr === emptyMark);
+        }}
+        const stackAboveAging = !!fromAgingDrill || (agingPanel && agingPanel.style.display !== "none") || (agingDrillPanel && agingDrillPanel.style.display !== "none");
+        if (detailBackdrop) {{
+          detailBackdrop.style.zIndex = stackAboveAging ? "252" : "";
+        }}
+        if (detailPanel) {{
+          detailPanel.style.zIndex = stackAboveAging ? "253" : "";
         }}
         if (detailBackdrop) {{
           detailBackdrop.style.display = "block";
@@ -7472,33 +7642,213 @@ def generate_finance_report(
         const label = ik === "" ? bl : ik;
         return iaStatusColorKey(label);
       }}
-      function computeAgingMatrixRows(rows) {{
+      function agingMatrixBucketConfig() {{
         const tfNotDue = ui.agingTfNotDue || "Not Due";
         const tfLt6Months = ui.agingTfLt6Months || "Less than 6 months";
         const tfLtYear = ui.agingTfLtYear || "Less than one year";
+        const tfOverYear = ui.agingTfOverYear || "Over one year";
         const tf1To2Years = ui.agingTf1To2Years || "From 1 year to 2 years";
         const tf2To3Years = ui.agingTf2To3Years || "From 2 years to 3 years";
         const tf3To4Years = ui.agingTf3To4Years || "From 3 years to 4 years";
         const tf4To5Years = ui.agingTf4To5Years || "From 4 years to 5 years";
         const tfOver5Years = ui.agingTfOver5Years || "Over 5 years";
-        const frames = [
-          tfNotDue,
-          tfLt6Months,
-          tfLtYear,
-          tf1To2Years,
-          tf2To3Years,
-          tf3To4Years,
-          tf4To5Years,
-          tfOver5Years,
-        ];
+        const frames = [tfNotDue, tfLt6Months, tfLtYear, tfOverYear];
+        const overYearChildren = [tf1To2Years, tf2To3Years, tf3To4Years, tf4To5Years, tfOver5Years];
+        return {{
+          tfNotDue: tfNotDue,
+          tfLt6Months: tfLt6Months,
+          tfLtYear: tfLtYear,
+          tfOverYear: tfOverYear,
+          overYearChildren: overYearChildren,
+          frames: frames,
+          allBuckets: frames.concat(overYearChildren),
+        }};
+      }}
+      function resolveRowAgingBucket(row, cfg) {{
+        const rk = resolveAgingMatrixRatingKey(row.rt);
+        if (!rk) return null;
+        const bl = ui.statusBlank || "(blank)";
+        const iaKey = rowIaStatusKey(row, bl);
+        if (iaKey === "open not due") return cfg.tfNotDue;
+        if (iaKey !== "open due") return null;
+        const target = parseObsDate(rowMatrixCompareDateRaw(row));
+        if (!target) return null;
+        const today = new Date();
+        const agingRef = parseObsDate(revisedDateVal) || new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+        const refDay = Math.floor(agingRef.getTime() / 86400000);
+        const targetDay = Math.floor(target.getTime() / 86400000);
+        const diffDays = refDay - targetDay;
+        if (diffDays < 183) return cfg.tfLt6Months;
+        if (diffDays < 365) return cfg.tfLtYear;
+        if (diffDays < 730) return cfg.overYearChildren[0];
+        if (diffDays < 1095) return cfg.overYearChildren[1];
+        if (diffDays < 1460) return cfg.overYearChildren[2];
+        if (diffDays < 1825) return cfg.overYearChildren[3];
+        return cfg.overYearChildren[4];
+      }}
+      function agingRowIdKey(row) {{
+        let idKey = "_idx:" + String(row._idx);
+        if (AO.has_observation_id === true) {{
+          const ok = ffCellKey(row.oid);
+          if (ok !== "") idKey = "id:" + ok;
+        }}
+        return idKey;
+      }}
+      function dedupeAgingDrillRows(rows) {{
+        const seen = new Set();
+        const out = [];
+        (rows || []).forEach(function (r) {{
+          const key = agingRowIdKey(r);
+          if (seen.has(key)) return;
+          seen.add(key);
+          out.push(r);
+        }});
+        return out;
+      }}
+      function collectAgingDrillRows(rows, frameLabel, ratingKey) {{
+        const cfg = agingMatrixBucketConfig();
+        const isOverYearAggregate = frameLabel === cfg.tfOverYear;
+        return (rows || []).filter(function (r) {{
+          const bucket = resolveRowAgingBucket(r, cfg);
+          if (bucket === null) return false;
+          if (frameLabel !== null && frameLabel !== undefined) {{
+            if (isOverYearAggregate) {{
+              if (cfg.overYearChildren.indexOf(bucket) === -1) return false;
+            }} else if (bucket !== frameLabel) {{
+              return false;
+            }}
+          }}
+          if (ratingKey !== null && ratingKey !== undefined) {{
+            const rk = resolveAgingMatrixRatingKey(r.rt);
+            if (rk !== ratingKey) return false;
+          }}
+          return true;
+        }});
+      }}
+      function agingDrillTitleText(frameLabel, ratingKey) {{
+        const framePart = frameLabel || (ui.agingDrillAllFrames || "All time frames");
+        let ratingPart = ui.agingDrillAllRatings || "All ratings";
+        if (ratingKey !== null && ratingKey !== undefined) {{
+          const rtypes = AO.rating_types || [];
+          for (let i = 0; i < rtypes.length; i++) {{
+            if (String(rtypes[i].value).toLowerCase() === String(ratingKey).toLowerCase()) {{
+              ratingPart = rtypes[i].label || ratingKey;
+              break;
+            }}
+          }}
+        }}
+        const tpl = ui.agingDrillTitleTpl || "{{frame}} · {{rating}}";
+        return tpl.split("{{frame}}").join(framePart).split("{{rating}}").join(ratingPart);
+      }}
+      function wireAgingDrillCell(td, count, frameLabel, ratingKey, rows) {{
+        if (!td || !count) return;
+        td.className = "audit-aging-cell-drill";
+        td.setAttribute("role", "button");
+        td.setAttribute("tabindex", "0");
+        td.title = ui.agingDrillOpenHint || "View observations";
+        function openDrill(ev) {{
+          if (ev) {{
+            ev.preventDefault();
+            ev.stopPropagation();
+          }}
+          openAgingDrillDown(rows || [], frameLabel, ratingKey);
+        }}
+        td.addEventListener("click", openDrill);
+        td.addEventListener("keydown", function (ev) {{
+          if (ev.key === "Enter" || ev.key === " ") {{
+            ev.preventDefault();
+            ev.stopPropagation();
+            openDrill(ev);
+          }}
+        }});
+      }}
+      function renderAgingDrillList(rows) {{
+        if (!agingDrillHead || !agingDrillBody) return;
+        const obsLabel = ui.agingColObservation || "Observation";
+        const riskLabel = ui.obsDetailRating || "Risk rating";
+        const deptLabel = ui.obsDepartmentLabel || "Department";
+        const trh = document.createElement("tr");
+        [obsLabel, riskLabel, deptLabel].forEach(function (lbl, idx) {{
+          const th = document.createElement("th");
+          th.textContent = lbl;
+          if (idx === 1) th.className = "audit-aging-th-high";
+          trh.appendChild(th);
+        }});
+        agingDrillHead.innerHTML = "";
+        agingDrillHead.appendChild(trh);
+        agingDrillBody.innerHTML = "";
+        const list = dedupeAgingDrillRows(rows || []);
+        if (agingDrillEmpty) {{
+          agingDrillEmpty.hidden = list.length > 0;
+          agingDrillEmpty.textContent = list.length ? "" : (ui.agingDrillEmpty || "No observations match this cell.");
+        }}
+        list.forEach(function (row) {{
+          const tr = document.createElement("tr");
+          tr.className = "audit-aging-drill-row";
+          tr.title = ui.obsDetailOpenHint || "View details";
+          const tdName = document.createElement("td");
+          tdName.textContent = row.obs == null ? emptyMark : String(row.obs);
+          tr.appendChild(tdName);
+          const tdRisk = document.createElement("td");
+          const riskBadge = document.createElement("span");
+          const ratingTxt = formatObsRowRating(row);
+          riskBadge.className = "audit-aging-drill-rating audit-aging-th-" + ratingClassKey(ffCellKey(row.rt) || ratingTxt);
+          riskBadge.textContent = ratingTxt;
+          tdRisk.appendChild(riskBadge);
+          tr.appendChild(tdRisk);
+          const tdDept = document.createElement("td");
+          const deptTxt = ffCellKey(row.d) || ffCellKey(row.c);
+          tdDept.textContent = deptTxt || emptyMark;
+          tr.appendChild(tdDept);
+          tr.addEventListener("click", function () {{
+            openAuditObsDetail(row, true);
+          }});
+          tr.addEventListener("keydown", function (ev) {{
+            if (ev.key === "Enter" || ev.key === " ") {{
+              ev.preventDefault();
+              openAuditObsDetail(row, true);
+            }}
+          }});
+          tr.setAttribute("tabindex", "0");
+          tr.setAttribute("role", "button");
+          agingDrillBody.appendChild(tr);
+        }});
+      }}
+      function closeAgingDrillDown() {{
+        if (agingDrillBackdrop) {{
+          agingDrillBackdrop.style.display = "none";
+          agingDrillBackdrop.setAttribute("aria-hidden", "true");
+        }}
+        if (agingDrillPanel) {{
+          agingDrillPanel.style.display = "none";
+          agingDrillPanel.setAttribute("aria-hidden", "true");
+        }}
+      }}
+      function openAgingDrillDown(rows, frameLabel, ratingKey) {{
+        if (!agingDrillPanel || !agingDrillBackdrop) return;
+        if (agingDrillTitle) agingDrillTitle.textContent = agingDrillTitleText(frameLabel, ratingKey);
+        renderAgingDrillList(collectAgingDrillRows(rows, frameLabel, ratingKey));
+        agingDrillBackdrop.style.display = "block";
+        agingDrillBackdrop.setAttribute("aria-hidden", "false");
+        agingDrillPanel.style.display = "block";
+        agingDrillPanel.setAttribute("aria-hidden", "false");
+        if (agingDrillClose) {{
+          try {{ agingDrillClose.focus(); }} catch (_adf) {{}}
+        }}
+      }}
+      function computeAgingMatrixRows(rows) {{
+        const cfg = agingMatrixBucketConfig();
+        const frames = cfg.frames;
+        const overYearChildren = cfg.overYearChildren;
+        const allBuckets = cfg.allBuckets;
+        const tfOverYear = cfg.tfOverYear;
         const ratingDefs = (AO.rating_types || []).map(function (rt) {{
           return {{ key: String(rt.value).toLowerCase(), label: rt.label || rt.value }};
         }});
         const counts = {{}};
         const idSets = {{}};
-        const useOid = AO.has_observation_id === true;
         const bl = ui.statusBlank || "(blank)";
-        frames.forEach(function (f) {{
+        allBuckets.forEach(function (f) {{
           counts[f] = {{}};
           idSets[f] = {{}};
           ratingDefs.forEach(function (rt) {{
@@ -7506,44 +7856,29 @@ def generate_finance_report(
             idSets[f][rt.key] = new Set();
           }});
         }});
-        const today = new Date();
-        const agingRef = parseObsDate(revisedDateVal) || new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-        const refDay = Math.floor(agingRef.getTime() / 86400000);
         rows.forEach(function (r) {{
           const rk = resolveAgingMatrixRatingKey(r.rt);
           if (!rk) return;
-          const iaKey = rowIaStatusKey(r, bl);
-          let frame = null;
-          if (iaKey === "open not due") {{
-            frame = tfNotDue;
-          }} else if (iaKey === "open due") {{
-            const target = parseObsDate(rowMatrixCompareDateRaw(r));
-            if (!target) return;
-            const targetDay = Math.floor(target.getTime() / 86400000);
-            const diffDays = refDay - targetDay;
-            if (diffDays < 183) frame = tfLt6Months;
-            else if (diffDays < 365) frame = tfLtYear;
-            else if (diffDays < 730) frame = tf1To2Years;
-            else if (diffDays < 1095) frame = tf2To3Years;
-            else if (diffDays < 1460) frame = tf3To4Years;
-            else if (diffDays < 1825) frame = tf4To5Years;
-            else frame = tfOver5Years;
-          }} else {{
-            return;
-          }}
-          let idKey = "_idx:" + String(r._idx);
-          if (useOid) {{
-            const ok = ffCellKey(r.oid);
-            if (ok !== "") idKey = "id:" + ok;
-          }}
+          const frame = resolveRowAgingBucket(r, cfg);
+          if (!frame) return;
+          const idKey = agingRowIdKey(r);
           idSets[frame][rk].add(idKey);
+          if (overYearChildren.indexOf(frame) !== -1) {{
+            idSets[tfOverYear][rk].add(idKey);
+          }}
         }});
-        frames.forEach(function (f) {{
+        allBuckets.forEach(function (f) {{
           ratingDefs.forEach(function (rt) {{
             counts[f][rt.key] = idSets[f][rt.key].size;
           }});
         }});
-        return {{ frames: frames, ratingDefs: ratingDefs, counts: counts }};
+        return {{
+          frames: frames,
+          overYearLabel: tfOverYear,
+          overYearChildren: overYearChildren,
+          ratingDefs: ratingDefs,
+          counts: counts,
+        }};
       }}
       function syncAgingPanelTitle() {{
         if (!agingTitle) return;
@@ -7568,6 +7903,57 @@ def generate_finance_report(
           agingHintEl.textContent = hint;
           agingHintEl.hidden = !hint;
         }}
+      }}
+      function appendAgingCountRow(m, label, opts) {{
+        opts = opts || {{}};
+        const trb = document.createElement("tr");
+        if (opts.expandable) {{
+          trb.className = "audit-aging-row-expandable";
+          trb.setAttribute("role", "button");
+          trb.setAttribute("tabindex", "0");
+          trb.setAttribute("aria-expanded", agingOverYearExpanded ? "true" : "false");
+          trb.title = label;
+        }} else if (opts.child) {{
+          trb.className = "audit-aging-row-child";
+        }}
+        const tdf = document.createElement("td");
+        if (opts.expandable) {{
+          const wrap = document.createElement("span");
+          wrap.className = "audit-aging-expand-label";
+          const caret = document.createElement("span");
+          caret.className = "audit-aging-expand-caret";
+          caret.setAttribute("aria-hidden", "true");
+          caret.textContent = "▶";
+          const txt = document.createElement("span");
+          txt.textContent = label;
+          wrap.appendChild(caret);
+          wrap.appendChild(txt);
+          tdf.appendChild(wrap);
+        }} else {{
+          tdf.textContent = label;
+        }}
+        trb.appendChild(tdf);
+        let rowT = 0;
+        m.ratingDefs.forEach(function (rt) {{
+          const n = (m.counts[label] && m.counts[label][rt.key]) || 0;
+          rowT += n;
+          if (opts.accumulateTotals && opts.colTotals) {{
+            opts.colTotals[rt.key] += n;
+          }}
+          const td = document.createElement("td");
+          td.textContent = n ? String(n) : "";
+          if (opts.rows && n > 0) wireAgingDrillCell(td, n, label, rt.key, opts.rows);
+          trb.appendChild(td);
+        }});
+        if (opts.accumulateTotals && typeof opts.grandRef === "object") {{
+          opts.grandRef.value += rowT;
+        }}
+        const tdRowT = document.createElement("td");
+        tdRowT.textContent = String(rowT);
+        if (opts.rows && rowT > 0) wireAgingDrillCell(tdRowT, rowT, label, null, opts.rows);
+        trb.appendChild(tdRowT);
+        agingBodyRows.appendChild(trb);
+        return trb;
       }}
       function renderAgingMatrix(rows) {{
         if (!agingHeadRow || !agingBodyRows) return;
@@ -7594,26 +7980,41 @@ def generate_finance_report(
         agingBodyRows.innerHTML = "";
         const colTotals = {{}};
         m.ratingDefs.forEach(function (rt) {{ colTotals[rt.key] = 0; }});
-        let grand = 0;
+        const grandRef = {{ value: 0 }};
         m.frames.forEach(function (f) {{
-          const trb = document.createElement("tr");
-          const tdf = document.createElement("td");
-          tdf.textContent = f;
-          trb.appendChild(tdf);
-          let rowT = 0;
-          m.ratingDefs.forEach(function (rt) {{
-            const n = m.counts[f][rt.key] || 0;
-            rowT += n;
-            colTotals[rt.key] += n;
-            const td = document.createElement("td");
-            td.textContent = n ? String(n) : "";
-            trb.appendChild(td);
+          const isOverYear = f === m.overYearLabel;
+          const parentRow = appendAgingCountRow(m, f, {{
+            accumulateTotals: true,
+            colTotals: colTotals,
+            grandRef: grandRef,
+            expandable: isOverYear,
+            rows: rows || [],
           }});
-          grand += rowT;
-          const tdRowT = document.createElement("td");
-          tdRowT.textContent = String(rowT);
-          trb.appendChild(tdRowT);
-          agingBodyRows.appendChild(trb);
+          if (isOverYear) {{
+            function toggleOverYear(ev) {{
+              if (ev) {{
+                ev.preventDefault();
+                ev.stopPropagation();
+              }}
+              agingOverYearExpanded = !agingOverYearExpanded;
+              renderAgingMatrix(rows || []);
+            }}
+            const firstCell = parentRow ? parentRow.querySelector("td:first-child") : null;
+            if (firstCell) {{
+              firstCell.addEventListener("click", toggleOverYear);
+              firstCell.addEventListener("keydown", function (ev) {{
+                if (ev.key === "Enter" || ev.key === " ") {{
+                  ev.preventDefault();
+                  toggleOverYear(ev);
+                }}
+              }});
+            }}
+            if (agingOverYearExpanded) {{
+              m.overYearChildren.forEach(function (child) {{
+                appendAgingCountRow(m, child, {{ child: true, accumulateTotals: false, rows: rows || [] }});
+              }});
+            }}
+          }}
         }});
         const trTot = document.createElement("tr");
         trTot.className = "audit-aging-row-total";
@@ -7621,16 +8022,20 @@ def generate_finance_report(
         tdLbl.textContent = totalLabel;
         trTot.appendChild(tdLbl);
         m.ratingDefs.forEach(function (rt) {{
+          const n = colTotals[rt.key] || 0;
           const td = document.createElement("td");
-          td.textContent = String(colTotals[rt.key] || 0);
+          td.textContent = String(n);
+          if (n > 0) wireAgingDrillCell(td, n, null, rt.key, rows || []);
           trTot.appendChild(td);
         }});
         const tdGrand = document.createElement("td");
-        tdGrand.textContent = String(grand);
+        tdGrand.textContent = String(grandRef.value);
+        if (grandRef.value > 0) wireAgingDrillCell(tdGrand, grandRef.value, null, null, rows || []);
         trTot.appendChild(tdGrand);
         agingBodyRows.appendChild(trTot);
       }}
       function closeAgingMatrix() {{
+        closeAgingDrillDown();
         if (agingBackdrop) {{
           agingBackdrop.style.display = "none";
           agingBackdrop.setAttribute("aria-hidden", "true");
@@ -7648,6 +8053,7 @@ def generate_finance_report(
         if (agingCb) agingCb.checked = false;
         if (agingRevisedCb) agingRevisedCb.checked = false;
         agingMatrixUseRevised = false;
+        agingOverYearExpanded = false;
       }}
       function openAgingMatrix(rows) {{
         if (!agingPanel || !agingBackdrop) return;
@@ -8447,6 +8853,9 @@ def generate_finance_report(
       }}
       if (agingClose) agingClose.addEventListener("click", closeAgingMatrix);
       if (agingBackdrop) agingBackdrop.addEventListener("click", closeAgingMatrix);
+      if (agingDrillClose) agingDrillClose.addEventListener("click", closeAgingDrillDown);
+      if (agingDrillBack) agingDrillBack.addEventListener("click", closeAgingDrillDown);
+      if (agingDrillBackdrop) agingDrillBackdrop.addEventListener("click", closeAgingDrillDown);
       if (planClose) planClose.addEventListener("click", closePlanStatus);
       if (planBackdrop) planBackdrop.addEventListener("click", closePlanStatus);
       if (reviewsLbl) reviewsLbl.textContent = ui.reviewsToggleLabel || "Other audit reviews";
