@@ -1402,7 +1402,11 @@ def build_audit_observation_payload(
             "agingTfNotDue": tr(loc, "audit_aging_tf_not_due"),
             "agingTfLt6Months": tr(loc, "audit_aging_tf_lt_6_months"),
             "agingTfLtYear": tr(loc, "audit_aging_tf_lt_year"),
-            "agingTfOverYear": tr(loc, "audit_aging_tf_over_year"),
+            "agingTf1To2Years": tr(loc, "audit_aging_tf_1_to_2_years"),
+            "agingTf2To3Years": tr(loc, "audit_aging_tf_2_to_3_years"),
+            "agingTf3To4Years": tr(loc, "audit_aging_tf_3_to_4_years"),
+            "agingTf4To5Years": tr(loc, "audit_aging_tf_4_to_5_years"),
+            "agingTfOver5Years": tr(loc, "audit_aging_tf_over_5_years"),
             "agingColTotal": tr(loc, "audit_aging_col_total"),
             "agingTitleAsOfTpl": tr(loc, "audit_aging_title_as_of_tpl"),
             "agingMatrixHint": tr(loc, "audit_aging_matrix_hint"),
@@ -7472,8 +7476,21 @@ def generate_finance_report(
         const tfNotDue = ui.agingTfNotDue || "Not Due";
         const tfLt6Months = ui.agingTfLt6Months || "Less than 6 months";
         const tfLtYear = ui.agingTfLtYear || "Less than one year";
-        const tfOverYear = ui.agingTfOverYear || "Over one year";
-        const frames = [tfNotDue, tfLt6Months, tfLtYear, tfOverYear];
+        const tf1To2Years = ui.agingTf1To2Years || "From 1 year to 2 years";
+        const tf2To3Years = ui.agingTf2To3Years || "From 2 years to 3 years";
+        const tf3To4Years = ui.agingTf3To4Years || "From 3 years to 4 years";
+        const tf4To5Years = ui.agingTf4To5Years || "From 4 years to 5 years";
+        const tfOver5Years = ui.agingTfOver5Years || "Over 5 years";
+        const frames = [
+          tfNotDue,
+          tfLt6Months,
+          tfLtYear,
+          tf1To2Years,
+          tf2To3Years,
+          tf3To4Years,
+          tf4To5Years,
+          tfOver5Years,
+        ];
         const ratingDefs = (AO.rating_types || []).map(function (rt) {{
           return {{ key: String(rt.value).toLowerCase(), label: rt.label || rt.value }};
         }});
@@ -7506,7 +7523,11 @@ def generate_finance_report(
             const diffDays = refDay - targetDay;
             if (diffDays < 183) frame = tfLt6Months;
             else if (diffDays < 365) frame = tfLtYear;
-            else frame = tfOverYear;
+            else if (diffDays < 730) frame = tf1To2Years;
+            else if (diffDays < 1095) frame = tf2To3Years;
+            else if (diffDays < 1460) frame = tf3To4Years;
+            else if (diffDays < 1825) frame = tf4To5Years;
+            else frame = tfOver5Years;
           }} else {{
             return;
           }}
