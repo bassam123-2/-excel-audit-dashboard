@@ -5531,12 +5531,24 @@ def generate_finance_report(
     }}
     #preview .table-wrap {{
       max-height: min(75vh, 960px);
-      overflow-y: auto;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }}
+    #preview .table-wrap table {{
+      border-collapse: separate;
+      border-spacing: 0;
+    }}
+    #preview .table-wrap th,
+    #preview .table-wrap td {{
+      border: 1px solid #94a3b8;
     }}
     #preview .table-wrap thead th {{
       position: sticky;
       top: 0;
-      z-index: 1;
+      z-index: 2;
+      background: #e2e8f0;
+      color: #1e293b;
+      box-shadow: 0 2px 0 #94a3b8;
     }}
     table {{
       width: 100%;
