@@ -1750,21 +1750,144 @@ def build_finance_kpis(
     return kpis
 
 
+_PREVIEW_BLANK_FILTER = "__preview_blank__"
+
+
+def _preview_column_uses_select(col_name: str, series: pd.Series) -> bool:
+    """Use a dropdown for compact categorical columns; search for long text columns."""
+    name = str(col_name).strip().lower()
+    text_heavy = (
+        "observation name",
+        "summary of observation",
+        "summary",
+        "recommendation",
+        "description",
+        "detail",
+        "comment",
+        "note",
+        "legal text",
+    )
+    if any(tok in name for tok in text_heavy):
+        return False
+
+    values = series.map(lambda v: "" if pd.isna(v) else str(v).strip())
+    non_empty = values[values != ""]
+    if non_empty.empty:
+        return False
+
+    n_unique = int(non_empty.nunique())
+    if n_unique > 50:
+        return False
+
+    lengths = non_empty.map(len)
+    max_len = int(lengths.max())
+    avg_len = float(lengths.mean())
+    if max_len > 45:
+        return False
+
+    compact_tokens = (
+        "s.n",
+        "company",
+        "subcompany",
+        "year",
+        "department",
+        "cycle",
+        "rating",
+        "type",
+        "status",
+        "owner",
+        "date",
+        "function",
+    )
+    if any(tok in name for tok in compact_tokens):
+        return True
+
+    return n_unique <= 25 and avg_len <= 24
+
+
+def _preview_select_options(
+    series: pd.Series,
+    *,
+    all_label: str,
+    blank_label: str,
+) -> list[tuple[str, str]]:
+    """Return (value, label) pairs for a preview column select filter, with counts."""
+    counts: dict[str, int] = {}
+    blank_count = 0
+    for raw in series.tolist():
+        if pd.isna(raw) or str(raw).strip() == "":
+            blank_count += 1
+            continue
+        text = str(raw).strip()
+        counts[text] = counts.get(text, 0) + 1
+    total = int(series.shape[0])
+    opts: list[tuple[str, str]] = [("", f"{all_label} ({total})")]
+    for text in sorted(counts.keys(), key=lambda s: s.lower()):
+        opts.append((text, f"{text} ({counts[text]})"))
+    if blank_count:
+        opts.insert(1, (_PREVIEW_BLANK_FILTER, f"{blank_label} ({blank_count})"))
+    return opts
+
+
 def to_html_table(
     df: pd.DataFrame,
     max_rows: int | None = 20,
     *,
     empty_message: str = "No data",
+    column_search: bool = False,
+    column_search_placeholder: str = "Search",
+    column_filter_all_label: str = "All",
+    column_filter_blank_label: str = "(blank)",
 ) -> str:
     if df.empty:
         return f"<p class='muted'>{html.escape(empty_message)}</p>"
     clip = df if max_rows is None else df.head(max_rows)
-    th = "".join(f"<th>{html.escape(str(c))}</th>" for c in clip.columns)
+    if column_search:
+        th_parts: list[str] = []
+        for col_idx, col_name in enumerate(clip.columns):
+            label = html.escape(str(col_name))
+            ph = html.escape(column_search_placeholder)
+            series = clip[col_name]
+            if _preview_column_uses_select(str(col_name), series):
+                opt_html = "".join(
+                    f'<option value="{html.escape(val)}">{html.escape(lbl)}</option>'
+                    for val, lbl in _preview_select_options(
+                        series,
+                        all_label=column_filter_all_label,
+                        blank_label=column_filter_blank_label,
+                    )
+                )
+                th_parts.append(
+                    "<th>"
+                    f'<span class="preview-col-label">{label}</span>'
+                    f'<select class="preview-col-filter preview-col-filter--select" '
+                    f'data-col-idx="{col_idx}" data-filter-mode="select" '
+                    f'aria-label="{label}">'
+                    f"{opt_html}</select>"
+                    "</th>"
+                )
+            else:
+                th_parts.append(
+                    "<th>"
+                    f'<span class="preview-col-label">{label}</span>'
+                    f'<input type="search" class="preview-col-filter preview-col-filter--search" '
+                    f'data-col-idx="{col_idx}" data-filter-mode="search" placeholder="{ph}" '
+                    f'aria-label="{label} {ph}" />'
+                    "</th>"
+                )
+        th = "".join(th_parts)
+        table_cls = "preview-filter-table"
+    else:
+        th = "".join(f"<th>{html.escape(str(c))}</th>" for c in clip.columns)
+        table_cls = ""
     rows = []
     for _, r in clip.iterrows():
         tds = "".join(f"<td>{html.escape('' if pd.isna(v) else str(v))}</td>" for v in r.tolist())
         rows.append(f"<tr>{tds}</tr>")
-    return f"<div class='table-wrap'><table><thead><tr>{th}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+    return (
+        f"<div class='table-wrap'><table class='{table_cls}'><thead><tr>{th}</tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table></div>"
+    )
 
 
 _MAX_EMBEDDED_DECK_BYTES = 48 * 1024 * 1024
@@ -4571,6 +4694,18 @@ def generate_finance_report(
       min-height: 0;
       height: 100%;
     }}
+    #audit-aging-panel {{
+      height: min(88vh, 48rem);
+    }}
+    #audit-aging-panel .audit-aging-head,
+    #audit-aging-panel .audit-aging-hint {{
+      flex: 0 0 auto;
+    }}
+    #audit-aging-panel .audit-aging-body {{
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+    }}
     #audit-reviews-panel .audit-aging-body {{
       flex: 1 1 auto;
       min-height: 0;
@@ -4759,6 +4894,15 @@ def generate_finance_report(
       border: 1px solid rgba(148, 163, 184, 0.55);
       padding: 0.45rem 0.55rem;
       text-align: center;
+    }}
+    #audit-aging-table thead th {{
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      box-shadow: 0 2px 0 rgba(148, 163, 184, 0.65);
+    }}
+    #audit-aging-table {{
+      overflow: visible;
     }}
     .audit-aging-table th:first-child,
     .audit-aging-table td:first-child {{
@@ -5531,12 +5675,208 @@ def generate_finance_report(
     }}
     #preview .table-wrap {{
       max-height: min(75vh, 960px);
-      overflow-y: auto;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }}
+    #preview .preview-filter-toolbar {{
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      margin: 0 0 0.55rem 0;
+    }}
+    #preview .preview-filters-clear {{
+      font-family: inherit;
+      border: 1px solid var(--stroke);
+      border-radius: 10px;
+      background: #f8fafc;
+      color: var(--text);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.45rem 0.7rem;
+      cursor: pointer;
+    }}
+    #preview .preview-filters-clear:hover {{
+      background: #e2e8f0;
+    }}
+    #preview .preview-filter-meta {{
+      font-size: 0.8rem;
+      color: #475569;
+      margin-inline-start: auto;
+    }}
+    #preview .preview-filter-empty {{
+      margin: 0.6rem 0 0;
+      color: #64748b;
+      font-size: 0.85rem;
+    }}
+    #preview .preview-presets {{
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      margin: 0 0 0.55rem 0;
+    }}
+    #preview .preview-presets-label {{
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-right: 0.15rem;
+    }}
+    #preview .preview-preset-btn {{
+      font-family: inherit;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #334155;
+      font-size: 0.75rem;
+      font-weight: 650;
+      padding: 0.32rem 0.7rem;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }}
+    #preview .preview-preset-btn:hover {{
+      background: #eff6ff;
+      border-color: #93c5fd;
+      color: #1e3a8a;
+    }}
+    #preview .preview-preset-btn.is-active {{
+      background: #1e40af;
+      border-color: #1e3a8a;
+      color: #ffffff;
+    }}
+    #preview .preview-preset-btn[data-preset="high"].is-active {{
+      background: rgba(255, 51, 0, 0.9);
+      border-color: rgba(192, 0, 0, 0.7);
+    }}
+    #preview .preview-preset-btn[data-preset="critical"].is-active {{
+      background: rgba(192, 0, 0, 0.92);
+      border-color: rgba(127, 0, 0, 0.75);
+    }}
+    #preview .preview-preset-btn[data-preset="medium"].is-active {{
+      background: rgba(234, 179, 8, 0.95);
+      border-color: rgba(202, 138, 4, 0.85);
+      color: #111827;
+    }}
+    #preview .preview-filter-chips {{
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      min-height: 0;
+      margin: 0 0 0.55rem 0;
+    }}
+    #preview .preview-filter-chips:empty {{
+      display: none;
+    }}
+    #preview .preview-filter-chip {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      border: 1px solid #93c5fd;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-size: 0.74rem;
+      font-weight: 650;
+      padding: 0.28rem 0.35rem 0.28rem 0.65rem;
+      max-width: 100%;
+    }}
+    #preview .preview-filter-chip-text {{
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 18rem;
+    }}
+    #preview .preview-filter-chip-x {{
+      font-family: inherit;
+      border: none;
+      background: rgba(30, 58, 138, 0.12);
+      color: #1e3a8a;
+      width: 1.25rem;
+      height: 1.25rem;
+      border-radius: 999px;
+      cursor: pointer;
+      line-height: 1;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }}
+    #preview .preview-filter-chip-x:hover {{
+      background: rgba(30, 58, 138, 0.22);
+    }}
+    #preview .preview-filter-progress {{
+      height: 0.35rem;
+      border-radius: 999px;
+      background: #e2e8f0;
+      overflow: hidden;
+      margin: 0 0 0.7rem 0;
+    }}
+    #preview .preview-filter-progress-fill {{
+      height: 100%;
+      width: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+      transition: width 0.2s ease;
+    }}
+    #preview mark.preview-search-hit {{
+      background: #fde68a;
+      color: inherit;
+      border-radius: 3px;
+      padding: 0 0.1em;
+      box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+    }}
+    #preview .table-wrap table {{
+      border-collapse: separate;
+      border-spacing: 0;
+    }}
+    #preview .table-wrap th,
+    #preview .table-wrap td {{
+      border: 1px solid #94a3b8;
     }}
     #preview .table-wrap thead th {{
       position: sticky;
       top: 0;
-      z-index: 1;
+      z-index: 2;
+      background: #475569;
+      color: #f8fafc;
+      box-shadow: 0 2px 0 #334155;
+      vertical-align: top;
+    }}
+    #preview .preview-col-label {{
+      display: block;
+      margin-bottom: 0.35rem;
+      line-height: 1.2;
+    }}
+    #preview .preview-col-filter {{
+      display: block;
+      width: 100%;
+      min-width: 4.25rem;
+      box-sizing: border-box;
+      border: 1px solid #64748b;
+      border-radius: 6px;
+      padding: 0.3rem 0.45rem;
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: normal;
+      text-transform: none;
+      color: #0f172a;
+      background: #f8fafc;
+    }}
+    #preview .preview-col-filter--select {{
+      min-width: 5.5rem;
+      max-width: 11rem;
+      padding-right: 1.4rem;
+      cursor: pointer;
+    }}
+    #preview .preview-col-filter::placeholder {{
+      color: #64748b;
+      opacity: 1;
+    }}
+    #preview .preview-col-filter:focus-visible {{
+      outline: 2px solid rgba(96, 165, 250, 0.75);
+      outline-offset: 1px;
+      border-color: #60a5fa;
     }}
     table {{
       width: 100%;
@@ -5961,7 +6301,31 @@ def generate_finance_report(
 
     <section id="preview" class="panel">
       <h2>{html.escape(tr(loc, "panel_preview"))}</h2>
-      {to_html_table(df_work, max_rows=None, empty_message=tr(loc, "table_no_data"))}
+      <div class="preview-presets" role="group" aria-label="{html.escape(tr(loc, "preview_filter_presets_label"))}">
+        <span class="preview-presets-label">{html.escape(tr(loc, "preview_filter_presets_label"))}</span>
+        <button type="button" class="preview-preset-btn" data-preset="high">{html.escape(tr(loc, "preview_preset_high"))}</button>
+        <button type="button" class="preview-preset-btn" data-preset="critical">{html.escape(tr(loc, "preview_preset_critical"))}</button>
+        <button type="button" class="preview-preset-btn" data-preset="medium">{html.escape(tr(loc, "preview_preset_medium"))}</button>
+        <button type="button" class="preview-preset-btn" data-preset="this_year">{html.escape(tr(loc, "preview_preset_this_year"))}</button>
+      </div>
+      <div class="preview-filter-toolbar">
+        <button type="button" id="preview-filters-clear" class="preview-filters-clear">{html.escape(tr(loc, "preview_filters_clear"))}</button>
+        <span id="preview-filter-meta" class="preview-filter-meta"></span>
+      </div>
+      <div id="preview-filter-chips" class="preview-filter-chips" aria-label="{html.escape(tr(loc, "preview_active_filters"))}"></div>
+      <div class="preview-filter-progress" aria-hidden="true">
+        <div id="preview-filter-progress-fill" class="preview-filter-progress-fill"></div>
+      </div>
+      {to_html_table(
+        df_work,
+        max_rows=None,
+        empty_message=tr(loc, "table_no_data"),
+        column_search=True,
+        column_search_placeholder=tr(loc, "preview_column_filter_placeholder"),
+        column_filter_all_label=tr(loc, "preview_filter_all"),
+        column_filter_blank_label=tr(loc, "audit_status_blank"),
+      )}
+      <p id="preview-filter-empty" class="preview-filter-empty" hidden>{html.escape(tr(loc, "preview_search_no_match"))}</p>
     </section>
 
     <section id="segment" class="panel">
@@ -6224,6 +6588,289 @@ def generate_finance_report(
       const v = Number(ctx.raw) || 0;
       return (ctx.dataset.label ? ctx.dataset.label + ": " : "") + v + " (" + chartPctStr(v, g) + ")";
     }}
+    (function initPreviewColumnSearch() {{
+      const panel = document.getElementById("preview");
+      if (!panel) return;
+      const clearBtn = document.getElementById("preview-filters-clear");
+      const meta = document.getElementById("preview-filter-meta");
+      const empty = document.getElementById("preview-filter-empty");
+      const chipsEl = document.getElementById("preview-filter-chips");
+      const progressFill = document.getElementById("preview-filter-progress-fill");
+      const tbody = panel.querySelector(".table-wrap tbody");
+      const filters = Array.from(panel.querySelectorAll(".preview-col-filter"));
+      const presetBtns = Array.from(panel.querySelectorAll(".preview-preset-btn"));
+      if (!tbody || !filters.length) return;
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+      const blankToken = "{html.escape(_PREVIEW_BLANK_FILTER)}";
+      const chipRemoveLbl = "{html.escape(tr(loc, "preview_chip_remove"))}";
+      const allLabel = "{html.escape(tr(loc, "preview_filter_all"))}";
+      const blankLabel = "{html.escape(tr(loc, "audit_status_blank"))}";
+      const colLabels = filters.map(function (f) {{
+        const th = f.closest("th");
+        const lab = th ? th.querySelector(".preview-col-label") : null;
+        return lab ? String(lab.textContent || "").trim() : ("Col " + (Number(f.getAttribute("data-col-idx")) + 1));
+      }});
+      rows.forEach(function (tr) {{
+        Array.from(tr.querySelectorAll("td")).forEach(function (td) {{
+          td.setAttribute("data-raw", String(td.textContent || ""));
+        }});
+      }});
+      filters.forEach(function (f) {{
+        if (f.tagName !== "SELECT") return;
+        Array.from(f.options).forEach(function (opt) {{
+          const rawVal = String(opt.value || "");
+          if (!rawVal) opt.setAttribute("data-base-label", allLabel);
+          else if (rawVal === blankToken) opt.setAttribute("data-base-label", blankLabel);
+          else {{
+            const txt = String(opt.textContent || "");
+            opt.setAttribute("data-base-label", txt.replace(/\\s*\\(\\d+\\)\\s*$/, ""));
+          }}
+        }});
+      }});
+      function countText(shown, total) {{
+        let tpl = "{html.escape(tr(loc, "preview_search_count"))}";
+        tpl = tpl.split("{{shown}}").join(String(shown));
+        tpl = tpl.split("{{total}}").join(String(total));
+        return tpl;
+      }}
+      function escapeRegExp(s) {{
+        return String(s).replace(/[.*+?^${{}}()|[\\]\\\\]/g, "\\\\$&");
+      }}
+      function escapeHtml(s) {{
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }}
+      function cellMatchesFilter(cellText, filterEl, term) {{
+        if (!term) return true;
+        if (filterEl.getAttribute("data-filter-mode") === "select") {{
+          if (term === blankToken) return cellText === "";
+          return cellText === term;
+        }}
+        return cellText.indexOf(term) !== -1;
+      }}
+      function rowRawAt(tr, colIdx) {{
+        const cells = tr.querySelectorAll("td");
+        const td = cells[colIdx];
+        return String((td && (td.getAttribute("data-raw") || td.textContent)) || "").trim();
+      }}
+      function rowMatchesFilters(tr, terms, skipIdx) {{
+        for (let i = 0; i < terms.length; i++) {{
+          if (skipIdx != null && i === skipIdx) continue;
+          if (!terms[i]) continue;
+          const cellText = rowRawAt(tr, i).toLowerCase();
+          if (!cellMatchesFilter(cellText, filters[i], terms[i])) return false;
+        }}
+        return true;
+      }}
+      function refreshSelectOptions(terms) {{
+        filters.forEach(function (f, colIdx) {{
+          if (f.tagName !== "SELECT") return;
+          const selected = String(f.value || "");
+          const counts = {{}};
+          let blankCount = 0;
+          let scopedTotal = 0;
+          rows.forEach(function (tr) {{
+            if (!rowMatchesFilters(tr, terms, colIdx)) return;
+            scopedTotal += 1;
+            const raw = rowRawAt(tr, colIdx);
+            if (raw === "") {{
+              blankCount += 1;
+              return;
+            }}
+            const key = raw.toLowerCase();
+            if (!counts[key]) counts[key] = {{ label: raw, n: 0 }};
+            counts[key].n += 1;
+          }});
+          Array.from(f.options).forEach(function (opt) {{
+            const val = String(opt.value || "");
+            const base = opt.getAttribute("data-base-label") || String(opt.textContent || "").replace(/\\s*\\(\\d+\\)\\s*$/, "");
+            let n = 0;
+            if (!val) n = scopedTotal;
+            else if (val === blankToken) n = blankCount;
+            else {{
+              const hit = counts[val.toLowerCase()];
+              n = hit ? hit.n : 0;
+            }}
+            opt.textContent = base + " (" + n + ")";
+            const keep = !val || n > 0 || val === selected;
+            opt.hidden = !keep;
+            opt.disabled = !keep;
+          }});
+          if (selected) {{
+            const stillThere = Array.from(f.options).some(function (opt) {{
+              return String(opt.value || "") === selected && !opt.disabled;
+            }});
+            if (!stillThere) f.value = "";
+          }}
+        }});
+      }}
+      function displayValue(filterEl) {{
+        const raw = String(filterEl.value || "").trim();
+        if (!raw) return "";
+        if (filterEl.tagName === "SELECT") {{
+          const opt = filterEl.options[filterEl.selectedIndex];
+          if (!opt) return raw;
+          const base = opt.getAttribute("data-base-label");
+          return base || String(opt.textContent || raw).replace(/\\s*\\(\\d+\\)\\s*$/, "").trim();
+        }}
+        return raw;
+      }}
+      function findFilterByColHint(hints) {{
+        for (let i = 0; i < filters.length; i++) {{
+          const name = String(colLabels[i] || "").toLowerCase();
+          for (let h = 0; h < hints.length; h++) {{
+            if (name.indexOf(hints[h]) !== -1) return filters[i];
+          }}
+        }}
+        return null;
+      }}
+      function findSelectOption(filterEl, wanted) {{
+        if (!filterEl || filterEl.tagName !== "SELECT") return null;
+        const w = String(wanted || "").toLowerCase();
+        for (let i = 0; i < filterEl.options.length; i++) {{
+          const opt = filterEl.options[i];
+          const val = String(opt.value || "").toLowerCase();
+          const base = String(opt.getAttribute("data-base-label") || opt.textContent || "").toLowerCase();
+          if (!val) continue;
+          if (val === w || base === w || base.indexOf(w) === 0) return opt.value;
+        }}
+        return null;
+      }}
+      function highlightCell(td, term) {{
+        const raw = td.getAttribute("data-raw");
+        if (raw == null) return;
+        if (!term) {{
+          td.textContent = raw;
+          return;
+        }}
+        const re = new RegExp("(" + escapeRegExp(term) + ")", "ig");
+        td.innerHTML = escapeHtml(raw).replace(re, '<mark class="preview-search-hit">$1</mark>');
+      }}
+      function renderChips() {{
+        if (!chipsEl) return;
+        chipsEl.innerHTML = "";
+        filters.forEach(function (f, idx) {{
+          const val = String(f.value || "").trim();
+          if (!val) return;
+          const chip = document.createElement("span");
+          chip.className = "preview-filter-chip";
+          const text = document.createElement("span");
+          text.className = "preview-filter-chip-text";
+          text.textContent = colLabels[idx] + ": " + displayValue(f);
+          const x = document.createElement("button");
+          x.type = "button";
+          x.className = "preview-filter-chip-x";
+          x.setAttribute("aria-label", chipRemoveLbl + ": " + colLabels[idx]);
+          x.textContent = "×";
+          x.addEventListener("click", function () {{
+            f.value = "";
+            applyFilter();
+          }});
+          chip.appendChild(text);
+          chip.appendChild(x);
+          chipsEl.appendChild(chip);
+        }});
+      }}
+      function syncPresetActive() {{
+        const ratingFilter = findFilterByColHint(["rating"]);
+        const yearFilter = findFilterByColHint(["audit year", "year"]);
+        const ratingVal = ratingFilter ? String(ratingFilter.value || "").toLowerCase() : "";
+        const yearVal = yearFilter ? String(yearFilter.value || "").trim() : "";
+        const thisYear = String(new Date().getFullYear());
+        presetBtns.forEach(function (btn) {{
+          const p = btn.getAttribute("data-preset");
+          let on = false;
+          if (p === "high") on = ratingVal === "high";
+          else if (p === "critical") on = ratingVal === "critical";
+          else if (p === "medium") on = ratingVal === "medium" || ratingVal === "meduim";
+          else if (p === "this_year") on = yearVal === thisYear || yearVal.indexOf(thisYear) === 0;
+          btn.classList.toggle("is-active", !!on);
+        }});
+      }}
+      function applyFilter() {{
+        const terms = filters.map(function (f) {{
+          return String(f.value || "").trim().toLowerCase();
+        }});
+        refreshSelectOptions(terms);
+        const refreshedTerms = filters.map(function (f) {{
+          return String(f.value || "").trim().toLowerCase();
+        }});
+        const hasFilter = refreshedTerms.some(function (t) {{ return t !== ""; }});
+        let shown = 0;
+        rows.forEach(function (tr) {{
+          const cells = tr.querySelectorAll("td");
+          const visible = rowMatchesFilters(tr, refreshedTerms, null);
+          tr.style.display = visible ? "" : "none";
+          if (visible) {{
+            shown += 1;
+            for (let i = 0; i < filters.length; i++) {{
+              const f = filters[i];
+              const td = cells[i];
+              if (!td) continue;
+              if (f.getAttribute("data-filter-mode") === "search" && refreshedTerms[i]) {{
+                highlightCell(td, String(f.value || "").trim());
+              }} else {{
+                highlightCell(td, "");
+              }}
+            }}
+          }}
+        }});
+        if (meta) meta.textContent = countText(shown, rows.length);
+        if (empty) empty.hidden = shown !== 0 || !hasFilter;
+        if (progressFill) {{
+          const pct = rows.length ? Math.round((shown / rows.length) * 100) : 0;
+          progressFill.style.width = pct + "%";
+        }}
+        renderChips();
+        syncPresetActive();
+      }}
+      filters.forEach(function (f) {{
+        f.addEventListener(f.tagName === "SELECT" ? "change" : "input", applyFilter);
+      }});
+      if (clearBtn) {{
+        clearBtn.addEventListener("click", function () {{
+          filters.forEach(function (f) {{ f.value = ""; }});
+          applyFilter();
+          try {{ if (filters[0]) filters[0].focus(); }} catch (_f) {{}}
+        }});
+      }}
+      presetBtns.forEach(function (btn) {{
+        btn.addEventListener("click", function () {{
+          const preset = btn.getAttribute("data-preset");
+          const ratingFilter = findFilterByColHint(["rating"]);
+          const yearFilter = findFilterByColHint(["audit year", "year"]);
+          if (preset === "high" || preset === "critical" || preset === "medium") {{
+            if (!ratingFilter) return;
+            const matched = findSelectOption(ratingFilter, preset === "medium" ? "medium" : preset);
+            if (matched == null) return;
+            if (String(ratingFilter.value) === matched && btn.classList.contains("is-active")) {{
+              ratingFilter.value = "";
+            }} else {{
+              ratingFilter.value = matched;
+            }}
+          }} else if (preset === "this_year") {{
+            if (!yearFilter) return;
+            const y = String(new Date().getFullYear());
+            let matched = findSelectOption(yearFilter, y);
+            if (matched == null) matched = findSelectOption(yearFilter, y + ".0");
+            if (matched == null && yearFilter.getAttribute("data-filter-mode") === "search") {{
+              if (String(yearFilter.value) === y && btn.classList.contains("is-active")) yearFilter.value = "";
+              else yearFilter.value = y;
+              applyFilter();
+              return;
+            }}
+            if (matched == null) return;
+            if (String(yearFilter.value) === matched && btn.classList.contains("is-active")) yearFilter.value = "";
+            else yearFilter.value = matched;
+          }}
+          applyFilter();
+        }});
+      }});
+      applyFilter();
+    }})();
     (function registerDashboardPercentPlugin() {{
       if (typeof Chart === "undefined") return;
       Chart.register({{
