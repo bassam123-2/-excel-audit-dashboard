@@ -1416,6 +1416,8 @@ def build_audit_observation_payload(
             "agingDrillEmpty": tr(loc, "audit_aging_drill_empty"),
             "agingDrillOpenHint": tr(loc, "audit_aging_drill_open_hint"),
             "agingDrillBack": tr(loc, "audit_aging_drill_back"),
+            "blockDrillTitleTpl": tr(loc, "audit_block_drill_title_tpl"),
+            "blockDrillHint": tr(loc, "audit_block_drill_hint"),
             "agingTitleAsOfTpl": tr(loc, "audit_aging_title_as_of_tpl"),
             "agingMatrixHint": tr(loc, "audit_aging_matrix_hint"),
             "agingRevisedToggleLabel": tr(loc, "audit_aging_revised_toggle_label"),
@@ -7502,6 +7504,7 @@ def generate_finance_report(
       const emptyMark = ui.obsDetailEmpty || "—";
       let agingMatrixUseRevised = false;
       let agingOverYearExpanded = false;
+      let lastBlockDrillKey = null;
       const hasStandardAgingDates = AO.has_implementation_due === true;
       const hasRevisedDateCol = AO.has_revised_date === true;
       const hasAgingDateSource = !!(hasStandardAgingDates || hasRevisedDateCol);
@@ -8470,9 +8473,24 @@ def generate_finance_report(
           agingDrillPanel.style.display = "none";
           agingDrillPanel.setAttribute("aria-hidden", "true");
         }}
+        lastBlockDrillKey = null;
+      }}
+      function isObsListDrillOpen() {{
+        return !!(
+          agingDrillPanel &&
+          agingDrillPanel.style.display !== "none" &&
+          agingDrillPanel.getAttribute("aria-hidden") !== "true"
+        );
+      }}
+      function syncAgingDrillBackVisibility(fromAging) {{
+        if (!agingDrillBack) return;
+        agingDrillBack.style.display = fromAging ? "" : "none";
+        if (fromAging) agingDrillBack.textContent = ui.agingDrillBack || "Back to aging summary";
       }}
       function openAgingDrillDown(rows, frameLabel, ratingKey) {{
         if (!agingDrillPanel || !agingDrillBackdrop) return;
+        lastBlockDrillKey = null;
+        syncAgingDrillBackVisibility(true);
         if (agingDrillTitle) agingDrillTitle.textContent = agingDrillTitleText(frameLabel, ratingKey);
         renderAgingDrillList(collectAgingDrillRows(rows, frameLabel, ratingKey));
         agingDrillBackdrop.style.display = "block";
@@ -8482,6 +8500,78 @@ def generate_finance_report(
         if (agingDrillClose) {{
           try {{ agingDrillClose.focus(); }} catch (_adf) {{}}
         }}
+      }}
+      function collectMetricBlockRows(kind, value) {{
+        const bl = ui.statusBlank || "(blank)";
+        let rows = aoFilteredRows();
+        if (kind === "ia") {{
+          rows = rows.filter(function (r) {{ return rowIaLabel(r, bl) === value; }});
+        }} else {{
+          rows = rows.filter(function (r) {{ return rowInIaSelection(r, bl); }});
+        }}
+        if (kind === "rating") {{
+          const want = String(value || "").toLowerCase();
+          rows = rows.filter(function (r) {{ return ratingKeyFromRow(r) === want; }});
+        }} else {{
+          rows = rows.filter(function (r) {{ return rowMatchesRatingSelection(r); }});
+        }}
+        if (kind === "obsType") {{
+          rows = rows.filter(function (r) {{
+            const ok = ffCellKey(r.ot);
+            const olab = ok === "" ? bl : ok;
+            return olab === value;
+          }});
+        }} else {{
+          rows = rows.filter(function (r) {{ return rowMatchesObsTypeSelection(r, bl); }});
+        }}
+        if (kind === "year") {{
+          rows = rows.filter(function (r) {{ return ffCellKey(r.y) === value; }});
+        }} else if (activeAuditYears.size > 0) {{
+          rows = rows.filter(function (r) {{
+            const yk = ffCellKey(r.y);
+            return yk !== "" && activeAuditYears.has(yk);
+          }});
+        }}
+        const closedKey = normAuditColorKey(value);
+        if (!(kind === "ia" && closedKey === "closed")) {{
+          rows = rows.filter(function (r) {{ return !rowIsClosedIa(r, bl); }});
+        }}
+        return rows;
+      }}
+      function openObsListDrillDown(rows, title) {{
+        if (!agingDrillPanel || !agingDrillBackdrop) return;
+        syncAgingDrillBackVisibility(false);
+        if (agingDrillTitle) {{
+          const tpl = ui.blockDrillTitleTpl || "{{label}}";
+          agingDrillTitle.textContent = tpl.split("{{label}}").join(String(title || ""));
+        }}
+        renderAgingDrillList(rows || []);
+        agingDrillBackdrop.style.display = "block";
+        agingDrillBackdrop.setAttribute("aria-hidden", "false");
+        agingDrillPanel.style.display = "block";
+        agingDrillPanel.setAttribute("aria-hidden", "false");
+        if (agingDrillClose) {{
+          try {{ agingDrillClose.focus(); }} catch (_adf2) {{}}
+        }}
+      }}
+      function handleMetricBlockClick(setObj, key, kind, displayLabel) {{
+        const drillKey = kind + ":" + String(key);
+        if (!setObj.has(key)) {{
+          setObj.add(key);
+          lastBlockDrillKey = null;
+          obsCheckedIds = null;
+          aoRefresh();
+          return;
+        }}
+        if (isObsListDrillOpen() && lastBlockDrillKey === drillKey) {{
+          closeAgingDrillDown();
+          setObj.delete(key);
+          obsCheckedIds = null;
+          aoRefresh();
+          return;
+        }}
+        lastBlockDrillKey = drillKey;
+        openObsListDrillDown(collectMetricBlockRows(kind, key), displayLabel || key);
       }}
       function computeAgingMatrixRows(rows) {{
         const cfg = agingMatrixBucketConfig();
@@ -12024,11 +12114,9 @@ def generate_finance_report(
           const rKey = String(rt.value).toLowerCase();
           b.setAttribute("aria-pressed", activeRatingValues.has(rKey) ? "true" : "false");
           b.addEventListener("click", function () {{
-            if (activeRatingValues.has(rKey)) activeRatingValues.delete(rKey);
-            else activeRatingValues.add(rKey);
-            obsCheckedIds = null;
-            aoRefresh();
+            handleMetricBlockClick(activeRatingValues, rKey, "rating", rt.label || rt.value);
           }});
+          if (ui.blockDrillHint) b.title = ui.blockDrillHint;
         }});
         const totRg = document.createElement("div");
         totRg.id = "audit-rating-total-row";
@@ -12539,11 +12627,9 @@ def generate_finance_report(
               yb.setAttribute("aria-pressed", activeAuditYears.has(yk) ? "true" : "false");
               yb.classList.toggle("audit-rating-active", activeAuditYears.has(yk));
               yb.addEventListener("click", function () {{
-                if (activeAuditYears.has(yk)) activeAuditYears.delete(yk);
-                else activeAuditYears.add(yk);
-                obsCheckedIds = null;
-                aoRefresh();
+                handleMetricBlockClick(activeAuditYears, yk, "year", yk);
               }});
+              if (ui.blockDrillHint) yb.title = ui.blockDrillHint;
               yearBtnHost.appendChild(yb);
             }});
             const totYr = document.createElement("div");
@@ -12625,11 +12711,9 @@ def generate_finance_report(
             tile.appendChild(val);
             tile.addEventListener("click", function () {{
               const lbl = pair[0];
-              if (activeIaLabels.has(lbl)) activeIaLabels.delete(lbl);
-              else activeIaLabels.add(lbl);
-              obsCheckedIds = null;
-              aoRefresh();
+              handleMetricBlockClick(activeIaLabels, lbl, "ia", iaStatusDisplayLabel(lbl, blankLabel));
             }});
+            if (ui.blockDrillHint) tile.title = ui.blockDrillHint;
             tile.addEventListener("keydown", function (ev) {{
               if (ev.key === "Enter" || ev.key === " ") {{
                 ev.preventDefault();
@@ -12724,11 +12808,9 @@ def generate_finance_report(
                 b.classList.toggle("audit-rating-active", oOn);
                 b.setAttribute("aria-pressed", oOn ? "true" : "false");
                 b.addEventListener("click", function () {{
-                  if (activeObsTypeLabels.has(k)) activeObsTypeLabels.delete(k);
-                  else activeObsTypeLabels.add(k);
-                  obsCheckedIds = null;
-                  aoRefresh();
+                  handleMetricBlockClick(activeObsTypeLabels, k, "obsType", k);
                 }});
+                if (ui.blockDrillHint) b.title = ui.blockDrillHint;
                 obsTypeBtnHost.appendChild(b);
               }});
               const totOt = document.createElement("div");
