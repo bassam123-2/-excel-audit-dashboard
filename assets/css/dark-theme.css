@@ -831,6 +831,75 @@ html[data-theme="dark"] .attach-existing {
     color: var(--text);
 }
 
+html[data-theme="dark"] .attach-existing__item {
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(134, 239, 172, 0.35);
+}
+
+html[data-theme="dark"] .attach-existing__name {
+    color: var(--text);
+}
+
+html[data-theme="dark"] .attach-existing__remove {
+    color: #fca5a5;
+}
+
+html[data-theme="dark"] .attach-pending {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(147, 197, 253, 0.35);
+}
+
+html[data-theme="dark"] .attach-pending__title {
+    color: var(--text);
+}
+
+html[data-theme="dark"] .attach-pending__item {
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(147, 197, 253, 0.3);
+}
+
+html[data-theme="dark"] .attach-pending__name {
+    color: var(--text);
+}
+
+html[data-theme="dark"] .js-attachment-slot {
+    background: var(--surface, #0f172a);
+    border-color: var(--border, rgba(148, 163, 184, 0.28));
+    box-shadow: none;
+}
+
+html[data-theme="dark"] .js-attachment-slot details > summary {
+    color: var(--text);
+    border-bottom-color: var(--border, rgba(148, 163, 184, 0.28));
+}
+
+html[data-theme="dark"] .attach-slot-error {
+    color: #fecaca;
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #f87171;
+    box-shadow: inset 3px 0 0 #ef4444;
+}
+
+html[data-theme="dark"] .attach-slot-meter {
+    background: rgba(148, 163, 184, 0.1);
+    border-color: rgba(148, 163, 184, 0.28);
+}
+
+html[data-theme="dark"] .attach-slot-meter__count {
+    color: var(--text);
+}
+
+html[data-theme="dark"] .attach-slot-meter.is-over {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: #f87171;
+}
+
+html[data-theme="dark"] .attach-slot-meter.is-over .attach-slot-meter__count,
+html[data-theme="dark"] .attach-slot-meter.is-over .attach-slot-meter__label,
+html[data-theme="dark"] .attach-slot-meter.is-over .attach-slot-meter__remain {
+    color: #fecaca;
+}
+
 html[data-theme="dark"] .attach-removed-notice {
     background: var(--upload-danger-bg);
     border-color: var(--upload-danger-border);

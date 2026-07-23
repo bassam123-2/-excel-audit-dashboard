@@ -203,24 +203,47 @@
             {% csrf_token %}
             <div id="reviewAttachmentSections">
             {% for slot in review_attachment_slots %}
-            <div class="form-section js-attachment-slot mb-3">
+            <div class="form-section js-attachment-slot mb-3" data-kind="{{ slot.kind }}" data-field-prefix="{{ slot.field_prefix }}">
                 <details id="review-{{ slot.details_id }}"{% if slot.has_existing %} open{% endif %}>
                     <summary>
                         <i class="bi {{ slot.summary_icon }} me-1"></i>
                         {{ slot.label }}
                     </summary>
+                    <div class="attach-slot-meter" id="review-{{ slot.kind }}SlotMeter" aria-live="polite">
+                        <span class="attach-slot-meter__label">{{ ui.upload_attach_max_limit }}</span>
+                        <span class="attach-slot-meter__count" id="review-{{ slot.kind }}SlotCount">{{ slot.existing_count }}/{{ slot.max_files }}</span>
+                        <span class="attach-slot-meter__remain" id="review-{{ slot.kind }}SlotRemain"></span>
+                    </div>
+                    <div class="attach-slot-error" id="review-{{ slot.kind }}SlotError" style="display:none" role="alert"></div>
                     {% if slot.hint %}
                     <p class="attach-details-hint">{{ slot.hint }}</p>
                     {% endif %}
                     {% if slot.has_existing %}
-                    <div class="attach-existing" id="review-{{ slot.kind }}ExistingPanel">
-                        <i class="bi bi-paperclip text-success"></i>
-                        <span>{{ ui.upload_attach_current }}:</span>
-                        <span class="attach-existing__name" id="review-{{ slot.kind }}ExistingName">{{ slot.existing_name }}</span>
-                        <button type="button" class="btn btn-sm btn-outline-danger ms-auto"
-                                onclick="markReviewAttachmentRemove('{{ slot.kind }}', '{{ slot.field_prefix }}')">
-                            <i class="bi bi-trash me-1"></i>{{ ui.upload_attach_remove_btn }}
-                        </button>
+                    <div class="attach-existing attach-existing--list" id="review-{{ slot.kind }}ExistingPanel">
+                        <div class="attach-existing__head">
+                            <i class="bi bi-paperclip text-success"></i>
+                            <span>{{ ui.upload_attach_current }}
+                                <span id="review-{{ slot.kind }}ExistingHeadCount">({{ slot.existing_count }}/{{ slot.max_files }})</span></span>
+                            <button type="button" class="btn btn-sm btn-outline-danger ms-auto"
+                                    onclick="markReviewAttachmentRemove('{{ slot.kind }}', '{{ slot.field_prefix }}')">
+                                <i class="bi bi-trash me-1"></i>{{ ui.upload_attach_remove_all_btn }}
+                            </button>
+                        </div>
+                        <ul class="attach-existing__list" id="review-{{ slot.kind }}ExistingList">
+                            {% for item in slot.existing_items %}
+                            <li class="attach-existing__item" data-path="{{ item.path }}">
+                                <span class="attach-existing__name" title="{{ item.name }}">{{ item.name }}</span>
+                                <label class="attach-existing__remove">
+                                    <input type="checkbox"
+                                           name="remove_{{ slot.field_prefix }}_item"
+                                           value="{{ item.path }}"
+                                           class="js-attach-item-remove"
+                                           data-kind="{{ slot.kind }}">
+                                    <span>{{ ui.upload_attach_remove_one_btn }}</span>
+                                </label>
+                            </li>
+                            {% endfor %}
+                        </ul>
                         <p class="attach-existing__meta mb-0">{{ ui.upload_attach_keep_hint }}</p>
                         <input type="hidden" name="remove_{{ slot.field_prefix }}" id="review-remove-{{ slot.kind }}" value="0">
                     </div>
@@ -228,16 +251,24 @@
                         <i class="bi bi-exclamation-circle me-1"></i>{{ ui.upload_attach_removed }}
                     </div>
                     {% endif %}
+                    <div class="attach-pending" id="review-{{ slot.kind }}PendingWrap" style="display:none">
+                        <p class="attach-pending__title">{{ ui.upload_attach_pending_title }}</p>
+                        <ul class="attach-pending__list" id="review-{{ slot.kind }}PendingList"></ul>
+                    </div>
                     <p class="attach-replace-hint" id="review-{{ slot.kind }}ReplaceHint">
-                        <i class="bi bi-arrow-repeat me-1"></i>{{ ui.upload_attach_replace_hint }}
+                        <i class="bi bi-plus-circle me-1"></i>{{ ui.upload_attach_add_hint }}
                     </p>
-                    <div class="file-zone file-zone--compact" id="review-{{ slot.kind }}Zone">
-                        <input type="file" name="{{ slot.field_prefix }}1" id="review-id_{{ slot.field_prefix }}"
-                               accept=".pptx,.ppt,.pdf"
+                    <p class="attach-limit-hint" id="review-{{ slot.kind }}LimitHint" style="display:none">{{ ui.upload_attach_limit_full }} ({{ slot.max_files }})</p>
+                    <div class="file-zone file-zone--compact" id="review-{{ slot.kind }}Zone"{% if slot.remaining_slots == 0 and slot.has_existing %} style="opacity:.55"{% endif %}>
+                        <input type="file" name="{{ slot.field_prefix }}" id="review-id_{{ slot.field_prefix }}"
+                               accept=".pptx,.ppt,.pdf" multiple
+                               {% if slot.remaining_slots == 0 and slot.has_existing %}disabled{% endif %}
+                               data-max-files="{{ slot.max_files }}"
+                               data-existing-count="{{ slot.existing_count }}"
                                onchange="onReviewAttachmentFile(this,'{{ slot.kind }}','{{ slot.field_prefix }}')">
                         <div class="fz-icon"><i class="bi {{ slot.zone_icon }}"></i></div>
                         <div class="fz-text">{{ slot.drop }}</div>
-                        <div class="fz-selected" id="review-{{ slot.kind }}Selected">
+                        <div class="fz-selected" id="review-{{ slot.kind }}Selected" style="display:none">
                             <i class="bi bi-check-circle-fill me-1"></i><span id="review-{{ slot.kind }}Name"></span>
                         </div>
                     </div>
@@ -284,6 +315,7 @@
 
 {% block extra_js %}
 <script src="{% static 'js/dashboard_viewers.js' %}"></script>
+<script src="{% static 'js/attachment_multi_select.js' %}"></script>
 <script>
 (function () {
     var f = document.getElementById('dashFrame');
@@ -292,6 +324,20 @@
     }
     resize();
     window.addEventListener('resize', resize);
+
+    if (window.AttachmentMultiSelect) {
+        window.AttachmentMultiSelect.setLabels({
+            pendingTitle: '{{ ui.upload_attach_pending_title|escapejs }}',
+            removeOne: '{{ ui.upload_attach_remove_one_btn|escapejs }}',
+            maxLimit: '{{ ui.upload_attach_max_limit|escapejs }}',
+            remaining: '{{ ui.upload_attach_remaining|escapejs }}',
+            limitFull: '{{ ui.upload_attach_limit_full|escapejs }}',
+            exceedLimit: '{{ ui.upload_attach_exceed_limit|escapejs }}',
+            cannotUncheck: '{{ ui.upload_attach_cannot_uncheck|escapejs }}'
+        });
+        window.AttachmentMultiSelect.bindItemRemoveHandlers(document.getElementById('reviewAttachmentSections'));
+        window.AttachmentMultiSelect.initRoot(document.getElementById('reviewAttachmentSections'));
+    }
 
     var rejectForm = document.getElementById('rejectDetailForm');
     if (rejectForm) {
@@ -339,7 +385,17 @@
 
     var reviewAttachForm = document.getElementById('reviewAttachmentsForm');
     if (reviewAttachForm) {
-        reviewAttachForm.addEventListener('submit', function () {
+        reviewAttachForm.addEventListener('submit', function (e) {
+            if (window.AttachmentMultiSelect) {
+                if (window.AttachmentMultiSelect.syncAllQueues) {
+                    window.AttachmentMultiSelect.syncAllQueues();
+                }
+                if (window.AttachmentMultiSelect.validateRoot &&
+                    !window.AttachmentMultiSelect.validateRoot(document.getElementById('reviewAttachmentSections'))) {
+                    e.preventDefault();
+                    return;
+                }
+            }
             var btn = reviewAttachForm.querySelector('button[type="submit"]');
             if (btn) btn.disabled = true;
         });
@@ -355,44 +411,45 @@ function markReviewAttachmentRemove(kind, fieldPrefix) {
     var removeIn = document.getElementById('review-remove-' + kind);
     var panel = document.getElementById('review-' + kind + 'ExistingPanel');
     var notice = document.getElementById('review-' + kind + 'RemovedNotice');
-    var replaceHint = document.getElementById('review-' + kind + 'ReplaceHint');
     var selected = document.getElementById('review-' + kind + 'Selected');
     var zone = document.getElementById('review-' + kind + 'Zone');
     var fileIn = document.getElementById('review-id_' + fieldPrefix);
     if (removeIn) removeIn.value = '1';
-    if (panel) panel.style.display = 'none';
+    if (panel) {
+        panel.style.display = 'none';
+        panel.querySelectorAll('.js-attach-item-remove').forEach(function (cb) {
+            cb.checked = false;
+            cb.disabled = true;
+        });
+    }
     if (notice) notice.style.display = 'block';
-    if (replaceHint) replaceHint.style.display = 'none';
     if (selected) selected.style.display = 'none';
     if (zone) {
-        zone.classList.remove('is-filled');
         zone.classList.remove('is-invalid-zone');
+        zone.style.opacity = '';
     }
-    if (fileIn) fileIn.value = '';
+    if (fileIn) fileIn.disabled = false;
+    if (window.AttachmentMultiSelect) {
+        window.AttachmentMultiSelect.refreshAvailability(kind, fieldPrefix, 'review-');
+        window.AttachmentMultiSelect.renderPending(kind, fieldPrefix, 'review-');
+    }
 }
 
 function onReviewAttachmentFile(input, kind, fieldPrefix) {
+    if (window.AttachmentMultiSelect) {
+        window.AttachmentMultiSelect.onFilesChosen(input, kind, fieldPrefix, 'review-');
+        return;
+    }
     var nameEl = document.getElementById('review-' + kind + 'Name');
     var selected = document.getElementById('review-' + kind + 'Selected');
     var zone = document.getElementById('review-' + kind + 'Zone');
-    var removeIn = document.getElementById('review-remove-' + kind);
-    var panel = document.getElementById('review-' + kind + 'ExistingPanel');
-    var notice = document.getElementById('review-' + kind + 'RemovedNotice');
-    var replaceHint = document.getElementById('review-' + kind + 'ReplaceHint');
     if (!zone) return;
     if (input.files && input.files.length) {
-        var hadRemove = removeIn && removeIn.value === '1';
-        if (removeIn) removeIn.value = '0';
-        if (notice) notice.style.display = 'none';
-        if (panel) panel.style.display = hadRemove ? 'none' : '';
-        if (replaceHint) replaceHint.style.display = (!hadRemove && panel) ? 'block' : 'none';
-        if (nameEl) nameEl.textContent = input.files[0].name;
+        var names = [];
+        for (var i = 0; i < input.files.length; i++) names.push(input.files[i].name);
+        if (nameEl) nameEl.textContent = names.join(', ');
         if (selected) selected.style.display = 'block';
         zone.classList.add('is-filled');
-        zone.classList.remove('is-invalid-zone');
-    } else {
-        if (selected) selected.style.display = 'none';
-        zone.classList.remove('is-filled');
     }
 }
 </script>

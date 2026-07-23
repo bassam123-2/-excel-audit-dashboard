@@ -211,6 +211,33 @@ def get_enabled_attachment_kinds(company: Company | None) -> set[str]:
     return enabled
 
 
+DEFAULT_ATTACHMENT_MAX_FILES = 4
+ATTACHMENT_HARD_CEILING = 20
+
+
+def get_attachment_max_files_map(company: Company | None) -> dict[str, int]:
+    """Return max files allowed per attachment kind for the tenant company."""
+    defaults = {code: DEFAULT_ATTACHMENT_MAX_FILES for code in ATTACHMENT_KIND_CODES}
+    company = resolve_tenant_company(company)
+    if company is None:
+        return defaults
+    for kind, max_files in CompanyAttachmentSetting.objects.filter(
+        company=company
+    ).values_list("attachment_kind", "max_files"):
+        try:
+            n = int(max_files)
+        except (TypeError, ValueError):
+            n = DEFAULT_ATTACHMENT_MAX_FILES
+        defaults[str(kind)] = max(1, min(n, ATTACHMENT_HARD_CEILING))
+    return defaults
+
+
+def get_attachment_max_files(company: Company | None, kind: str) -> int:
+    return get_attachment_max_files_map(company).get(
+        kind, DEFAULT_ATTACHMENT_MAX_FILES
+    )
+
+
 def validate_excel_company_for_tenant(
     company: Company,
     excel_company_names: set[str],

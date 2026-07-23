@@ -1,0 +1,29 @@
+/* Company attachment toggle + max-files row */
+.att-kind-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  min-height: 1.75rem;
+}
+.att-kind-enabled-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+.att-kind-max-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-weight: 500;
+  color: var(--body-quiet-color, #666);
+}
+.att-kind-max-label {
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+.att-kind-max {
+  width: 4.25rem !important;
+  min-width: 4.25rem;
+  max-width: 5rem;
+}

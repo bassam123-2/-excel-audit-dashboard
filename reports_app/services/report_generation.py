@@ -24,7 +24,6 @@ from ai_excel_dashboard import (
     build_multi_dashboard_shell,
     content_fingerprint,
     generate_finance_report,
-    resolve_attached_deck_for_workbook_index,
     workbook_dashboard_tab_title,
 )
 from audit_app.dashboard_template_codes import (
@@ -121,7 +120,22 @@ ATTACHMENT_SPECS: list[dict[str, str]] = [
         "zone_icon": "bi-file-earmark-check",
         "details_id": "accApprovedMoMDeckDetails",
     },
+    {
+        "kind": "internalAuditDetailed",
+        "source_key": "internal_audit_detailed_decks",
+        "field_prefix": "internal_audit_detailed_deck",
+        "file_stem_prefix": "internal_audit_detailed_deck",
+        "ui_label": "upload_internal_audit_detailed_label",
+        "ui_hint": "upload_internal_audit_detailed_hint",
+        "ui_drop": "upload_internal_audit_detailed_drop",
+        "summary_icon": "bi-file-earmark-richtext",
+        "zone_icon": "bi-file-earmark-text",
+        "details_id": "internalAuditDetailedDeckDetails",
+    },
 ]
+
+ATTACHMENT_MAX_FILES = 20  # hard ceiling; per-kind limits come from company settings
+DEFAULT_ATTACHMENT_MAX_FILES = 4
 
 
 def _existing_excel_names(dashboard) -> list[str]:
@@ -410,6 +424,25 @@ def excel_uploads_from_request(request) -> list:
     return files[:AUDIT_BUNDLE_MAX_FILES]
 
 
+def _deck_uploads_from_request(
+    request, field_prefix: str, *, max_files: int | None = None
+) -> list:
+    """Collect uploaded deck files: multi-select field and legacy numbered fields."""
+    limit = max(1, int(max_files or ATTACHMENT_MAX_FILES))
+    uploads: list = []
+    seen: set[int] = set()
+    for f in request.FILES.getlist(field_prefix):
+        if f and str(getattr(f, "name", "")).strip() and id(f) not in seen:
+            seen.add(id(f))
+            uploads.append(f)
+    for i in range(1, ATTACHMENT_MAX_FILES + 1):
+        f = request.FILES.get(f"{field_prefix}{i}")
+        if f and str(getattr(f, "name", "")).strip() and id(f) not in seen:
+            seen.add(id(f))
+            uploads.append(f)
+    return uploads[:limit]
+
+
 def _save_uploaded_decks_to_media(
     request,
     report_id: str,
@@ -417,22 +450,38 @@ def _save_uploaded_decks_to_media(
     field_prefix: str,
     file_stem_prefix: str,
     media_subdir: str = "decks",
+    uploads: list | None = None,
+    start_index: int = 1,
+    max_files: int | None = None,
 ) -> list[str]:
     from django.conf import settings as _settings
 
-    deck_up = request.FILES.get(f"{field_prefix}1")
-    if not deck_up:
+    uploads = list(uploads) if uploads is not None else _deck_uploads_from_request(
+        request, field_prefix, max_files=max_files
+    )
+    if not uploads:
         return []
 
     media_dir = Path(_settings.MEDIA_ROOT) / media_subdir / report_id
     media_dir.mkdir(parents=True, exist_ok=True)
-    safe_ext = Path(deck_up.name).suffix.lower()
-    fname = f"{file_stem_prefix}1{safe_ext}"
-    dest = media_dir / fname
-    with dest.open("wb") as fh:
-        for chunk in deck_up.chunks():
-            fh.write(chunk)
-    return [f"{media_subdir}/{report_id}/{fname}"]
+    saved: list[str] = []
+    used_names: set[str] = set()
+    for offset, deck_up in enumerate(uploads):
+        idx = start_index + offset
+        safe_ext = Path(deck_up.name).suffix.lower()
+        if safe_ext not in {".pptx", ".ppt", ".pdf"}:
+            safe_ext = ".pptx"
+        orig_stem = slugify(Path(deck_up.name).stem) or "file"
+        fname = f"{file_stem_prefix}{idx}_{orig_stem}{safe_ext}"
+        if fname in used_names or (media_dir / fname).exists():
+            fname = f"{file_stem_prefix}{idx}_{orig_stem}_{uuid.uuid4().hex[:6]}{safe_ext}"
+        used_names.add(fname)
+        dest = media_dir / fname
+        with dest.open("wb") as fh:
+            for chunk in deck_up.chunks():
+                fh.write(chunk)
+        saved.append(f"{media_subdir}/{report_id}/{fname}")
+    return saved
 
 
 def _existing_media_paths(relative_paths: list[str] | None) -> list[str]:
@@ -455,6 +504,17 @@ def _delete_media_relative_files(relative_paths: list[str]) -> None:
                 pass
 
 
+def _removed_item_tokens(request, field_prefix: str) -> set[str]:
+    tokens: set[str] = set()
+    for raw in request.POST.getlist(f"remove_{field_prefix}_item"):
+        s = str(raw).strip().replace("\\", "/")
+        if not s:
+            continue
+        tokens.add(s)
+        tokens.add(Path(s).name)
+    return tokens
+
+
 def _resolve_deck_attachment_paths(
     request,
     report_id: str,
@@ -463,30 +523,69 @@ def _resolve_deck_attachment_paths(
     file_stem_prefix: str,
     existing_paths: list[str] | None,
     is_resubmit: bool,
+    max_files: int = DEFAULT_ATTACHMENT_MAX_FILES,
+    locale: str = "en",
+    kind_label: str = "",
 ) -> list[str]:
-    existing_valid = _existing_media_paths(existing_paths)
-    new_upload = request.FILES.get(f"{field_prefix}1")
-    has_new = bool(new_upload and str(getattr(new_upload, "name", "")).strip())
-    remove = request.POST.get(f"remove_{field_prefix}") == "1"
+    from dashboard_locale import tr
 
-    if has_new:
+    max_files = max(
+        1, min(int(max_files or DEFAULT_ATTACHMENT_MAX_FILES), ATTACHMENT_MAX_FILES)
+    )
+    existing_valid = _existing_media_paths(existing_paths)
+    remove_all = request.POST.get(f"remove_{field_prefix}") == "1"
+    remove_tokens = _removed_item_tokens(request, field_prefix)
+    new_uploads = _deck_uploads_from_request(
+        request, field_prefix, max_files=ATTACHMENT_MAX_FILES
+    )
+
+    if remove_all:
+        kept: list[str] = []
+        to_delete = list(existing_valid)
+        remove_tokens = set()
+    else:
+        kept = []
+        to_delete = []
+        for rel in existing_valid:
+            name = Path(rel).name
+            if rel in remove_tokens or name in remove_tokens:
+                to_delete.append(rel)
+            else:
+                kept.append(rel)
+
+    # Validate final count BEFORE mutating media files.
+    planned_new = len(new_uploads)
+    planned_total = len(kept) + planned_new
+    if planned_total > max_files:
+        raise ValueError(
+            tr(
+                locale,
+                "err_attachment_max_files",
+                max=max_files,
+                label=kind_label or field_prefix,
+                keep=len(kept),
+                room=max(0, max_files - len(kept)),
+                total=planned_total,
+            )
+        )
+
+    if to_delete:
+        _delete_media_relative_files(to_delete)
+
+    if new_uploads:
         new_paths = _save_uploaded_decks_to_media(
             request,
             report_id,
             field_prefix=field_prefix,
             file_stem_prefix=file_stem_prefix,
+            uploads=new_uploads,
+            start_index=len(kept) + 1,
+            max_files=len(new_uploads),
         )
-        old_to_delete = [p for p in existing_valid if p not in new_paths]
-        if old_to_delete:
-            _delete_media_relative_files(old_to_delete)
-        return new_paths
+        return (kept + new_paths)[:max_files]
 
-    if is_resubmit:
-        if remove:
-            if existing_valid:
-                _delete_media_relative_files(existing_valid)
-            return []
-        return list(existing_valid)
+    if is_resubmit or remove_all or to_delete:
+        return kept[:max_files]
 
     return []
 
@@ -499,24 +598,26 @@ def _resolve_all_deck_attachments(
     is_resubmit: bool,
     company=None,
 ) -> dict[str, list[str]]:
-    from audit_app.company_access import get_enabled_attachment_kinds
+    from audit_app.company_access import (
+        get_attachment_max_files_map,
+        get_enabled_attachment_kinds,
+    )
     from dashboard_locale import normalize_locale, tr
 
     existing_source = existing_source if isinstance(existing_source, dict) else {}
     enabled_kinds = get_enabled_attachment_kinds(company)
+    max_by_kind = get_attachment_max_files_map(company)
     locale = normalize_locale(request.session.get("ui_lang", "en"))
     resolved: dict[str, list[str]] = {}
     for spec in ATTACHMENT_SPECS:
         kind = spec["kind"]
         field_prefix = spec["field_prefix"]
-        has_upload = bool(
-            request.FILES.get(f"{field_prefix}1")
-            and str(getattr(request.FILES.get(f"{field_prefix}1"), "name", "")).strip()
-        )
+        has_upload = bool(_deck_uploads_from_request(request, field_prefix))
         wants_remove = request.POST.get(f"remove_{field_prefix}") == "1"
+        wants_item_remove = bool(request.POST.getlist(f"remove_{field_prefix}_item"))
 
         if kind not in enabled_kinds:
-            if has_upload or (wants_remove and not is_resubmit):
+            if has_upload or ((wants_remove or wants_item_remove) and not is_resubmit):
                 raise ValueError(tr(locale, "err_attachment_disabled", label=spec["kind"]))
             if is_resubmit:
                 resolved[spec["source_key"]] = list(
@@ -533,6 +634,9 @@ def _resolve_all_deck_attachments(
             file_stem_prefix=spec["file_stem_prefix"],
             existing_paths=existing_source.get(spec["source_key"]),
             is_resubmit=is_resubmit,
+            max_files=max_by_kind.get(kind, DEFAULT_ATTACHMENT_MAX_FILES),
+            locale=locale,
+            kind_label=kind,
         )
     return resolved
 
@@ -542,17 +646,24 @@ def build_attachment_form_slots(
     locale: str = "en",
     company=None,
 ) -> list[dict[str, Any]]:
-    from audit_app.company_access import get_enabled_attachment_kinds
+    from audit_app.company_access import (
+        get_attachment_max_files_map,
+        get_enabled_attachment_kinds,
+    )
     from web_strings import get_ui
 
     ui = get_ui(locale)
     enabled_kinds = get_enabled_attachment_kinds(company)
+    max_by_kind = get_attachment_max_files_map(company)
     source = dashboard.source_files if dashboard and isinstance(dashboard.source_files, dict) else {}
     slots: list[dict[str, Any]] = []
     for spec in ATTACHMENT_SPECS:
         if spec["kind"] not in enabled_kinds:
             continue
         paths = _existing_media_paths(source.get(spec["source_key"]))
+        names = [Path(p).name for p in paths]
+        items = [{"path": p, "name": Path(p).name} for p in paths]
+        max_files = max_by_kind.get(spec["kind"], DEFAULT_ATTACHMENT_MAX_FILES)
         hint_key = spec.get("ui_hint") or ""
         slots.append(
             {
@@ -561,7 +672,12 @@ def build_attachment_form_slots(
                 "hint": ui.get(hint_key, "") if hint_key else "",
                 "drop": ui.get(spec["ui_drop"], ""),
                 "has_existing": bool(paths),
-                "existing_name": Path(paths[0]).name if paths else "",
+                "existing_name": names[0] if names else "",
+                "existing_names": names,
+                "existing_items": items,
+                "existing_count": len(names),
+                "max_files": max_files,
+                "remaining_slots": max(0, max_files - len(paths)),
             }
         )
     return slots
@@ -578,25 +694,15 @@ def _abs_media_paths(relative_paths: list[str] | None) -> list[str]:
     ]
 
 
-def _attached_deck_for_index(
-    deck_paths: list[str], file_idx: int, n_files: int
-) -> str | None:
-    return resolve_attached_deck_for_workbook_index(deck_paths, file_idx, n_files)
-
-
-def _first_attached_deck_path(relative_paths: list[str] | None) -> str | None:
-    abs_paths = _abs_media_paths(relative_paths)
-    return abs_paths[0] if abs_paths else None
-
-
 def _attachment_path_kwargs(
     source_files: dict,
     enabled_kinds: set[str],
     *,
     multi_index: int | None = None,
     multi_total: int | None = None,
-) -> dict[str, str | None]:
-    """Build generate_finance_report attachment path kwargs, scoped by company settings."""
+) -> dict[str, list[str] | None]:
+    """Build generate_finance_report attachment path-list kwargs, scoped by company settings."""
+    del multi_index, multi_total  # All files under a kind are available in every tab.
     rel_by_kind = {
         "deck": source_files.get("decks") or [],
         "highRisk": source_files.get("high_risk_decks") or [],
@@ -605,26 +711,26 @@ def _attachment_path_kwargs(
         "internalAuditQuarterly": source_files.get("internal_audit_quarterly_decks") or [],
         "specialAssignment": source_files.get("special_assignment_decks") or [],
         "accApprovedMoM": source_files.get("acc_approved_mom_decks") or [],
+        "internalAuditDetailed": source_files.get("internal_audit_detailed_decks") or [],
     }
     param_by_kind = {
-        "deck": "attached_deck_path",
-        "highRisk": "attached_high_risk_deck_path",
-        "tgaViolations": "attached_tga_violations_deck_path",
-        "missingVehicle": "attached_missing_vehicle_deck_path",
-        "internalAuditQuarterly": "attached_internal_audit_quarterly_deck_path",
-        "specialAssignment": "attached_special_assignment_deck_path",
-        "accApprovedMoM": "attached_acc_approved_mom_deck_path",
+        "deck": "attached_deck_paths",
+        "highRisk": "attached_high_risk_deck_paths",
+        "tgaViolations": "attached_tga_violations_deck_paths",
+        "missingVehicle": "attached_missing_vehicle_deck_paths",
+        "internalAuditQuarterly": "attached_internal_audit_quarterly_deck_paths",
+        "specialAssignment": "attached_special_assignment_deck_paths",
+        "accApprovedMoM": "attached_acc_approved_mom_deck_paths",
+        "internalAuditDetailed": "attached_internal_audit_detailed_deck_paths",
     }
-    kwargs: dict[str, str | None] = {}
+    kwargs: dict[str, list[str] | None] = {}
     for kind, param in param_by_kind.items():
         rel = rel_by_kind[kind]
         if kind not in enabled_kinds:
             kwargs[param] = None
-        elif multi_index is None:
-            kwargs[param] = _first_attached_deck_path(rel)
         else:
             abs_paths = _abs_media_paths(rel)
-            kwargs[param] = _attached_deck_for_index(abs_paths, multi_index, multi_total or 1)
+            kwargs[param] = abs_paths or None
     return kwargs
 
 
