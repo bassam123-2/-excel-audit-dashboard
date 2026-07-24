@@ -163,8 +163,13 @@ curl http://127.0.0.1:8000/api/version
 - Set `DJANGO_SETTINGS_MODULE=config.settings.production` in `.env`.
 - Set `DJANGO_DEBUG=false` and `ERROR_LOGGING_ENABLED=true`.
 - Use HTTPS and update `ALLOWED_HOSTS`.
-- Serve static/media via your web server or object storage as appropriate.
-- Run `python manage.py collectstatic` before deploy.
+- Production uses **Django Manifest** static storage: after `collectstatic`,
+  JS/CSS URLs include a content hash so browsers fetch new assets on deploy
+  without users hard-reloading (no extra packages required).
+- Serve media via your web server or object storage as appropriate.
+- Run `python manage.py collectstatic --noinput` on every deploy
+  (already in `scripts/deploy.example.sh`). Prefer no `--clear` so older
+  hashed files remain available to open browser tabs.
 
 ## Troubleshooting
 

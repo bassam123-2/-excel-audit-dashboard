@@ -178,9 +178,12 @@ run "'${PYTHON}' manage.py migrate"
 run "'${PYTHON}' manage.py compilemessages -l ar"
 
 # =============================================================================
-# 4) Collect static files
+# 4) Collect static files (Manifest hashes — cache bust for all users)
 # =============================================================================
 
+# Produces hashed names (e.g. app.a1b2c3.js) so browsers load new JS/CSS after
+# deploy without requiring a hard reload. Avoid --clear so open tabs with older
+# HTML can still load previous hashed assets until they refresh the page.
 run "'${PYTHON}' manage.py collectstatic --noinput"
 
 # =============================================================================

@@ -1,0 +1,16 @@
+{
+  "name": "Audit Dashboard",
+  "short_name": "Audit",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1f3d",
+  "theme_color": "#2563eb",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "/static/admin/img/icon-addlink.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}
