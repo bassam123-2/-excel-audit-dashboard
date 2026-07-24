@@ -10,7 +10,7 @@ from html import escape as html_escape
 from pathlib import Path
 from typing import Any
 
-from django.utils.text import slugify
+from django.utils.text import get_valid_filename
 
 from ai_excel_dashboard import (
     _CAN_SAVE_USER_EDITS_MARKER,
@@ -136,6 +136,28 @@ ATTACHMENT_SPECS: list[dict[str, str]] = [
 
 ATTACHMENT_MAX_FILES = 20  # hard ceiling; per-kind limits come from company settings
 DEFAULT_ATTACHMENT_MAX_FILES = 4
+_SAFE_UPLOAD_STEM_MAX = 120
+
+
+def _safe_upload_stem(filename: str, *, fallback: str = "file") -> str:
+    """Preserve Arabic/Latin letters and case; strip only unsafe filesystem characters.
+
+    Django's ASCII-only slugify would turn Arabic-only names into an empty stem
+    (then a generic fallback), which made uploads look lost and removed identity.
+    """
+    from django.core.exceptions import SuspiciousFileOperation
+
+    base = Path(str(filename or "").replace("\\", "/")).name
+    raw = Path(base).stem.replace("\x00", "").strip()
+    try:
+        cleaned = get_valid_filename(raw) if raw else ""
+    except SuspiciousFileOperation:
+        cleaned = ""
+    cleaned = re.sub(r'[<>:"/\\|?*]', "", cleaned)
+    cleaned = cleaned.strip(" ._")
+    if len(cleaned) > _SAFE_UPLOAD_STEM_MAX:
+        cleaned = cleaned[:_SAFE_UPLOAD_STEM_MAX].rstrip(" ._")
+    return cleaned or fallback
 
 
 def _existing_excel_names(dashboard) -> list[str]:
@@ -471,7 +493,7 @@ def _save_uploaded_decks_to_media(
         safe_ext = Path(deck_up.name).suffix.lower()
         if safe_ext not in {".pptx", ".ppt", ".pdf"}:
             safe_ext = ".pptx"
-        orig_stem = slugify(Path(deck_up.name).stem) or "file"
+        orig_stem = _safe_upload_stem(deck_up.name, fallback="file")
         fname = f"{file_stem_prefix}{idx}_{orig_stem}{safe_ext}"
         if fname in used_names or (media_dir / fname).exists():
             fname = f"{file_stem_prefix}{idx}_{orig_stem}_{uuid.uuid4().hex[:6]}{safe_ext}"
@@ -748,7 +770,7 @@ def _persist_upload(upload, tmp_dir: str) -> str:
     ext = Path(upload.name).suffix.lower()
     if ext not in {".xlsx", ".xls", ".xlsm", ".csv", ".pptx", ".ppt", ".pdf"}:
         raise ValueError("Unsupported file type.")
-    stem = slugify(Path(upload.name).stem) or "upload"
+    stem = _safe_upload_stem(upload.name, fallback="upload")
     out_path = os.path.join(tmp_dir, f"{stem}{ext}")
     with open(out_path, "wb") as fh:
         for chunk in upload.chunks():

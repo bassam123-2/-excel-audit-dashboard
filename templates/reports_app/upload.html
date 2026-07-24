@@ -276,9 +276,9 @@
                         <div class="file-zone file-zone--compact" id="{{ slot.kind }}Zone"{% if slot.remaining_slots == 0 and slot.has_existing %} style="opacity:.55"{% endif %}>
                             <input type="file" name="{{ slot.field_prefix }}" id="id_{{ slot.field_prefix }}"
                                    accept=".pptx,.ppt,.pdf" multiple
-                                   {% if slot.remaining_slots == 0 and slot.has_existing %}disabled{% endif %}
                                    data-max-files="{{ slot.max_files }}"
                                    data-existing-count="{{ slot.existing_count }}"
+                                   {% if slot.remaining_slots == 0 and slot.has_existing %}data-attach-full="1" aria-disabled="true"{% endif %}
                                    onchange="onAttachmentFile(this,'{{ slot.kind }}','{{ slot.field_prefix }}')">
                             <div class="fz-icon"><i class="bi {{ slot.zone_icon }}"></i></div>
                             <div class="fz-text">{{ slot.drop }}</div>
@@ -420,7 +420,11 @@
         if (!valid) { e.preventDefault(); return; }
 
         if (window.AttachmentMultiSelect) {
-            if (window.AttachmentMultiSelect.syncAllQueues) {
+            if (window.AttachmentMultiSelect.prepareRootForSubmit) {
+                window.AttachmentMultiSelect.prepareRootForSubmit(
+                    document.getElementById('attachmentSections')
+                );
+            } else if (window.AttachmentMultiSelect.syncAllQueues) {
                 window.AttachmentMultiSelect.syncAllQueues();
             }
             if (window.AttachmentMultiSelect.validateRoot &&

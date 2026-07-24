@@ -182,8 +182,9 @@
     var state = updateSlotMeter(kind, fieldPrefix, idPrefix);
     var room = state.remaining;
     var full = !state.over && room <= 0;
-    input.disabled = full;
-    if (zone) zone.style.opacity = full ? ".55" : "";
+    // Never use input.disabled=true when files are queued: disabled fields are
+    // omitted from multipart form POST, so "Save" would succeed with 0 uploads.
+    setPickerBlocked(input, zone, full);
     if (limitHint) {
       limitHint.style.display = full ? "block" : "none";
       if (full) {
@@ -199,6 +200,43 @@
     } else {
       clearSlotError(kind, idPrefix);
     }
+  }
+
+  function setPickerBlocked(input, zone, blocked) {
+    if (!input) return;
+    ensurePickerGuard(input);
+    // Always enable for submit; block new picks via data attr + click guard.
+    input.disabled = false;
+    if (blocked) {
+      input.setAttribute("data-attach-full", "1");
+      input.setAttribute("aria-disabled", "true");
+      if (zone) {
+        zone.style.opacity = ".55";
+        zone.classList.add("is-attach-full");
+      }
+    } else {
+      input.removeAttribute("data-attach-full");
+      input.setAttribute("aria-disabled", "false");
+      if (zone) {
+        zone.style.opacity = "";
+        zone.classList.remove("is-attach-full");
+      }
+    }
+  }
+
+  function ensurePickerGuard(input) {
+    if (!input || input.dataset.pickerGuard === "1") return;
+    input.dataset.pickerGuard = "1";
+    input.addEventListener(
+      "click",
+      function (e) {
+        if (input.getAttribute("data-attach-full") === "1") {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      true
+    );
   }
 
   function clearQueue(fieldPrefix, idPrefix) {
@@ -321,6 +359,19 @@
     });
   }
 
+  function prepareRootForSubmit(root) {
+    if (!root) return;
+    root.querySelectorAll(".js-attachment-slot input[type='file']").forEach(function (inp) {
+      inp.disabled = false;
+    });
+    var idPrefix = root.id === "reviewAttachmentSections" ? "review-" : "";
+    root.querySelectorAll(".js-attachment-slot").forEach(function (slot) {
+      var fieldPrefix = slot.getAttribute("data-field-prefix") || "";
+      if (!fieldPrefix) return;
+      syncInputFiles(fieldPrefix, idPrefix);
+    });
+  }
+
   function validateRoot(root) {
     if (!root) return true;
     var idPrefix = root.id === "reviewAttachmentSections" ? "review-" : "";
@@ -368,6 +419,7 @@
     initRoot: initRoot,
     getQueue: getQueue,
     syncAllQueues: syncAllQueues,
+    prepareRootForSubmit: prepareRootForSubmit,
     validateRoot: validateRoot,
   };
 })(window);
