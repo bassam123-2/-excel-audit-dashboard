@@ -1,0 +1,958 @@
+/*
+ * Admin changelist v2 — scoped to #content-start only.
+ * Table full-width; filters in a separate panel below.
+ */
+
+#content-start:has(.admin-cl-v2) {
+    background:
+        radial-gradient(circle at 100% 0%, rgba(36, 74, 152, 0.06), transparent 40%),
+        radial-gradient(circle at 0% 100%, rgba(227, 32, 45, 0.04), transparent 35%),
+        var(--bg, #f0f4f9) !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    padding-bottom: 2rem !important;
+}
+
+#content-start .admin-cl-v2 {
+    --cl-v2-brand: #244a98;
+    --cl-v2-brand-soft: #eef2fa;
+    --cl-v2-brand-glow: rgba(36, 74, 152, 0.35);
+    --cl-v2-accent: #e3202d;
+    --cl-v2-accent-soft: #fdf0f1;
+    --cl-v2-success: #0d9668;
+    --cl-v2-success-soft: #ecfdf5;
+    --cl-v2-surface: #ffffff;
+    --cl-v2-border: #e4e9f2;
+    --cl-v2-muted: #64748b;
+    --cl-v2-text: #1e293b;
+    --cl-v2-secondary: #f4f6fb;
+    --cl-v2-thead-bg: #d8e2f0;
+    --cl-v2-thead-bg-sorted: #c9d6ea;
+    --cl-v2-thead-text: #1a3568;
+    --cl-v2-thead-border: rgba(36, 74, 152, 0.28);
+    --cl-v2-paginator-bg: rgba(248, 250, 253, 0.65);
+    --cl-v2-radius-xl: 1.5rem;
+    --cl-v2-radius-lg: 1rem;
+    --cl-v2-shadow-soft: 0 1px 2px rgba(36, 74, 152, 0.04), 0 1px 3px rgba(36, 74, 152, 0.06);
+    --cl-v2-shadow-card: 0 4px 12px -2px rgba(36, 74, 152, 0.08), 0 2px 6px -2px rgba(36, 74, 152, 0.05);
+    --cl-v2-shadow-glow: 0 10px 30px -8px var(--cl-v2-brand-glow);
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* Kill Django changelist float layout inside v2 */
+#content-start .admin-cl-v2 #changelist,
+#content-start .admin-cl-v2 #changelist .changelist-form-container,
+#content-start .admin-cl-v2 #changelist-filter {
+    float: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    clear: both !important;
+}
+
+#content-start .admin-cl-v2 #changelist {
+    display: block !important;
+}
+
+/* ── Header ─────────────────────────────────────── */
+#content-start .admin-cl-v2__header {
+    margin-bottom: 1.75rem;
+}
+
+#content-start .admin-cl-v2__header-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.85rem;
+}
+
+@media (min-width: 768px) {
+    #content-start .admin-cl-v2__header-row {
+        flex-direction: row;
+        align-items: center;
+        gap: 1rem;
+    }
+}
+
+#content-start .admin-cl-v2__title {
+    flex: 1 1 80%;
+    min-width: 0;
+    margin: 0 !important;
+    font-size: clamp(1.5rem, 2.5vw, 2rem) !important;
+    font-weight: 800 !important;
+    color: var(--cl-v2-text) !important;
+    letter-spacing: -0.02em;
+    line-height: 1.2 !important;
+}
+
+#content-start .admin-cl-v2__header-actions {
+    flex: 0 0 auto;
+    width: 100%;
+}
+
+@media (min-width: 768px) {
+    #content-start .admin-cl-v2__header-actions {
+        flex: 0 0 20%;
+        max-width: 20%;
+        width: auto;
+    }
+}
+
+#content-start .admin-cl-v2__subtitle {
+    margin: 0.65rem 0 0;
+    max-width: 36rem;
+    font-size: 0.9rem;
+    color: var(--cl-v2-muted);
+    line-height: 1.5;
+}
+
+#content-start .admin-cl-v2__object-tools {
+    margin: 0 !important;
+    padding: 0 !important;
+    list-style: none !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    gap: 0.5rem !important;
+    width: 100%;
+}
+
+@media (max-width: 767px) {
+    #content-start .admin-cl-v2__object-tools {
+        justify-content: stretch !important;
+    }
+
+    #content-start .admin-cl-v2__object-tools li {
+        flex: 1 1 auto;
+    }
+
+    #content-start .admin-cl-v2__object-tools li a {
+        justify-content: center !important;
+        width: 100%;
+    }
+}
+
+#content-start .admin-cl-v2__object-tools li a,
+#content-start .admin-cl-v2__object-tools li a.addlink {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.45rem !important;
+    padding: 0.7rem 1.25rem !important;
+    border-radius: 999px !important;
+    background: var(--cl-v2-brand) !important;
+    color: #fff !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    box-shadow: var(--cl-v2-shadow-glow) !important;
+    transition: transform 0.15s ease, background 0.15s ease !important;
+    background-image: none !important;
+}
+
+#content-start .admin-cl-v2__object-tools li a::before {
+    content: "\F64D";
+    font-family: "bootstrap-icons";
+    font-size: 0.95rem;
+}
+
+#content-start .admin-cl-v2__object-tools li a:hover {
+    transform: translateY(-1px);
+    background: #1f3f82 !important;
+}
+
+/* ── Stat cards ─────────────────────────────────── */
+#content-start .admin-cl-v2__stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+@media (min-width: 768px) {
+    #content-start .admin-cl-v2__stats {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+#content-start .admin-cl-v2__stat-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 1px solid var(--cl-v2-border);
+    border-radius: var(--cl-v2-radius-lg);
+    background: var(--cl-v2-surface);
+    box-shadow: var(--cl-v2-shadow-soft);
+}
+
+#content-start .admin-cl-v2__stat-label {
+    margin: 0;
+    font-size: 0.72rem;
+    color: var(--cl-v2-muted);
+}
+
+#content-start .admin-cl-v2__stat-value {
+    margin: 0.25rem 0 0;
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--cl-v2-text);
+    line-height: 1;
+}
+
+#content-start .admin-cl-v2__stat-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.75rem;
+    font-size: 1.1rem;
+}
+
+#content-start .admin-cl-v2__stat-card--primary .admin-cl-v2__stat-icon {
+    background: var(--cl-v2-brand-soft);
+    color: var(--cl-v2-brand);
+}
+
+#content-start .admin-cl-v2__stat-card--success .admin-cl-v2__stat-icon {
+    background: var(--cl-v2-success-soft);
+    color: var(--cl-v2-success);
+}
+
+#content-start .admin-cl-v2__stat-card--muted .admin-cl-v2__stat-icon {
+    background: var(--cl-v2-secondary);
+    color: var(--cl-v2-muted);
+}
+
+#content-start .admin-cl-v2__stat-card--accent .admin-cl-v2__stat-icon {
+    background: var(--cl-v2-accent-soft);
+    color: var(--cl-v2-accent);
+}
+
+/* ── Quick actions (global admin actions) ─────────── */
+#content-start .admin-cl-v2__quick-actions {
+    margin-bottom: 1.25rem;
+}
+
+#content-start .admin-cl-v2__quick-actions-inner {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--cl-v2-border);
+    border-radius: var(--cl-v2-radius-lg);
+    background: var(--cl-v2-surface);
+    box-shadow: var(--cl-v2-shadow-soft);
+}
+
+#content-start .admin-cl-v2__quick-action-form {
+    margin: 0;
+}
+
+#content-start .admin-cl-v2__quick-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 0.9rem;
+    border: 1px solid var(--cl-v2-border);
+    border-radius: 999px;
+    background: var(--cl-v2-surface);
+    color: var(--cl-v2-text);
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+    white-space: nowrap;
+}
+
+#content-start .admin-cl-v2__quick-action-btn:hover:not(:disabled) {
+    background: var(--cl-v2-brand-soft);
+    border-color: rgba(36, 74, 152, 0.25);
+    color: var(--cl-v2-brand);
+}
+
+#content-start .admin-cl-v2__quick-action-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+}
+
+#content-start .admin-cl-v2__quick-action-btn i {
+    font-size: 0.85rem;
+    color: var(--cl-v2-brand);
+}
+
+/* ── Layout: table on top, filters below ────────── */
+#content-start .admin-cl-v2__layout {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    overflow: visible;
+}
+
+#content-start .admin-cl-v2__table-panel {
+    margin-bottom: 0 !important;
+    border: 1px solid var(--cl-v2-border) !important;
+    border-radius: var(--cl-v2-radius-xl) !important;
+    background: var(--cl-v2-surface) !important;
+    box-shadow: var(--cl-v2-shadow-card) !important;
+    overflow: hidden !important;
+}
+
+#content-start .admin-cl-v2__table-panel.is-searching {
+    opacity: 0.72;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+#content-start .admin-cl-v2__table-panel .changelist-form-container {
+    min-width: 0;
+    border: none !important;
+    background: transparent !important;
+}
+
+/* ── Toolbar (search + selection + bulk actions) ── */
+#content-start .admin-cl-v2__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    padding: 1.15rem 1.25rem;
+    border-bottom: 1px solid var(--cl-v2-border);
+    background: var(--cl-v2-surface);
+}
+
+#content-start .admin-cl-v2__toolbar #changelist-search {
+    flex: 1 1 14rem;
+    min-width: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+}
+
+#content-start .admin-cl-v2__toolbar #changelist-search form {
+    width: 100%;
+}
+
+#content-start .admin-cl-v2__search-field {
+    position: relative;
+    width: 100%;
+}
+
+#content-start .admin-cl-v2__search-field::before {
+    content: "\F52A";
+    font-family: "bootstrap-icons";
+    position: absolute;
+    inset-inline-start: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--cl-v2-muted);
+    font-size: 1rem;
+    pointer-events: none;
+    z-index: 1;
+}
+
+#content-start .admin-cl-v2__toolbar #changelist-search label,
+#content-start .admin-cl-v2__toolbar #changelist-search .help,
+#content-start .admin-cl-v2__toolbar #changelist-search br,
+#content-start .admin-cl-v2__toolbar #changelist-search input[type="submit"] {
+    display: none !important;
+}
+
+#content-start .admin-cl-v2__toolbar #searchbar,
+#content-start .admin-cl-v2__toolbar #changelist-search input[type="text"] {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 0.7rem 1rem !important;
+    padding-inline-start: 2.65rem !important;
+    padding-inline-end: 1rem !important;
+    border: 1px solid var(--cl-v2-border) !important;
+    border-radius: 999px !important;
+    background: var(--cl-v2-surface) !important;
+    font-size: 0.84rem !important;
+    color: var(--cl-v2-text) !important;
+    transition: border-color 0.15s, box-shadow 0.15s !important;
+    height: auto !important;
+    min-height: 2.65rem !important;
+}
+
+#content-start .admin-cl-v2__toolbar #searchbar::placeholder,
+#content-start .admin-cl-v2__toolbar #changelist-search input[type="text"]::placeholder {
+    color: var(--cl-v2-muted);
+    opacity: 0.85;
+}
+
+#content-start .admin-cl-v2__toolbar #searchbar:focus,
+#content-start .admin-cl-v2__toolbar #changelist-search input[type="text"]:focus {
+    border-color: var(--cl-v2-brand) !important;
+    box-shadow: 0 0 0 4px rgba(36, 74, 152, 0.12) !important;
+    outline: none !important;
+}
+
+#content-start .admin-cl-v2__toolbar-end {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex: 0 0 auto;
+}
+
+@media (min-width: 768px) {
+    #content-start .admin-cl-v2__toolbar {
+        flex-wrap: nowrap;
+    }
+
+    #content-start .admin-cl-v2__toolbar #changelist-search {
+        flex: 1 1 auto;
+        max-width: min(28rem, 55%);
+    }
+
+    #content-start .admin-cl-v2__toolbar-end {
+        margin-inline-start: auto;
+    }
+}
+
+#content-start .admin-cl-v2__selection-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.85rem;
+    border-radius: 999px;
+    background: var(--cl-v2-secondary);
+    color: var(--cl-v2-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#content-start .admin-cl-v2__selection-pill:not([hidden]) {
+    display: inline-flex;
+}
+
+/* Bulk actions — moved into toolbar via JS */
+#content-start .admin-cl-v2__actions-host {
+    display: none !important;
+}
+
+#content-start .admin-cl-v2__toolbar .actions {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+#content-start .admin-cl-v2__toolbar .actions label,
+#content-start .admin-cl-v2__toolbar .actions .action-counter,
+#content-start .admin-cl-v2__toolbar .actions .all,
+#content-start .admin-cl-v2__toolbar .actions .question,
+#content-start .admin-cl-v2__toolbar .actions .clear,
+#content-start .admin-cl-v2__toolbar .actions button[type="submit"],
+#content-start .admin-cl-v2__toolbar .actions input[type="submit"] {
+    display: none !important;
+}
+
+#content-start .admin-cl-v2__toolbar .actions select {
+    min-width: 10.5rem;
+    max-width: 13rem;
+    padding: 0.5rem 2rem 0.5rem 0.85rem !important;
+    border: 1px solid var(--cl-v2-border) !important;
+    border-radius: 999px !important;
+    background: var(--cl-v2-surface) !important;
+    font-size: 0.75rem !important;
+    font-weight: 600 !important;
+    color: var(--cl-v2-text) !important;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2364748b' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 6.646a.5.5 0 0 1 .708 0L8 9.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: left 0.75rem center !important;
+    cursor: pointer;
+    box-shadow: none !important;
+}
+
+html[dir="rtl"] #content-start .admin-cl-v2__toolbar .actions select {
+    padding: 0.5rem 0.85rem 0.5rem 2rem !important;
+    background-position: right 0.75rem center !important;
+}
+
+/* ── Table ──────────────────────────────────────── */
+#content-start .admin-cl-v2__table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#content-start .admin-cl-v2 #result_list {
+    width: 100% !important;
+    min-width: 720px;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    font-size: 0.84rem !important;
+}
+
+#content-start .admin-cl-v2 #result_list thead th {
+    padding: 1rem 1.25rem !important;
+    background: var(--cl-v2-thead-bg) !important;
+    border-bottom: 2px solid var(--cl-v2-thead-border) !important;
+    color: var(--cl-v2-thead-text) !important;
+    font-size: 0.68rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    white-space: nowrap;
+    vertical-align: middle !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+#content-start .admin-cl-v2 #result_list thead th:first-child {
+    border-start-start-radius: 0;
+}
+
+#content-start .admin-cl-v2 #result_list thead th.sorted {
+    background: var(--cl-v2-thead-bg-sorted) !important;
+    color: var(--cl-v2-brand) !important;
+}
+
+#content-start .admin-cl-v2 #result_list thead th a {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.25rem !important;
+    color: inherit !important;
+    text-decoration: none !important;
+}
+
+#content-start .admin-cl-v2 #result_list thead th.sortable a::after {
+    content: "\F479";
+    font-family: "bootstrap-icons";
+    font-size: 0.72rem;
+    opacity: 0.45;
+    font-weight: normal;
+}
+
+#content-start .admin-cl-v2 #result_list thead th.sorted.ascending a::after {
+    content: "\F148";
+    opacity: 0.75;
+}
+
+#content-start .admin-cl-v2 #result_list thead th.sorted.descending a::after {
+    content: "\F148";
+    transform: rotate(180deg);
+    opacity: 0.75;
+}
+
+#content-start .admin-cl-v2 #result_list tbody tr.is-cl-v2-hidden {
+    display: none !important;
+}
+
+#content-start .admin-cl-v2 .visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+#content-start .admin-cl-v2 #result_list tbody tr:nth-child(even) td,
+#content-start .admin-cl-v2 #result_list tbody tr:nth-child(even) th {
+    background: rgba(248, 250, 253, 0.65) !important;
+}
+
+#content-start .admin-cl-v2 #result_list tbody tr:hover td,
+#content-start .admin-cl-v2 #result_list tbody tr:hover th {
+    background: rgba(238, 242, 250, 0.9) !important;
+}
+
+#content-start .admin-cl-v2 #result_list tbody tr:last-child td,
+#content-start .admin-cl-v2 #result_list tbody tr:last-child th {
+    border-bottom: none !important;
+}
+
+#content-start .admin-cl-v2 #result_list td,
+#content-start .admin-cl-v2 #result_list th {
+    padding: 1rem 1.25rem !important;
+    color: var(--cl-v2-text) !important;
+    vertical-align: middle !important;
+    border-bottom: 1px solid rgba(228, 233, 242, 0.85) !important;
+}
+
+#content-start .admin-cl-v2 #result_list td.field-username a,
+#content-start .admin-cl-v2 #result_list th.field-username a {
+    color: var(--cl-v2-brand) !important;
+    font-weight: 700 !important;
+    text-decoration: none !important;
+}
+
+#content-start .admin-cl-v2 #result_list td.field-username a:hover {
+    text-decoration: underline !important;
+}
+
+#content-start .admin-cl-v2 #result_list td a:not(.admin-active-status) {
+    color: var(--cl-v2-brand) !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+}
+
+#content-start .admin-cl-v2 .admin-active-status {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 1.85rem !important;
+    height: 1.85rem !important;
+    border-radius: 999px !important;
+    font-size: 1rem !important;
+}
+
+#content-start .admin-cl-v2 .admin-active-status--yes {
+    color: var(--cl-v2-success) !important;
+    background: var(--cl-v2-success-soft) !important;
+}
+
+#content-start .admin-cl-v2 .admin-active-status--no {
+    color: var(--cl-v2-accent) !important;
+    background: var(--cl-v2-accent-soft) !important;
+}
+
+/* ── Pagination ───────────────────────────────────── */
+#content-start .admin-cl-v2 .paginator {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.5rem !important;
+    padding: 1rem 1.25rem !important;
+    border-top: 1px solid var(--cl-v2-border) !important;
+    background: var(--cl-v2-paginator-bg) !important;
+    font-size: 0.72rem !important;
+    color: var(--cl-v2-muted) !important;
+}
+
+#content-start .admin-cl-v2 .paginator a,
+#content-start .admin-cl-v2 .paginator .this-page {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 2rem;
+    padding: 0.35rem 0.65rem !important;
+    border-radius: 0.45rem !important;
+    text-decoration: none !important;
+    font-weight: 600 !important;
+}
+
+#content-start .admin-cl-v2 .paginator a {
+    color: var(--cl-v2-brand) !important;
+}
+
+#content-start .admin-cl-v2 .paginator a:hover {
+    background: var(--cl-v2-secondary) !important;
+}
+
+#content-start .admin-cl-v2 .paginator .this-page {
+    background: var(--cl-v2-brand) !important;
+    color: #fff !important;
+}
+
+/* ── Filters panel (below table) ────────────────── */
+#content-start .admin-cl-v2__filters-panel {
+    margin: 0 0 1.5rem !important;
+    padding: 1.35rem 1.35rem 1.5rem !important;
+    border: 1px solid var(--cl-v2-border) !important;
+    border-radius: var(--cl-v2-radius-xl) !important;
+    background: var(--cl-v2-surface) !important;
+    box-shadow: var(--cl-v2-shadow-card) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+}
+
+#content-start .admin-cl-v2 #changelist-filter.admin-cl-v2__filters-panel {
+    overflow: visible !important;
+    max-height: none !important;
+}
+
+#content-start .admin-cl-v2__filters-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1.15rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--cl-v2-border);
+}
+
+#content-start .admin-cl-v2__filters-title {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+#content-start .admin-cl-v2__filters-title h2 {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    font-size: 1rem !important;
+    font-weight: 800 !important;
+    color: var(--cl-v2-text) !important;
+    text-transform: none !important;
+}
+
+#content-start .admin-cl-v2__filters-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.15rem;
+    height: 2.15rem;
+    border-radius: 0.75rem;
+    background: var(--cl-v2-accent-soft);
+    color: var(--cl-v2-accent);
+    font-size: 1rem;
+}
+
+#content-start .admin-cl-v2__filter-extra {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+#content-start .admin-cl-v2__filter-extra a {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.35rem !important;
+    padding: 0.35rem 0.75rem !important;
+    border-radius: 999px !important;
+    background: var(--cl-v2-secondary) !important;
+    color: var(--cl-v2-muted) !important;
+    font-size: 0.7rem !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+}
+
+#content-start .admin-cl-v2__filter-extra a:hover {
+    background: #e8edf5 !important;
+    color: var(--cl-v2-text) !important;
+}
+
+#content-start .admin-cl-v2__filter-groups {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+@media (min-width: 640px) {
+    #content-start .admin-cl-v2__filter-groups {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 960px) {
+    #content-start .admin-cl-v2__filter-groups {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+#content-start .admin-cl-v2__filter-groups details.admin-cl-v2-filter-group {
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--cl-v2-border);
+    border-radius: var(--cl-v2-radius-lg);
+    background: rgba(248, 250, 253, 0.45);
+}
+
+#content-start .admin-cl-v2__filter-groups details.admin-cl-v2-filter-group > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.15rem 0;
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: var(--cl-v2-text);
+    cursor: pointer;
+    list-style: none;
+}
+
+#content-start .admin-cl-v2__filter-groups details.admin-cl-v2-filter-group > summary::-webkit-details-marker {
+    display: none;
+}
+
+#content-start .admin-cl-v2__filter-groups details.admin-cl-v2-filter-group > summary::after {
+    content: "\F282";
+    font-family: "bootstrap-icons";
+    font-size: 0.85rem;
+    color: var(--cl-v2-muted);
+    transition: transform 0.15s ease;
+}
+
+#content-start .admin-cl-v2__filter-groups details.admin-cl-v2-filter-group[open] > summary::after {
+    transform: rotate(180deg);
+}
+
+#content-start .admin-cl-v2__filter-groups details.admin-cl-v2-filter-group > h3 {
+    display: none;
+}
+
+#content-start .admin-cl-v2__filter-groups ul {
+    list-style: none !important;
+    margin: 0.65rem 0 0 !important;
+    padding: 0 !important;
+}
+
+#content-start .admin-cl-v2__filter-groups li {
+    margin: 0.2rem 0 !important;
+}
+
+#content-start .admin-cl-v2__filter-groups li a {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.65rem !important;
+    padding: 0.55rem 0.85rem !important;
+    border-radius: 0.65rem !important;
+    color: var(--cl-v2-muted) !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+    transition: background 0.12s, color 0.12s, box-shadow 0.12s !important;
+}
+
+#content-start .admin-cl-v2__filter-groups li a:hover {
+    background: var(--cl-v2-secondary) !important;
+    color: var(--cl-v2-text) !important;
+    text-decoration: none !important;
+}
+
+#content-start .admin-cl-v2__filter-groups li.selected a {
+    background: var(--cl-v2-brand) !important;
+    color: #fff !important;
+    font-weight: 700 !important;
+    box-shadow: var(--cl-v2-shadow-soft) !important;
+}
+
+#content-start .admin-cl-v2__filter-groups .admin-cl-v2-filter-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.45rem;
+    height: 1.45rem;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    background: rgba(100, 116, 139, 0.12);
+    color: var(--cl-v2-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+#content-start .admin-cl-v2__filter-groups li.selected .admin-cl-v2-filter-count {
+    background: rgba(255, 255, 255, 0.22) !important;
+    color: #fff !important;
+}
+
+#content-start .admin-cl-v2__filter-tip {
+    margin-top: 1.25rem;
+    padding: 1rem 1.1rem;
+    border-radius: var(--cl-v2-radius-lg);
+    background: linear-gradient(135deg, var(--cl-v2-brand), #1a3568);
+    color: #fff;
+}
+
+#content-start .admin-cl-v2__filter-tip-label {
+    margin: 0;
+    font-size: 0.68rem;
+    opacity: 0.85;
+}
+
+#content-start .admin-cl-v2__filter-tip-text {
+    margin: 0.35rem 0 0;
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+/* Override global changelist rules from custom.css inside v2 */
+#content-start .admin-cl-v2 #changelist {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+}
+
+#content-start .admin-cl-v2 #result_list tbody tr {
+    border-bottom: none !important;
+}
+
+/* ── Dark theme ─────────────────────────────────── */
+html[data-theme="dark"] #content-start:has(.admin-cl-v2) {
+    background:
+        radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.08), transparent 40%),
+        radial-gradient(circle at 0% 100%, rgba(239, 68, 68, 0.06), transparent 35%),
+        var(--bg) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2 {
+    --cl-v2-brand: #5b8def;
+    --cl-v2-brand-soft: rgba(59, 130, 246, 0.15);
+    --cl-v2-accent-soft: rgba(239, 68, 68, 0.12);
+    --cl-v2-success-soft: rgba(16, 185, 129, 0.12);
+    --cl-v2-surface: var(--surface, #1e293b);
+    --cl-v2-border: var(--border, #334155);
+    --cl-v2-muted: var(--muted, #94a3b8);
+    --cl-v2-text: var(--text, #e2e8f0);
+    --cl-v2-secondary: rgba(255, 255, 255, 0.05);
+    --cl-v2-thead-bg: rgba(59, 130, 246, 0.2);
+    --cl-v2-thead-bg-sorted: rgba(59, 130, 246, 0.3);
+    --cl-v2-thead-text: #b8ccf5;
+    --cl-v2-thead-border: rgba(91, 141, 239, 0.45);
+    --cl-v2-paginator-bg: rgba(15, 23, 42, 0.55);
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2 #result_list thead th {
+    background: var(--cl-v2-thead-bg) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2 #result_list tbody tr:nth-child(even) td,
+html[data-theme="dark"] #content-start .admin-cl-v2 #result_list tbody tr:nth-child(even) th {
+    background: rgba(255, 255, 255, 0.02) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2 #result_list tbody tr:hover td,
+html[data-theme="dark"] #content-start .admin-cl-v2 #result_list tbody tr:hover th {
+    background: rgba(59, 130, 246, 0.08) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2__filter-groups details.admin-cl-v2-filter-group {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2 .paginator {
+    background: var(--cl-v2-paginator-bg) !important;
+    border-top-color: var(--cl-v2-border) !important;
+    color: var(--cl-v2-muted) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2 .paginator a {
+    color: var(--cl-v2-brand) !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2 .paginator a:hover {
+    background: rgba(59, 130, 246, 0.14) !important;
+    color: #dbeafe !important;
+}
+
+html[data-theme="dark"] #content-start .admin-cl-v2 .paginator .this-page {
+    background: var(--cl-v2-brand) !important;
+    color: #fff !important;
+}

@@ -27,6 +27,7 @@ ATTACHMENT_KIND_CHOICES = [
     ("internalAuditQuarterly", _("Internal Audit Quarterly Report")),
     ("specialAssignment", _("Special Assignment Report")),
     ("accApprovedMoM", _("ACC Aproved MoM")),
+    ("internalAuditDetailed", _("Internal Audit Detailed Reports")),
 ]
 
 ATTACHMENT_KIND_CODES = [code for code, _ in ATTACHMENT_KIND_CHOICES]
@@ -210,6 +211,7 @@ class Company(AdminSoftDeleteFields):
                     company=self,
                     attachment_kind=kind,
                     is_enabled=True,
+                    max_files=4,
                 )
 
 
@@ -286,6 +288,11 @@ class CompanyAttachmentSetting(models.Model):
         verbose_name=_("Attachment type"),
     )
     is_enabled = models.BooleanField(default=True, verbose_name=_("Enabled"))
+    max_files = models.PositiveSmallIntegerField(
+        default=4,
+        verbose_name=_("Max files"),
+        help_text=_("Maximum number of attachment files allowed for this type."),
+    )
 
     class Meta:
         verbose_name = _("Company attachment setting")
@@ -296,6 +303,13 @@ class CompanyAttachmentSetting(models.Model):
     def __str__(self) -> str:
         state = _("enabled") if self.is_enabled else _("disabled")
         return f"{self.company.code} — {self.attachment_kind} ({state})"
+
+    def clean(self):
+        super().clean()
+        if self.max_files is not None and self.max_files < 1:
+            raise ValidationError({"max_files": _("Enter at least 1 file.")})
+        if self.max_files is not None and self.max_files > 20:
+            raise ValidationError({"max_files": _("Maximum allowed is 20 files.")})
 
 
 class UploadSession(AdminSoftDeleteFields):

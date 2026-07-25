@@ -22,6 +22,9 @@ from audit_app.models import (
     CompanyAttachmentSetting,
 )
 
+DEFAULT_ATTACHMENT_MAX_FILES = 4
+ATTACHMENT_HARD_CEILING = 20
+
 IS_STAFF_LABEL = _("Admin")
 IS_STAFF_HELP = _(
     "Designates whether this user has admin access to the administration site."
@@ -346,6 +349,115 @@ def company_attachment_field_name(kind: str) -> str:
     return f"att_{kind}"
 
 
+def clamp_attachment_max_files(value) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        n = DEFAULT_ATTACHMENT_MAX_FILES
+    return max(1, min(n, ATTACHMENT_HARD_CEILING))
+
+
+class AttachmentToggleMaxWidget(forms.MultiWidget):
+    """Checkbox + max-files number in one admin row."""
+
+    def __init__(self, attrs=None):
+        widgets = [
+            forms.CheckboxInput(attrs={"class": "att-kind-enabled"}),
+            forms.NumberInput(
+                attrs={
+                    "class": "att-kind-max",
+                    "min": 1,
+                    "max": ATTACHMENT_HARD_CEILING,
+                    "step": 1,
+                }
+            ),
+        ]
+        super().__init__(widgets, attrs)
+
+    def decompress(self, value):
+        if isinstance(value, dict):
+            return [
+                bool(value.get("enabled", True)),
+                clamp_attachment_max_files(
+                    value.get("max_files", DEFAULT_ATTACHMENT_MAX_FILES)
+                ),
+            ]
+        if value is None:
+            return [True, DEFAULT_ATTACHMENT_MAX_FILES]
+        return [bool(value), DEFAULT_ATTACHMENT_MAX_FILES]
+
+    def render(self, name, value, attrs=None, renderer=None):
+        from django.utils.html import format_html
+
+        if self.is_localized:
+            for widget in self.widgets:
+                widget.is_localized = self.is_localized
+        values = self.decompress(value)
+        final_attrs = self.build_attrs(attrs or {})
+        id_ = final_attrs.get("id")
+        checkbox_html = self.widgets[0].render(
+            f"{name}_0",
+            values[0],
+            attrs={**(final_attrs if not id_ else {}), **({"id": f"{id_}_0"} if id_ else {})},
+            renderer=renderer,
+        )
+        number_attrs = {
+            **(final_attrs if not id_ else {}),
+            **({"id": f"{id_}_1"} if id_ else {}),
+            "class": "att-kind-max",
+            "min": 1,
+            "max": ATTACHMENT_HARD_CEILING,
+            "step": 1,
+        }
+        number_html = self.widgets[1].render(
+            f"{name}_1",
+            values[1],
+            attrs=number_attrs,
+            renderer=renderer,
+        )
+        return format_html(
+            '<span class="att-kind-row"{}>'
+            '<span class="att-kind-enabled-wrap">{}</span>'
+            '<label class="att-kind-max-wrap">'
+            '<span class="att-kind-max-label">{}</span>{}'
+            "</label></span>",
+            format_html(' id="{}"', id_) if id_ else "",
+            checkbox_html,
+            _("Max files"),
+            number_html,
+        )
+
+
+class AttachmentToggleMaxField(forms.MultiValueField):
+    widget = AttachmentToggleMaxWidget
+
+    def __init__(self, *, label, **kwargs):
+        fields = (
+            forms.BooleanField(required=False),
+            forms.IntegerField(
+                required=False,
+                min_value=1,
+                max_value=ATTACHMENT_HARD_CEILING,
+            ),
+        )
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("require_all_fields", False)
+        super().__init__(fields=fields, label=label, **kwargs)
+        self.widget = AttachmentToggleMaxWidget()
+
+    def compress(self, data_list):
+        enabled = bool(data_list[0]) if data_list else False
+        max_files = (
+            data_list[1]
+            if data_list and len(data_list) > 1 and data_list[1] is not None
+            else DEFAULT_ATTACHMENT_MAX_FILES
+        )
+        return {
+            "enabled": enabled,
+            "max_files": clamp_attachment_max_files(max_files),
+        }
+
+
 LOGO_MAX_BYTES = 2 * 1024 * 1024
 LOGO_ALLOWED_CONTENT_TYPES = frozenset(
     {"image/png", "image/jpeg", "image/webp", "image/gif"}
@@ -394,7 +506,10 @@ class _CompanyAdminFormBase(forms.ModelForm):
                     attachment_kind=code
                 ).first()
                 if setting is not None:
-                    self.fields[field_name].initial = setting.is_enabled
+                    self.fields[field_name].initial = {
+                        "enabled": setting.is_enabled,
+                        "max_files": clamp_attachment_max_files(setting.max_files),
+                    }
 
     def clean_logo(self):
         logo = self.cleaned_data.get("logo")
@@ -444,11 +559,19 @@ class _CompanyAdminFormBase(forms.ModelForm):
             return
         for code in ATTACHMENT_KIND_CODES:
             field_name = company_attachment_field_name(code)
-            enabled = self.cleaned_data.get(field_name, False)
+            raw = self.cleaned_data.get(field_name)
+            if isinstance(raw, dict):
+                enabled = bool(raw.get("enabled"))
+                max_files = clamp_attachment_max_files(
+                    raw.get("max_files", DEFAULT_ATTACHMENT_MAX_FILES)
+                )
+            else:
+                enabled = bool(raw)
+                max_files = DEFAULT_ATTACHMENT_MAX_FILES
             CompanyAttachmentSetting.objects.update_or_create(
                 company=company,
                 attachment_kind=code,
-                defaults={"is_enabled": bool(enabled)},
+                defaults={"is_enabled": enabled, "max_files": max_files},
             )
 
     def save(self, commit=True):
@@ -462,10 +585,12 @@ CompanyAdminForm = type(
     "CompanyAdminForm",
     (_CompanyAdminFormBase,),
     {
-        company_attachment_field_name(code): forms.BooleanField(
+        company_attachment_field_name(code): AttachmentToggleMaxField(
             label=label,
-            required=False,
-            initial=True,
+            initial={
+                "enabled": True,
+                "max_files": DEFAULT_ATTACHMENT_MAX_FILES,
+            },
         )
         for code, label in ATTACHMENT_KIND_CHOICES
     },
