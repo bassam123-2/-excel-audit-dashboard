@@ -6112,12 +6112,6 @@ def generate_finance_report(
     <a href="#segment">{html.escape(tr(loc, "nav_segment"))}</a>
     <a href="#trend">{html.escape(tr(loc, "nav_trend"))}</a>
     <a href="#corr">{html.escape(tr(loc, "nav_corr"))}</a>
-    <span class="nav-actions">
-      <label class="nav-download-html-lbl" title="{html.escape(tr(loc, "nav_download_title"))}">
-        <input type="checkbox" id="save-report-html-cb" aria-label="{html.escape(tr(loc, "nav_download_title"))}" />
-        <span>{html.escape(tr(loc, "nav_download_html"))}</span>
-      </label>
-    </span>
   </nav>
   <main class="shell">
     <section class="audit-pie-section" id="audit-pie-section" style="display: {audit_obs_root_display};" aria-label="{html.escape(tr(loc, "audit_pie_section_aria"))}">
@@ -6199,10 +6193,6 @@ def generate_finance_report(
             <label class="audit-obs-aging-toggle">
               <input type="checkbox" id="audit-reviews-cb" />
               <span id="audit-reviews-label"></span>
-            </label>
-            <label class="audit-obs-aging-toggle" title="{html.escape(tr(loc, "nav_download_title"))}">
-              <input type="checkbox" id="save-report-html-cb-audit" aria-label="{html.escape(tr(loc, "nav_download_title"))}" />
-              <span>{html.escape(tr(loc, "audit_top_html_download_label"))}</span>
             </label>
             </div>
             <label class="audit-obs-revdate-lbl" id="audit-obs-revised-date-wrap" style="display:none">
@@ -6366,8 +6356,6 @@ def generate_finance_report(
           <div class="audit-detail-email-actions audit-obs-detail-email-wrap" id="audit-obs-detail-email-wrap" hidden>
             <button type="button" class="audit-obs-detail-email-btn" id="audit-obs-detail-send-email"></button>
             <span class="audit-obs-detail-email-status" id="audit-obs-detail-email-status" aria-live="polite"></span>
-            <button type="button" class="audit-obs-detail-email-btn" id="audit-obs-detail-download-ppt"></button>
-            <span class="audit-obs-detail-email-status" id="audit-obs-detail-download-status" aria-live="polite"></span>
           </div>
           <section class="audit-detail-block">
             <h4 class="audit-detail-k">{html.escape(tr(loc, "audit_obs_detail_summary"))}</h4>
@@ -6431,7 +6419,6 @@ def generate_finance_report(
             <div style="display:flex;gap:0.45rem;align-items:center;flex-wrap:wrap;">
               <button type="button" class="nav-btn" id="audit-plan-upload-btn"></button>
               <input type="file" id="audit-plan-upload-file" accept=".xlsx,.xls,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none" aria-hidden="true" />
-              <button type="button" class="nav-btn" id="audit-plan-download-ppt"></button>
             </div>
           </div>
           <div class="audit-plan-colortools" id="audit-plan-colortools-wrap">
@@ -6469,9 +6456,6 @@ def generate_finance_report(
           <h3 class="audit-aging-title" id="audit-reviews-title"></h3>
           <button type="button" class="audit-aging-close" id="audit-reviews-close" aria-label="Close">×</button>
         </div>
-        <div class="audit-reviews-toolbar">
-          <button type="button" class="nav-btn" id="audit-reviews-download"></button>
-        </div>
         <div class="audit-aging-body audit-reviews-body">
           <textarea id="audit-reviews-textarea" class="audit-reviews-notepad" wrap="soft"></textarea>
         </div>
@@ -6505,7 +6489,6 @@ def generate_finance_report(
             </label>
             <button type="button" class="nav-btn" id="audit-deck-browse-btn"></button>
             <input type="file" id="audit-deck-file" accept=".pptx,.ppt,.pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,application/pdf" style="display:none" aria-hidden="true" />
-            <button type="button" class="nav-btn" id="audit-deck-download-btn" style="display:none"></button>
           </div>
         </div>
         <div class="audit-aging-body audit-deck-modal-body">
@@ -7373,22 +7356,6 @@ def generate_finance_report(
       const detailEmailWrap = document.getElementById("audit-obs-detail-email-wrap");
       const detailSendEmailBtn = document.getElementById("audit-obs-detail-send-email");
       const detailEmailStatus = document.getElementById("audit-obs-detail-email-status");
-      (function ensureAuditObsDetailDownloadPpt() {{
-        try {{
-          const wrap = detailEmailWrap;
-          if (!wrap || document.getElementById("audit-obs-detail-download-ppt")) return;
-          const dl = document.createElement("button");
-          dl.type = "button";
-          dl.className = "audit-obs-detail-email-btn";
-          dl.id = "audit-obs-detail-download-ppt";
-          const st = document.createElement("span");
-          st.className = "audit-obs-detail-email-status";
-          st.id = "audit-obs-detail-download-status";
-          st.setAttribute("aria-live", "polite");
-          wrap.appendChild(dl);
-          wrap.appendChild(st);
-        }} catch (_eEns) {{}}
-      }})();
       const detailDownloadPptBtn = document.getElementById("audit-obs-detail-download-ppt");
       const detailDownloadStatus = document.getElementById("audit-obs-detail-download-status");
       let detailRowForEmail = null;
