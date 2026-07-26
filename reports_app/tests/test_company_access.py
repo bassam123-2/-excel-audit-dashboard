@@ -352,9 +352,10 @@ class CompanyAccessTests(TestCase):
         }
         for code in ATTACHMENT_KIND_CODES:
             field_name = company_attachment_field_name(code)
+            data[f"{field_name}_1"] = "4"
             if code == "deck":
                 continue
-            data[field_name] = "on"
+            data[f"{field_name}_0"] = "on"
 
         buffer = BytesIO()
         Image.new("RGB", (8, 8), color="blue").save(buffer, format="PNG")
@@ -372,6 +373,7 @@ class CompanyAccessTests(TestCase):
         )
         self.assertFalse(deck.is_enabled)
         self.assertTrue(high_risk.is_enabled)
+        self.assertEqual(high_risk.max_files, 4)
 
     def test_multi_company_user_redirected_to_select_company(self):
         multi = User.objects.create_user(

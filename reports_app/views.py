@@ -657,6 +657,7 @@ def dashboard_review_attachments(request, pk: int):
         _clear_dashboard_html_cache(dashboard)
         dashboard.save(update_fields=["html_file"])
         messages.success(request, ui.get("wf_review_attach_saved", "Attachments updated."))
+        return redirect(f"{reverse('dashboard_detail', args=[pk])}?attachments_updated=1")
     except ValueError as exc:
         if str(exc) == "not_under_review":
             messages.error(request, ui.get("wf_review_not_pending", "This dashboard is not pending review."))
@@ -666,7 +667,7 @@ def dashboard_review_attachments(request, pk: int):
         logger.exception("Failed to update review attachments for dashboard %s", dashboard.pk)
         messages.error(request, ui.get("wf_review_attach_error", "Could not update attachments."))
 
-    return redirect(f"{reverse('dashboard_detail', args=[pk])}?attachments_updated=1")
+    return redirect("dashboard_detail", pk=pk)
 
 
 @login_required

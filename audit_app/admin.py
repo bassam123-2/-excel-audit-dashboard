@@ -1242,6 +1242,10 @@ class CompanyAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
                     company_attachment_field_name(code)
                     for code in ATTACHMENT_KIND_CODES
                 ],
+                "description": _(
+                    "Enable each attachment type and set the maximum number of files "
+                    "allowed for that type (default: 4)."
+                ),
             },
         ),
     )
@@ -1258,6 +1262,7 @@ class CompanyAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
         return fieldsets
 
     class Media:
+        css = {"all": ("css/admin_company_attachments.css",)}
         js = ("js/admin_company_form.js",)
 
     def logo_preview(self, obj):
