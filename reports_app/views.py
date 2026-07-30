@@ -24,7 +24,10 @@ if _BASE_DIR not in sys.path:
 from web_strings import get_ui  # noqa: E402
 from dashboard_locale import normalize_locale  # noqa: E402
 
-from audit_app.company_access import user_must_select_company
+from audit_app.company_access import (
+    get_enabled_attachment_kinds,
+    user_must_select_company,
+)
 from audit_app.models import (
     Dashboard,
     DashboardTemplateType,
@@ -50,6 +53,7 @@ from .dashboard_workflow import (
     filter_dashboards_queryset,
     get_dashboard_for_review,
     get_dashboard_for_user,
+    get_dashboard_viewer_attachment_map,
     get_dashboard_viewer_user_ids,
     has_delete_perm,
     has_review_perm,
@@ -61,9 +65,11 @@ from .dashboard_workflow import (
     set_dashboard_viewers,
     soft_delete_dashboard,
     submit_dashboard,
+    user_allowed_attachment_kinds,
 )
 from reports_app.workflow_engine import company_uses_workflow_v2
 from .services.report_generation import (
+    ATTACHMENT_SPECS,
     build_attachment_form_slots,
     version_payload,
     generate_from_db_data,
@@ -433,6 +439,9 @@ def _inject_served_dashboard_html(
         if can_save
         else ""
     )
+    allowed_kinds = user_allowed_attachment_kinds(
+        request.user, dashboard, company
+    )
     return inject_dashboard_serve_context(
         html_content,
         mail_url=mail_url,
@@ -440,6 +449,7 @@ def _inject_served_dashboard_html(
         user_edits_save_url=save_url,
         can_save_user_edits=can_save,
         user_edits_json=dashboard.user_edits_json or "",
+        allowed_attachment_kinds=allowed_kinds,
     )
 
 
@@ -956,7 +966,7 @@ def dashboard_viewers(request, pk: int):
         return redirect("dashboard_detail", pk=pk)
 
     if request.method == "GET":
-        assigned_ids = get_dashboard_viewer_user_ids(dashboard)
+        assigned_map = get_dashboard_viewer_attachment_map(dashboard)
         members = []
         if dashboard.company_id:
             for user in company_members_for_viewer_assignment(dashboard.company):
@@ -966,28 +976,66 @@ def dashboard_viewers(request, pk: int):
                         "id": user.pk,
                         "username": user.username,
                         "name": full or user.username,
-                        "assigned": user.pk in assigned_ids,
+                        "assigned": user.pk in assigned_map,
+                        "attachment_kinds": assigned_map.get(user.pk, []),
                     }
                 )
+        enabled = get_enabled_attachment_kinds(dashboard.company)
+        kind_options = []
+        for spec in ATTACHMENT_SPECS:
+            if spec["kind"] not in enabled:
+                continue
+            label = ui.get(spec["ui_label"], spec["kind"])
+            kind_options.append({"kind": spec["kind"], "label": label})
         return JsonResponse(
             {
                 "members": members,
-                "assigned_ids": sorted(assigned_ids),
+                "assigned_ids": sorted(assigned_map.keys()),
+                "attachment_kind_options": kind_options,
             }
         )
 
-    raw_ids = request.POST.getlist("user_ids")
+    raw_assignments = request.POST.get("assignments", "").strip()
     user_ids: list[int] = []
-    for raw in raw_ids:
+    kinds_by_user: dict[int, list[str]] = {}
+    used_assignments_payload = False
+
+    if raw_assignments:
+        import json as _json
+
         try:
-            user_ids.append(int(raw))
-        except (TypeError, ValueError):
-            continue
+            parsed = _json.loads(raw_assignments)
+        except (_json.JSONDecodeError, TypeError, ValueError):
+            parsed = None
+        if isinstance(parsed, list):
+            used_assignments_payload = True
+            for item in parsed:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    uid = int(item.get("user_id"))
+                except (TypeError, ValueError):
+                    continue
+                user_ids.append(uid)
+                kinds = item.get("attachment_kinds") or []
+                if isinstance(kinds, list):
+                    kinds_by_user[uid] = [str(k) for k in kinds]
+                else:
+                    kinds_by_user[uid] = []
+    else:
+        # Backward-compatible: user_ids only → new viewers get no attachments.
+        raw_ids = request.POST.getlist("user_ids")
+        for raw in raw_ids:
+            try:
+                user_ids.append(int(raw))
+            except (TypeError, ValueError):
+                continue
 
     added, removed = set_dashboard_viewers(
         dashboard,
         user_ids,
         granted_by=request.user,
+        attachment_kinds_by_user=kinds_by_user if used_assignments_payload else None,
     )
 
     if added:

@@ -666,6 +666,11 @@ html[dir="rtl"] {
     background: var(--surface, #1e293b);
 }
 
+.dv-picker-list--chosen {
+    height: 18rem;
+    min-height: 18rem;
+}
+
 .dv-picker-item {
     padding: 0.45rem 0.6rem;
     margin-bottom: 0.15rem;
@@ -676,6 +681,86 @@ html[dir="rtl"] {
     white-space: normal;
     word-break: break-word;
     user-select: none;
+}
+
+.dv-picker-item--with-attach {
+    padding: 0.35rem 0.45rem;
+}
+
+.dv-picker-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.35rem;
+}
+
+.dv-picker-name {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.dv-attach-toggle {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: 0.1rem 0.2rem;
+    line-height: 1;
+    border-radius: 0.25rem;
+}
+
+.dv-attach-toggle:hover {
+    background: rgba(59, 130, 246, 0.18);
+}
+
+.dv-attach-summary {
+    flex: 0 0 auto;
+    font-size: 0.75rem;
+    opacity: 0.75;
+    max-width: 6.5rem;
+    text-align: end;
+}
+
+.dv-attach-panel {
+    margin-top: 0.4rem;
+    padding: 0.45rem 0.5rem;
+    border-radius: 0.3rem;
+    border: 1px solid var(--border, #334155);
+    background: rgba(15, 23, 42, 0.35);
+}
+
+.dv-attach-panel-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.dv-attach-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 0.35rem;
+}
+
+.dv-attach-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    max-height: 9rem;
+    overflow-y: auto;
+}
+
+.dv-attach-kind {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    cursor: pointer;
+    margin: 0;
+}
+
+.dv-attach-kind .form-check-input {
+    margin-top: 0.15rem;
+    flex: 0 0 auto;
 }
 
 .dv-picker-item:hover {

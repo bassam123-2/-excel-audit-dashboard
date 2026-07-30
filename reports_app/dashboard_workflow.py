@@ -12,11 +12,13 @@ from django.utils import timezone
 from audit_app.company_access import (
     active_companies_exist,
     company_is_effectively_active,
+    get_enabled_attachment_kinds,
     has_company_perm,
     resolve_tenant_company,
     user_must_select_company,
 )
 from audit_app.models import (
+    ATTACHMENT_KIND_CODES,
     COMPANY_KIND_MAIN,
     Company,
     CompanyMembership,
@@ -636,14 +638,88 @@ def get_dashboard_viewer_user_ids(dashboard: Dashboard) -> set[int]:
     )
 
 
+def get_dashboard_viewer_attachment_map(dashboard: Dashboard) -> dict[int, list[str]]:
+    """Return {user_id: allowed_attachment_kinds} for assigned viewers."""
+    result: dict[int, list[str]] = {}
+    for user_id, kinds in DashboardViewer.objects.filter(
+        dashboard=dashboard
+    ).values_list("user_id", "allowed_attachment_kinds"):
+        if isinstance(kinds, list):
+            result[user_id] = [str(k) for k in kinds]
+        else:
+            result[user_id] = []
+    return result
+
+
+def normalize_viewer_attachment_kinds(
+    kinds: list[str] | None,
+    company: Company | None,
+) -> list[str]:
+    """Keep only valid, company-enabled attachment kinds (stable order)."""
+    enabled = get_enabled_attachment_kinds(company)
+    valid = set(ATTACHMENT_KIND_CODES) & enabled
+    seen: set[str] = set()
+    out: list[str] = []
+    for kind in kinds or []:
+        code = str(kind).strip()
+        if code in valid and code not in seen:
+            seen.add(code)
+            out.append(code)
+    return out
+
+
+def user_allowed_attachment_kinds(
+    user,
+    dashboard: Dashboard,
+    company: Company | None = None,
+) -> set[str] | None:
+    """
+    Attachment kinds the user may see on this dashboard.
+
+    Returns None when unrestricted (creator, reviewer, assigner, superuser).
+    Returns a set (possibly empty) for assigned-only viewers.
+    """
+    if user.is_superuser:
+        return None
+
+    active = company or dashboard.company
+
+    if user_is_creator(user, dashboard):
+        return None
+
+    if has_review_perm(user, active):
+        return None
+
+    if has_assign_viewers_perm(user, active):
+        return None
+
+    grant = (
+        DashboardViewer.objects.filter(dashboard=dashboard, user=user)
+        .values_list("allowed_attachment_kinds", flat=True)
+        .first()
+    )
+    if grant is None:
+        # Can see dashboard by some other path with no grant row — unrestricted.
+        return None
+    if not isinstance(grant, list):
+        return set()
+    enabled = get_enabled_attachment_kinds(active)
+    return {str(k) for k in grant if str(k) in enabled}
+
+
 @transaction.atomic
 def set_dashboard_viewers(
     dashboard: Dashboard,
     user_ids: list[int],
     granted_by: User,
+    attachment_kinds_by_user: dict[int, list[str]] | None = None,
 ) -> tuple[set[int], set[int]]:
     """
     Replace viewer assignments for a published dashboard.
+
+    ``attachment_kinds_by_user`` maps user_id → allowed attachment kind codes.
+    New viewers default to no attachment kinds when omitted.
+    Existing viewers keep prior kinds when omitted from the map.
 
     Returns (added_user_ids, removed_user_ids).
     """
@@ -659,9 +735,11 @@ def set_dashboard_viewers(
     )
     requested = {uid for uid in user_ids if uid in allowed_ids}
     current = get_dashboard_viewer_user_ids(dashboard)
+    kinds_map = attachment_kinds_by_user or {}
 
     to_add = requested - current
     to_remove = current - requested
+    to_keep = requested & current
 
     if to_remove:
         DashboardViewer.objects.filter(
@@ -676,10 +754,22 @@ def set_dashboard_viewers(
                     dashboard=dashboard,
                     user_id=uid,
                     granted_by=granted_by,
+                    allowed_attachment_kinds=normalize_viewer_attachment_kinds(
+                        kinds_map.get(uid, []),
+                        company,
+                    ),
                 )
                 for uid in to_add
             ],
             ignore_conflicts=True,
+        )
+
+    for uid in to_keep:
+        if uid not in kinds_map:
+            continue
+        normalized = normalize_viewer_attachment_kinds(kinds_map[uid], company)
+        DashboardViewer.objects.filter(dashboard=dashboard, user_id=uid).update(
+            allowed_attachment_kinds=normalized,
         )
 
     return to_add, to_remove

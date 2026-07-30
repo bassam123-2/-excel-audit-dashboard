@@ -138,6 +138,82 @@ ATTACHMENT_MAX_FILES = 20  # hard ceiling; per-kind limits come from company set
 DEFAULT_ATTACHMENT_MAX_FILES = 4
 _SAFE_UPLOAD_STEM_MAX = 120
 
+# Kind code → chart_payload key for embedded slide decks.
+ATTACHMENT_KIND_PAYLOAD_KEYS: dict[str, str] = {
+    "deck": "embedded_slide_deck",
+    "highRisk": "embedded_high_risk_slide_deck",
+    "tgaViolations": "embedded_tga_violations_slide_deck",
+    "missingVehicle": "embedded_missing_vehicle_slide_deck",
+    "internalAuditQuarterly": "embedded_internal_audit_quarterly_slide_deck",
+    "specialAssignment": "embedded_special_assignment_slide_deck",
+    "accApprovedMoM": "embedded_acc_approved_mom_slide_deck",
+    "internalAuditDetailed": "embedded_internal_audit_detailed_slide_deck",
+}
+
+# Kind code → checkbox id used by build_deck_attach_toggle_html.
+ATTACHMENT_KIND_TOGGLE_IDS: dict[str, str] = {
+    "deck": "audit-deck-attach-cb",
+    "highRisk": "audit-high-risk-cb",
+    "tgaViolations": "audit-tga-violations-cb",
+    "missingVehicle": "audit-missing-vehicle-cb",
+    "internalAuditQuarterly": "audit-internal-audit-quarterly-cb",
+    "specialAssignment": "audit-special-assignment-cb",
+    "accApprovedMoM": "audit-acc-approved-mom-cb",
+    "internalAuditDetailed": "audit-internal-audit-detailed-cb",
+}
+
+_PAYLOAD_CONST_RE = re.compile(r"const\s+payload\s*=\s*")
+
+
+def filter_dashboard_html_attachments(
+    html_content: str,
+    allowed_kinds: set[str] | frozenset[str],
+) -> str:
+    """
+    Strip embedded attachment payloads and toggles not in ``allowed_kinds``.
+
+    Used when serving cached HTML to assigned viewers with per-kind grants so
+    denied base64 decks never reach the browser.
+    """
+    allowed = frozenset(allowed_kinds)
+    denied_kinds = [
+        kind for kind in ATTACHMENT_KIND_PAYLOAD_KEYS if kind not in allowed
+    ]
+    if not denied_kinds:
+        return html_content
+
+    h = html_content
+    match = _PAYLOAD_CONST_RE.search(h)
+    if match:
+        start = match.end()
+        try:
+            payload, end_idx = json.JSONDecoder().raw_decode(h, start)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            payload = None
+            end_idx = start
+        if isinstance(payload, dict):
+            for kind in denied_kinds:
+                key = ATTACHMENT_KIND_PAYLOAD_KEYS.get(kind)
+                if key and key in payload:
+                    payload[key] = None
+            new_json = json.dumps(payload, ensure_ascii=False)
+            h = h[:start] + new_json + h[end_idx:]
+
+    for kind in denied_kinds:
+        cb_id = ATTACHMENT_KIND_TOGGLE_IDS.get(kind)
+        if not cb_id:
+            continue
+        # Remove the whole toggle label wrapping the denied checkbox.
+        pattern = re.compile(
+            r'<label\s+class="audit-obs-aging-toggle">\s*'
+            rf'<input\s+type="checkbox"\s+id="{re.escape(cb_id)}"[^>]*>'
+            r".*?</label>",
+            re.DOTALL | re.IGNORECASE,
+        )
+        h = pattern.sub("", h)
+
+    return h
+
 
 def _safe_upload_stem(filename: str, *, fallback: str = "file") -> str:
     """Preserve Arabic/Latin letters and case; strip only unsafe filesystem characters.
@@ -301,8 +377,11 @@ def inject_dashboard_serve_context(
     user_edits_save_url: str | None,
     can_save_user_edits: bool,
     user_edits_json: str = "",
+    allowed_attachment_kinds: set[str] | frozenset[str] | None = None,
 ) -> str:
     h = inject_web_mail_api(html_out, mail_url, plan_url)
+    if allowed_attachment_kinds is not None:
+        h = filter_dashboard_html_attachments(h, allowed_attachment_kinds)
     save_js = f"window.__AI_EXCEL_USER_EDITS_SAVE_URL__={json.dumps(user_edits_save_url or '')};"
     can_js = (
         f"window.__AI_EXCEL_CAN_SAVE_USER_EDITS__="
