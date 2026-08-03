@@ -946,6 +946,125 @@ def _load_dashboard_for_viewer_assignment(request, pk: int) -> Dashboard | None:
     return dashboard
 
 
+def _viewer_assignment_members_context(dashboard: Dashboard, ui: dict) -> tuple[list[dict], list[dict]]:
+    """Build member rows + enabled attachment kind options for viewer UI."""
+    assigned_map = get_dashboard_viewer_attachment_map(dashboard)
+    members: list[dict] = []
+    if dashboard.company_id:
+        for user in company_members_for_viewer_assignment(dashboard.company):
+            full = user.get_full_name().strip()
+            kinds = assigned_map.get(user.pk, [])
+            members.append(
+                {
+                    "id": user.pk,
+                    "username": user.username,
+                    "name": full or user.username,
+                    "assigned": user.pk in assigned_map,
+                    "attachment_kinds": kinds,
+                    "attachment_kinds_set": set(kinds),
+                }
+            )
+    enabled = get_enabled_attachment_kinds(dashboard.company)
+    kind_options: list[dict] = []
+    for spec in ATTACHMENT_SPECS:
+        if spec["kind"] not in enabled:
+            continue
+        label = ui.get(spec["ui_label"], spec["kind"])
+        kind_options.append({"kind": spec["kind"], "label": label})
+    return members, kind_options
+
+
+def _parse_viewer_form_assignments(request) -> tuple[list[int], dict[int, list[str]]]:
+    """Parse classic HTML form: assigned + kinds_<user_id>."""
+    user_ids: list[int] = []
+    for raw in request.POST.getlist("assigned"):
+        try:
+            user_ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    kinds_by_user: dict[int, list[str]] = {}
+    for uid in user_ids:
+        kinds_by_user[uid] = [
+            str(k) for k in request.POST.getlist(f"kinds_{uid}") if str(k).strip()
+        ]
+    return user_ids, kinds_by_user
+
+
+def _apply_viewer_assignments(
+    request,
+    dashboard: Dashboard,
+    user_ids: list[int],
+    kinds_by_user: dict[int, list[str]] | None,
+):
+    added, removed = set_dashboard_viewers(
+        dashboard,
+        user_ids,
+        granted_by=request.user,
+        attachment_kinds_by_user=kinds_by_user,
+    )
+    if added:
+        from accounts_app.services.workflow_email import notify_viewers_assigned
+
+        try:
+            notify_viewers_assigned(
+                dashboard,
+                user_ids=sorted(added),
+                base_url=request.build_absolute_uri("/"),
+                granted_by=request.user,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send viewer assignment email for dashboard %s",
+                dashboard.pk,
+            )
+    return added, removed
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def dashboard_viewers_manage(request, pk: int):
+    """
+    Server-rendered viewer + attachment-kind assignment page.
+
+    Avoids reliance on cached/hashed ``dashboard_viewers.js`` on VPS deploys.
+    """
+    lang = request.session.get("ui_lang", "en")
+    ui = get_ui(lang)
+    dashboard = _load_dashboard_for_viewer_assignment(request, pk)
+    if not dashboard:
+        messages.error(request, ui.get("wf_dashboard_not_found", "Dashboard not found."))
+        return redirect("dashboard_list")
+
+    company = _active_company(request) or dashboard.company
+    if not can_user_manage_dashboard_viewers(request.user, dashboard, company):
+        messages.error(request, ui.get("dv_forbidden", "No permission to manage viewers."))
+        return redirect("dashboard_detail", pk=pk)
+
+    if request.method == "POST":
+        user_ids, kinds_by_user = _parse_viewer_form_assignments(request)
+        _apply_viewer_assignments(
+            request,
+            dashboard,
+            user_ids,
+            kinds_by_user,
+        )
+        messages.success(request, ui.get("dv_saved", "Viewer assignments saved."))
+        return redirect("dashboard_viewers_manage", pk=pk)
+
+    members, kind_options = _viewer_assignment_members_context(dashboard, ui)
+    return render(
+        request,
+        "reports_app/dashboard_viewers_manage.html",
+        {
+            "dashboard": dashboard,
+            "members": members,
+            "kind_options": kind_options,
+            "ui": ui,
+            "is_rtl": lang == "ar",
+        },
+    )
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def dashboard_viewers(request, pk: int):
@@ -965,32 +1084,27 @@ def dashboard_viewers(request, pk: int):
         messages.error(request, ui.get("dv_forbidden", "No permission to manage viewers."))
         return redirect("dashboard_detail", pk=pk)
 
+    # Non-AJAX browser navigation → dedicated manage page (authoritative UI).
+    if request.method == "GET" and not _wants_json(request):
+        return redirect("dashboard_viewers_manage", pk=pk)
+
     if request.method == "GET":
-        assigned_map = get_dashboard_viewer_attachment_map(dashboard)
-        members = []
-        if dashboard.company_id:
-            for user in company_members_for_viewer_assignment(dashboard.company):
-                full = user.get_full_name().strip()
-                members.append(
-                    {
-                        "id": user.pk,
-                        "username": user.username,
-                        "name": full or user.username,
-                        "assigned": user.pk in assigned_map,
-                        "attachment_kinds": assigned_map.get(user.pk, []),
-                    }
-                )
-        enabled = get_enabled_attachment_kinds(dashboard.company)
-        kind_options = []
-        for spec in ATTACHMENT_SPECS:
-            if spec["kind"] not in enabled:
-                continue
-            label = ui.get(spec["ui_label"], spec["kind"])
-            kind_options.append({"kind": spec["kind"], "label": label})
+        members, kind_options = _viewer_assignment_members_context(dashboard, ui)
+        assigned_ids = sorted(m["id"] for m in members if m["assigned"])
+        api_members = [
+            {
+                "id": m["id"],
+                "username": m["username"],
+                "name": m["name"],
+                "assigned": m["assigned"],
+                "attachment_kinds": m["attachment_kinds"],
+            }
+            for m in members
+        ]
         return JsonResponse(
             {
-                "members": members,
-                "assigned_ids": sorted(assigned_map.keys()),
+                "members": api_members,
+                "assigned_ids": assigned_ids,
                 "attachment_kind_options": kind_options,
             }
         )
@@ -1023,36 +1137,24 @@ def dashboard_viewers(request, pk: int):
                 else:
                     kinds_by_user[uid] = []
     else:
-        # Backward-compatible: user_ids only → new viewers get no attachments.
-        raw_ids = request.POST.getlist("user_ids")
-        for raw in raw_ids:
-            try:
-                user_ids.append(int(raw))
-            except (TypeError, ValueError):
-                continue
+        # Form fields from manage page or legacy user_ids-only posts.
+        if "assigned" in request.POST:
+            user_ids, kinds_by_user = _parse_viewer_form_assignments(request)
+            used_assignments_payload = True
+        else:
+            raw_ids = request.POST.getlist("user_ids")
+            for raw in raw_ids:
+                try:
+                    user_ids.append(int(raw))
+                except (TypeError, ValueError):
+                    continue
 
-    added, removed = set_dashboard_viewers(
+    added, removed = _apply_viewer_assignments(
+        request,
         dashboard,
         user_ids,
-        granted_by=request.user,
-        attachment_kinds_by_user=kinds_by_user if used_assignments_payload else None,
+        kinds_by_user if used_assignments_payload else None,
     )
-
-    if added:
-        from accounts_app.services.workflow_email import notify_viewers_assigned
-
-        try:
-            notify_viewers_assigned(
-                dashboard,
-                user_ids=sorted(added),
-                base_url=request.build_absolute_uri("/"),
-                granted_by=request.user,
-            )
-        except Exception:
-            logger.exception(
-                "Failed to send viewer assignment email for dashboard %s",
-                dashboard.pk,
-            )
 
     if _wants_json(request):
         return JsonResponse(
@@ -1065,7 +1167,7 @@ def dashboard_viewers(request, pk: int):
         )
 
     messages.success(request, ui.get("dv_saved", "Viewer assignments saved."))
-    return redirect("dashboard_detail", pk=pk)
+    return redirect("dashboard_viewers_manage", pk=pk)
 
 
 @require_GET

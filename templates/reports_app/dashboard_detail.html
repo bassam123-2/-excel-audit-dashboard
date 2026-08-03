@@ -45,11 +45,10 @@
 
     <div class="toolbar-actions {% if is_rtl %}me-auto{% else %}ms-auto{% endif %}">
         {% if can_manage_dashboard_viewers %}
-        <button type="button" class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1 js-viewers-btn"
-                data-viewers-url="{% url 'dashboard_viewers' dashboard.pk %}"
-                data-bs-toggle="modal" data-bs-target="#viewersModal">
+        <a href="{% url 'dashboard_viewers_manage' dashboard.pk %}"
+           class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1">
             <i class="bi bi-people-fill"></i> {{ ui.dv_btn }}
-        </button>
+        </a>
         {% endif %}
         {% if can_submit_for_review %}
         <button type="button" class="btn btn-sm btn-info d-flex align-items-center gap-1"
@@ -91,10 +90,6 @@
         {% endif %}
     </div>
 </div>
-
-{% if can_manage_dashboard_viewers %}
-{% include "reports_app/_dashboard_viewers_modal.html" %}
-{% endif %}
 
 {% if can_submit_for_review %}
 <div class="modal fade" id="submitModal" tabindex="-1" aria-hidden="true">
@@ -314,7 +309,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/dashboard_viewers.js' %}"></script>
 <script src="{% static 'js/attachment_multi_select.js' %}"></script>
 <script>
 (function () {
@@ -368,23 +362,6 @@
         submitForm.addEventListener('submit', function () {
             var btn = submitForm.querySelector('button[type="submit"]');
             if (btn) btn.disabled = true;
-        });
-    }
-
-    if (window.initDashboardViewersModal) {
-        window.initDashboardViewersModal({
-            modalId: 'viewersModal',
-            saveBtnId: 'viewersSaveBtn',
-            errorId: 'viewersError',
-            triggerSelector: '.js-viewers-btn',
-            emptyText: '{{ ui.dv_empty|escapejs }}',
-            errorText: '{{ ui.dv_error|escapejs }}',
-            attachmentsLabel: '{{ ui.dv_attachments_label|escapejs }}',
-            attachmentsNone: '{{ ui.dv_attachments_none|escapejs }}',
-            attachmentsAll: '{{ ui.dv_attachments_all|escapejs }}',
-            attachmentsSelectAll: '{{ ui.dv_attachments_select_all|escapejs }}',
-            attachmentsClear: '{{ ui.dv_attachments_clear|escapejs }}',
-            csrfToken: '{{ csrf_token }}'
         });
     }
 

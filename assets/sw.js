@@ -1,5 +1,5 @@
 /* Bump SW_VERSION when changing this file so browsers replace the worker. */
-const SW_VERSION = "static-manifest-2026-07-24";
+const SW_VERSION = "static-manifest-2026-08-03-viewers-manage";
 
 self.addEventListener("install", function (event) {
     event.waitUntil(self.skipWaiting());

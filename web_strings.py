@@ -203,6 +203,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "dv_attachments_all": "كل البنود",
         "dv_attachments_select_all": "تحديد الكل",
         "dv_attachments_clear": "مسح الكل",
+        "dv_manage_hint": "فعّل المشاهد ثم حدّد بنود المرفقات المسموحة له. يعمل للوحات المنشورة الحالية والجديدة.",
+        "dv_manage_back": "العودة للوحة",
+        "dv_manage_select_all_members": "تحديد كل الأعضاء",
+        "dv_manage_clear_members": "إلغاء تحديد الكل",
         # ── Dashboard detail ──────────────────────
         "dd_page_title": "لوحة التدقيق",
         "dd_breadcrumb": "لوحات التحكم",
@@ -548,6 +552,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "dv_attachments_all": "All items",
         "dv_attachments_select_all": "Select all",
         "dv_attachments_clear": "Clear all",
+        "dv_manage_hint": "Enable a viewer, then choose which attachment items they may see. Works for existing and new published dashboards.",
+        "dv_manage_back": "Back to dashboard",
+        "dv_manage_select_all_members": "Select all members",
+        "dv_manage_clear_members": "Clear all members",
         # ── Dashboard detail ──────────────────────
         "dd_page_title": "Audit Dashboard",
         "dd_breadcrumb": "Dashboards",

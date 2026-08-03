@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ ui.dv_btn }} — {{ dashboard.name }}{% endblock %}
+
+{% block page_title %}
+<div class="breadcrumb-nav">
+    <a href="{% url 'dashboard_list' %}">
+        <i class="bi bi-grid-3x3-gap-fill me-1"></i>{{ ui.dd_breadcrumb }}
+    </a>
+    <span class="sep"><i class="bi bi-chevron-{% if is_rtl %}left{% else %}right{% endif %}"></i></span>
+    <a href="{% url 'dashboard_detail' dashboard.pk %}" class="text-truncate" style="max-width:180px;">{{ dashboard.name }}</a>
+    <span class="sep"><i class="bi bi-chevron-{% if is_rtl %}left{% else %}right{% endif %}"></i></span>
+    <span class="current">{{ ui.dv_btn }}</span>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/dashboard-pages.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="dv-manage-page">
+    <div class="dv-manage-header">
+        <h1 class="dv-manage-title">
+            <i class="bi bi-people-fill text-primary"></i>
+            {{ ui.dv_title }}
+        </h1>
+        <p class="dv-manage-hint text-muted">{{ ui.dv_manage_hint }}</p>
+        <p class="dv-manage-dash mb-0">
+            <i class="bi bi-bar-chart-line-fill"></i>
+            {{ dashboard.name }}
+        </p>
+    </div>
+
+    {% if not members %}
+    <div class="alert alert-warning">{{ ui.dv_empty }}</div>
+    <a href="{% url 'dashboard_detail' dashboard.pk %}" class="btn btn-outline-secondary">{{ ui.dv_manage_back }}</a>
+    {% else %}
+    <form method="post" action="{% url 'dashboard_viewers_manage' dashboard.pk %}" class="dv-manage-form" id="dvManageForm">
+        {% csrf_token %}
+        <div class="dv-manage-toolbar">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="dvSelectAllMembers">{{ ui.dv_manage_select_all_members }}</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="dvClearAllMembers">{{ ui.dv_manage_clear_members }}</button>
+        </div>
+
+        <div class="dv-manage-list">
+            {% for member in members %}
+            <section class="dv-manage-card{% if member.assigned %} is-assigned{% endif %}" data-member-id="{{ member.id }}">
+                <label class="dv-manage-member">
+                    <input type="checkbox"
+                           class="form-check-input dv-manage-assigned"
+                           name="assigned"
+                           value="{{ member.id }}"
+                           {% if member.assigned %}checked{% endif %}>
+                    <span class="dv-manage-member-text">
+                        <strong>{{ member.name }}</strong>
+                        <span class="text-muted">(@{{ member.username }})</span>
+                    </span>
+                </label>
+
+                <div class="dv-manage-kinds">
+                    <div class="dv-manage-kinds-head">
+                        <span>{{ ui.dv_attachments_label }}</span>
+                        <span class="dv-manage-kinds-actions">
+                            <button type="button" class="btn btn-link btn-sm p-0 js-kinds-all">{{ ui.dv_attachments_select_all }}</button>
+                            <button type="button" class="btn btn-link btn-sm p-0 js-kinds-none">{{ ui.dv_attachments_clear }}</button>
+                        </span>
+                    </div>
+                    {% if kind_options %}
+                    <div class="dv-manage-kind-grid">
+                        {% for opt in kind_options %}
+                        <label class="dv-manage-kind">
+                            <input type="checkbox"
+                                   class="form-check-input dv-manage-kind-cb"
+                                   name="kinds_{{ member.id }}"
+                                   value="{{ opt.kind }}"
+                                   {% if opt.kind in member.attachment_kinds_set %}checked{% endif %}>
+                            <span>{{ opt.label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted small mb-0">{{ ui.dv_attachments_none }}</p>
+                    {% endif %}
+                </div>
+            </section>
+            {% endfor %}
+        </div>
+
+        <div class="dv-manage-footer">
+            <a href="{% url 'dashboard_detail' dashboard.pk %}" class="btn btn-outline-secondary">{{ ui.dv_manage_back }}</a>
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-check2-circle"></i> {{ ui.dv_save }}
+            </button>
+        </div>
+    </form>
+    {% endif %}
+</div>
+
+<script>
+(function () {
+    var form = document.getElementById('dvManageForm');
+    if (!form) return;
+
+    function syncCard(card) {
+        var assigned = card.querySelector('.dv-manage-assigned');
+        card.classList.toggle('is-assigned', !!(assigned && assigned.checked));
+    }
+
+    form.querySelectorAll('.dv-manage-card').forEach(function (card) {
+        syncCard(card);
+        var assigned = card.querySelector('.dv-manage-assigned');
+        if (assigned) {
+            assigned.addEventListener('change', function () { syncCard(card); });
+        }
+        var allBtn = card.querySelector('.js-kinds-all');
+        var noneBtn = card.querySelector('.js-kinds-none');
+        if (allBtn) {
+            allBtn.addEventListener('click', function () {
+                card.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) { cb.checked = true; });
+                if (assigned && !assigned.checked) {
+                    assigned.checked = true;
+                    syncCard(card);
+                }
+            });
+        }
+        if (noneBtn) {
+            noneBtn.addEventListener('click', function () {
+                card.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) { cb.checked = false; });
+            });
+        }
+    });
+
+    var selectAll = document.getElementById('dvSelectAllMembers');
+    var clearAll = document.getElementById('dvClearAllMembers');
+    if (selectAll) {
+        selectAll.addEventListener('click', function () {
+            form.querySelectorAll('.dv-manage-card').forEach(function (card) {
+                var assigned = card.querySelector('.dv-manage-assigned');
+                if (assigned) assigned.checked = true;
+                syncCard(card);
+            });
+        });
+    }
+    if (clearAll) {
+        clearAll.addEventListener('click', function () {
+            form.querySelectorAll('.dv-manage-card').forEach(function (card) {
+                var assigned = card.querySelector('.dv-manage-assigned');
+                if (assigned) assigned.checked = false;
+                card.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) { cb.checked = false; });
+                syncCard(card);
+            });
+        });
+    }
+
+    // Unassigned members: do not submit dangling kind checkboxes.
+    form.addEventListener('submit', function () {
+        form.querySelectorAll('.dv-manage-card').forEach(function (card) {
+            var assigned = card.querySelector('.dv-manage-assigned');
+            if (assigned && !assigned.checked) {
+                card.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) {
+                    cb.disabled = true;
+                });
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}
