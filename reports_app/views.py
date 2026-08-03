@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from pathlib import Path
 import shutil
@@ -962,6 +963,7 @@ def _viewer_assignment_members_context(dashboard: Dashboard, ui: dict) -> tuple[
                     "assigned": user.pk in assigned_map,
                     "attachment_kinds": kinds,
                     "attachment_kinds_set": set(kinds),
+                    "attachment_count": len(kinds),
                 }
             )
     enabled = get_enabled_attachment_kinds(dashboard.company)
@@ -970,7 +972,14 @@ def _viewer_assignment_members_context(dashboard: Dashboard, ui: dict) -> tuple[
         if spec["kind"] not in enabled:
             continue
         label = ui.get(spec["ui_label"], spec["kind"])
-        kind_options.append({"kind": spec["kind"], "label": label})
+        short = re.sub(r"\s*\([^)]*\)\s*$", "", str(label)).strip() or str(label)
+        kind_options.append(
+            {
+                "kind": spec["kind"],
+                "label": label,
+                "short_label": short,
+            }
+        )
     return members, kind_options
 
 
@@ -1052,6 +1061,7 @@ def dashboard_viewers_manage(request, pk: int):
         return redirect("dashboard_viewers_manage", pk=pk)
 
     members, kind_options = _viewer_assignment_members_context(dashboard, ui)
+    assigned_count = sum(1 for m in members if m["assigned"])
     return render(
         request,
         "reports_app/dashboard_viewers_manage.html",
@@ -1059,6 +1069,9 @@ def dashboard_viewers_manage(request, pk: int):
             "dashboard": dashboard,
             "members": members,
             "kind_options": kind_options,
+            "kind_options_total": len(kind_options),
+            "members_total": len(members),
+            "assigned_count": assigned_count,
             "ui": ui,
             "is_rtl": lang == "ar",
         },

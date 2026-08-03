@@ -19,18 +19,33 @@
 {% endblock %}
 
 {% block content %}
-<div class="dv-manage-page">
-    <div class="dv-manage-header">
-        <h1 class="dv-manage-title">
-            <i class="bi bi-people-fill text-primary"></i>
-            {{ ui.dv_title }}
-        </h1>
-        <p class="dv-manage-hint text-muted">{{ ui.dv_manage_hint }}</p>
-        <p class="dv-manage-dash mb-0">
-            <i class="bi bi-bar-chart-line-fill"></i>
-            {{ dashboard.name }}
-        </p>
-    </div>
+<div class="dv-manage-page" id="dvManagePage"
+     data-label-none="{{ ui.dv_attachments_none|escapejs }}"
+     data-label-all="{{ ui.dv_attachments_all|escapejs }}"
+     data-label-count="{{ ui.dv_manage_kinds_count|escapejs }}"
+     data-kinds-total="{{ kind_options_total }}">
+
+    <header class="dv-manage-hero">
+        <div class="dv-manage-hero-text">
+            <p class="dv-manage-kicker">{{ ui.dv_btn }}</p>
+            <h1 class="dv-manage-title">{{ ui.dv_title }}</h1>
+            <p class="dv-manage-hint">{{ ui.dv_manage_hint_compact }}</p>
+            <p class="dv-manage-dash">
+                <i class="bi bi-bar-chart-line-fill" aria-hidden="true"></i>
+                <span>{{ dashboard.name }}</span>
+            </p>
+        </div>
+        <div class="dv-manage-stats" aria-live="polite">
+            <div class="dv-manage-stat">
+                <span class="dv-manage-stat-val" id="dvStatAssigned">{{ assigned_count }}</span>
+                <span class="dv-manage-stat-lbl">{{ ui.dv_manage_stat_assigned }}</span>
+            </div>
+            <div class="dv-manage-stat">
+                <span class="dv-manage-stat-val">{{ members_total }}</span>
+                <span class="dv-manage-stat-lbl">{{ ui.dv_manage_stat_members }}</span>
+            </div>
+        </div>
+    </header>
 
     {% if not members %}
     <div class="alert alert-warning">{{ ui.dv_empty }}</div>
@@ -38,27 +53,79 @@
     {% else %}
     <form method="post" action="{% url 'dashboard_viewers_manage' dashboard.pk %}" class="dv-manage-form" id="dvManageForm">
         {% csrf_token %}
-        <div class="dv-manage-toolbar">
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="dvSelectAllMembers">{{ ui.dv_manage_select_all_members }}</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="dvClearAllMembers">{{ ui.dv_manage_clear_members }}</button>
+
+        <div class="dv-manage-controls">
+            <div class="dv-manage-search">
+                <i class="bi bi-search" aria-hidden="true"></i>
+                <input type="search" id="dvMemberFilter" class="form-control"
+                       placeholder="{{ ui.dv_manage_search }}" autocomplete="off"
+                       aria-label="{{ ui.dv_manage_search }}">
+            </div>
+            <div class="dv-manage-filters" role="group" aria-label="{{ ui.dv_manage_filter_label }}">
+                <button type="button" class="dv-filter-chip is-active" data-filter="all">{{ ui.dv_manage_filter_all }}</button>
+                <button type="button" class="dv-filter-chip" data-filter="assigned">{{ ui.dv_manage_filter_assigned }}</button>
+                <button type="button" class="dv-filter-chip" data-filter="unassigned">{{ ui.dv_manage_filter_unassigned }}</button>
+            </div>
+            <div class="dv-manage-bulk">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dvSelectAllMembers">{{ ui.dv_manage_select_all_members }}</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dvClearAllMembers">{{ ui.dv_manage_clear_members }}</button>
+            </div>
         </div>
 
-        <div class="dv-manage-list">
-            {% for member in members %}
-            <section class="dv-manage-card{% if member.assigned %} is-assigned{% endif %}" data-member-id="{{ member.id }}">
-                <label class="dv-manage-member">
-                    <input type="checkbox"
-                           class="form-check-input dv-manage-assigned"
-                           name="assigned"
-                           value="{{ member.id }}"
-                           {% if member.assigned %}checked{% endif %}>
-                    <span class="dv-manage-member-text">
-                        <strong>{{ member.name }}</strong>
-                        <span class="text-muted">(@{{ member.username }})</span>
-                    </span>
-                </label>
+        <div class="dv-manage-list-head">
+            <span>{{ ui.dv_manage_col_member }}</span>
+            <span>{{ ui.dv_manage_col_access }}</span>
+            <span class="dv-manage-col-actions">{{ ui.dv_manage_col_attachments }}</span>
+        </div>
 
-                <div class="dv-manage-kinds">
+        <div class="dv-manage-list" id="dvManageList">
+            {% for member in members %}
+            <section class="dv-manage-row{% if member.assigned %} is-assigned{% endif %}"
+                     data-member-id="{{ member.id }}"
+                     data-search="{{ member.name|lower }} {{ member.username|lower }}"
+                     data-assigned="{% if member.assigned %}1{% else %}0{% endif %}">
+                <div class="dv-manage-row-main">
+                    <label class="dv-manage-assign">
+                        <input type="checkbox"
+                               class="form-check-input dv-manage-assigned"
+                               name="assigned"
+                               value="{{ member.id }}"
+                               {% if member.assigned %}checked{% endif %}>
+                        <span class="dv-manage-avatar" aria-hidden="true">{{ member.name|slice:":1"|upper }}</span>
+                        <span class="dv-manage-member-text">
+                            <strong class="dv-manage-name">{{ member.name }}</strong>
+                            <span class="dv-manage-user">@{{ member.username }}</span>
+                        </span>
+                    </label>
+
+                    <span class="dv-manage-status">
+                        <span class="dv-manage-status-pill dv-manage-status-on">{{ ui.dv_manage_status_viewer }}</span>
+                        <span class="dv-manage-status-pill dv-manage-status-off">{{ ui.dv_manage_status_not_viewer }}</span>
+                    </span>
+
+                    <div class="dv-manage-row-actions">
+                        <span class="dv-manage-summary js-kinds-summary"
+                              data-count="{{ member.attachment_count }}">
+                            {% if not member.assigned %}
+                                {{ ui.dv_attachments_none }}
+                            {% elif member.attachment_count == 0 %}
+                                {{ ui.dv_attachments_none }}
+                            {% elif kind_options_total and member.attachment_count >= kind_options_total %}
+                                {{ ui.dv_attachments_all }}
+                            {% else %}
+                                {{ member.attachment_count }}/{{ kind_options_total }}
+                            {% endif %}
+                        </span>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary dv-manage-edit js-toggle-kinds"
+                                aria-expanded="false">
+                            <i class="bi bi-sliders" aria-hidden="true"></i>
+                            <span>{{ ui.dv_manage_edit_attachments }}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="dv-manage-kinds d-none" hidden>
                     <div class="dv-manage-kinds-head">
                         <span>{{ ui.dv_attachments_label }}</span>
                         <span class="dv-manage-kinds-actions">
@@ -69,13 +136,13 @@
                     {% if kind_options %}
                     <div class="dv-manage-kind-grid">
                         {% for opt in kind_options %}
-                        <label class="dv-manage-kind">
+                        <label class="dv-manage-kind" title="{{ opt.label }}">
                             <input type="checkbox"
                                    class="form-check-input dv-manage-kind-cb"
                                    name="kinds_{{ member.id }}"
                                    value="{{ opt.kind }}"
                                    {% if opt.kind in member.attachment_kinds_set %}checked{% endif %}>
-                            <span>{{ opt.label }}</span>
+                            <span>{{ opt.short_label }}</span>
                         </label>
                         {% endfor %}
                     </div>
@@ -86,6 +153,8 @@
             </section>
             {% endfor %}
         </div>
+
+        <p class="dv-manage-empty-filter d-none" id="dvEmptyFilter">{{ ui.dv_manage_no_match }}</p>
 
         <div class="dv-manage-footer">
             <a href="{% url 'dashboard_detail' dashboard.pk %}" class="btn btn-outline-secondary">{{ ui.dv_manage_back }}</a>
@@ -100,65 +169,177 @@
 <script>
 (function () {
     var form = document.getElementById('dvManageForm');
-    if (!form) return;
+    var page = document.getElementById('dvManagePage');
+    if (!form || !page) return;
 
-    function syncCard(card) {
-        var assigned = card.querySelector('.dv-manage-assigned');
-        card.classList.toggle('is-assigned', !!(assigned && assigned.checked));
+    var labelNone = page.dataset.labelNone || 'No attachments';
+    var labelAll = page.dataset.labelAll || 'All items';
+    var kindsTotal = parseInt(page.dataset.kindsTotal || '0', 10) || 0;
+    var filterInput = document.getElementById('dvMemberFilter');
+    var emptyFilter = document.getElementById('dvEmptyFilter');
+    var assignedStat = document.getElementById('dvStatAssigned');
+    var activeFilter = 'all';
+
+    function summaryText(count, assigned) {
+        if (!assigned || count <= 0) return labelNone;
+        if (kindsTotal && count >= kindsTotal) return labelAll;
+        return String(count) + '/' + String(kindsTotal);
     }
 
-    form.querySelectorAll('.dv-manage-card').forEach(function (card) {
-        syncCard(card);
-        var assigned = card.querySelector('.dv-manage-assigned');
+    function updateSummary(row) {
+        var assigned = row.querySelector('.dv-manage-assigned');
+        var summary = row.querySelector('.js-kinds-summary');
+        if (!summary) return;
+        var count = row.querySelectorAll('.dv-manage-kind-cb:checked').length;
+        summary.dataset.count = String(count);
+        summary.textContent = summaryText(count, !!(assigned && assigned.checked));
+    }
+
+    function syncRow(row) {
+        var assigned = row.querySelector('.dv-manage-assigned');
+        var isOn = !!(assigned && assigned.checked);
+        row.classList.toggle('is-assigned', isOn);
+        row.dataset.assigned = isOn ? '1' : '0';
+        updateSummary(row);
+        updateAssignedStat();
+        applyFilters();
+    }
+
+    function updateAssignedStat() {
+        if (!assignedStat) return;
+        assignedStat.textContent = String(
+            form.querySelectorAll('.dv-manage-assigned:checked').length
+        );
+    }
+
+    function setKindsOpen(row, open) {
+        var panel = row.querySelector('.dv-manage-kinds');
+        var btn = row.querySelector('.js-toggle-kinds');
+        if (!panel || !btn) return;
+        panel.classList.toggle('d-none', !open);
+        panel.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        row.classList.toggle('is-open', open);
+    }
+
+    function applyFilters() {
+        var q = (filterInput && filterInput.value || '').trim().toLowerCase();
+        var visible = 0;
+        form.querySelectorAll('.dv-manage-row').forEach(function (row) {
+            var assigned = row.dataset.assigned === '1';
+            var search = row.dataset.search || '';
+            var matchFilter =
+                activeFilter === 'all' ||
+                (activeFilter === 'assigned' && assigned) ||
+                (activeFilter === 'unassigned' && !assigned);
+            var matchSearch = !q || search.indexOf(q) !== -1;
+            var show = matchFilter && matchSearch;
+            row.hidden = !show;
+            if (show) visible += 1;
+        });
+        if (emptyFilter) emptyFilter.classList.toggle('d-none', visible > 0);
+    }
+
+    form.querySelectorAll('.dv-manage-row').forEach(function (row) {
+        var assigned = row.querySelector('.dv-manage-assigned');
         if (assigned) {
-            assigned.addEventListener('change', function () { syncCard(card); });
+            assigned.addEventListener('change', function () {
+                if (!assigned.checked) {
+                    setKindsOpen(row, false);
+                }
+                syncRow(row);
+            });
         }
-        var allBtn = card.querySelector('.js-kinds-all');
-        var noneBtn = card.querySelector('.js-kinds-none');
+
+        var toggleBtn = row.querySelector('.js-toggle-kinds');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', function () {
+                var open = toggleBtn.getAttribute('aria-expanded') !== 'true';
+                if (open) {
+                    form.querySelectorAll('.dv-manage-row.is-open').forEach(function (other) {
+                        if (other !== row) setKindsOpen(other, false);
+                    });
+                }
+                setKindsOpen(row, open);
+            });
+        }
+
+        var allBtn = row.querySelector('.js-kinds-all');
+        var noneBtn = row.querySelector('.js-kinds-none');
         if (allBtn) {
             allBtn.addEventListener('click', function () {
-                card.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) { cb.checked = true; });
+                row.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) { cb.checked = true; });
                 if (assigned && !assigned.checked) {
                     assigned.checked = true;
-                    syncCard(card);
                 }
+                syncRow(row);
             });
         }
         if (noneBtn) {
             noneBtn.addEventListener('click', function () {
-                card.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) { cb.checked = false; });
+                row.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) { cb.checked = false; });
+                updateSummary(row);
             });
         }
+        row.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                if (cb.checked && assigned && !assigned.checked) {
+                    assigned.checked = true;
+                    syncRow(row);
+                    return;
+                }
+                updateSummary(row);
+            });
+        });
+        syncRow(row);
+        setKindsOpen(row, false);
     });
+
+    document.querySelectorAll('.dv-filter-chip').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+            document.querySelectorAll('.dv-filter-chip').forEach(function (c) {
+                c.classList.remove('is-active');
+            });
+            chip.classList.add('is-active');
+            activeFilter = chip.dataset.filter || 'all';
+            applyFilters();
+        });
+    });
+
+    if (filterInput) {
+        filterInput.addEventListener('input', applyFilters);
+    }
 
     var selectAll = document.getElementById('dvSelectAllMembers');
     var clearAll = document.getElementById('dvClearAllMembers');
     if (selectAll) {
         selectAll.addEventListener('click', function () {
-            form.querySelectorAll('.dv-manage-card').forEach(function (card) {
-                var assigned = card.querySelector('.dv-manage-assigned');
+            form.querySelectorAll('.dv-manage-row').forEach(function (row) {
+                if (row.hidden) return;
+                var assigned = row.querySelector('.dv-manage-assigned');
                 if (assigned) assigned.checked = true;
-                syncCard(card);
+                syncRow(row);
             });
         });
     }
     if (clearAll) {
         clearAll.addEventListener('click', function () {
-            form.querySelectorAll('.dv-manage-card').forEach(function (card) {
-                var assigned = card.querySelector('.dv-manage-assigned');
+            form.querySelectorAll('.dv-manage-row').forEach(function (row) {
+                if (row.hidden) return;
+                var assigned = row.querySelector('.dv-manage-assigned');
                 if (assigned) assigned.checked = false;
-                card.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) { cb.checked = false; });
-                syncCard(card);
+                row.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) { cb.checked = false; });
+                setKindsOpen(row, false);
+                syncRow(row);
             });
         });
     }
 
-    // Unassigned members: do not submit dangling kind checkboxes.
     form.addEventListener('submit', function () {
-        form.querySelectorAll('.dv-manage-card').forEach(function (card) {
-            var assigned = card.querySelector('.dv-manage-assigned');
+        form.querySelectorAll('.dv-manage-row').forEach(function (row) {
+            var assigned = row.querySelector('.dv-manage-assigned');
             if (assigned && !assigned.checked) {
-                card.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) {
+                row.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) {
                     cb.disabled = true;
                 });
             }
