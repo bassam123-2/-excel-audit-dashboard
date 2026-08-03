@@ -952,7 +952,10 @@ def _viewer_assignment_members_context(dashboard: Dashboard, ui: dict) -> tuple[
     assigned_map = get_dashboard_viewer_attachment_map(dashboard)
     members: list[dict] = []
     if dashboard.company_id:
-        for user in company_members_for_viewer_assignment(dashboard.company):
+        for user in company_members_for_viewer_assignment(
+            dashboard.company,
+            dashboard=dashboard,
+        ):
             full = user.get_full_name().strip()
             kinds = assigned_map.get(user.pk, [])
             members.append(

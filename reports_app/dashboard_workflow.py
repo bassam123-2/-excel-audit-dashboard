@@ -620,14 +620,41 @@ def can_user_manage_dashboard_viewers(
     return True
 
 
-def company_members_for_viewer_assignment(company: Company) -> QuerySet[User]:
+def company_members_for_viewer_assignment(
+    company: Company,
+    dashboard: Dashboard | None = None,
+) -> QuerySet[User]:
+    """
+    Company members eligible to receive a per-dashboard viewer grant.
+
+    Excludes users who already see published dashboards without a grant:
+    superusers, dashboard creator, reviewers, and assign-viewers managers.
+    """
     user_ids = CompanyMembership.objects.filter(
         company=company,
         is_deleted=False,
     ).values_list("user_id", flat=True)
-    return User.objects.filter(pk__in=user_ids, is_active=True).order_by(
-        "username"
+    qs = User.objects.filter(pk__in=user_ids, is_active=True).order_by("username")
+    if dashboard is None:
+        return qs
+
+    exclude_ids: set[int] = set(
+        User.objects.filter(is_superuser=True).values_list("pk", flat=True)
     )
+    if dashboard.created_by_id:
+        exclude_ids.add(dashboard.created_by_id)
+
+    privileged_ids = CompanyMembership.objects.filter(
+        company=company,
+        is_deleted=False,
+    ).filter(
+        Q(can_assign_dashboard_viewers=True) | Q(can_review=True)
+    ).values_list("user_id", flat=True)
+    exclude_ids.update(privileged_ids)
+
+    if exclude_ids:
+        qs = qs.exclude(pk__in=exclude_ids)
+    return qs
 
 
 def get_dashboard_viewer_user_ids(dashboard: Dashboard) -> set[int]:
@@ -728,11 +755,14 @@ def set_dashboard_viewers(
         raise ValueError("no_company")
 
     allowed_ids = set(
-        CompanyMembership.objects.filter(
-            company=company,
-            is_deleted=False,
-        ).values_list("user_id", flat=True)
+        company_members_for_viewer_assignment(
+            company,
+            dashboard=dashboard,
+        ).values_list("pk", flat=True)
     )
+    # Keep currently assigned viewers even if they later gained privileged access,
+    # so the assigner can still remove them explicitly.
+    allowed_ids |= get_dashboard_viewer_user_ids(dashboard)
     requested = {uid for uid in user_ids if uid in allowed_ids}
     current = get_dashboard_viewer_user_ids(dashboard)
     kinds_map = attachment_kinds_by_user or {}
