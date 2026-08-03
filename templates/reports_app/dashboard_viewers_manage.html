@@ -66,10 +66,6 @@
                 <button type="button" class="dv-filter-chip" data-filter="assigned">{{ ui.dv_manage_filter_assigned }}</button>
                 <button type="button" class="dv-filter-chip" data-filter="unassigned">{{ ui.dv_manage_filter_unassigned }}</button>
             </div>
-            <div class="dv-manage-bulk">
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dvSelectAllMembers">{{ ui.dv_manage_select_all_members }}</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dvClearAllMembers">{{ ui.dv_manage_clear_members }}</button>
-            </div>
         </div>
 
         <div class="dv-manage-list-head">
@@ -308,31 +304,6 @@
 
     if (filterInput) {
         filterInput.addEventListener('input', applyFilters);
-    }
-
-    var selectAll = document.getElementById('dvSelectAllMembers');
-    var clearAll = document.getElementById('dvClearAllMembers');
-    if (selectAll) {
-        selectAll.addEventListener('click', function () {
-            form.querySelectorAll('.dv-manage-row').forEach(function (row) {
-                if (row.hidden) return;
-                var assigned = row.querySelector('.dv-manage-assigned');
-                if (assigned) assigned.checked = true;
-                syncRow(row);
-            });
-        });
-    }
-    if (clearAll) {
-        clearAll.addEventListener('click', function () {
-            form.querySelectorAll('.dv-manage-row').forEach(function (row) {
-                if (row.hidden) return;
-                var assigned = row.querySelector('.dv-manage-assigned');
-                if (assigned) assigned.checked = false;
-                row.querySelectorAll('.dv-manage-kind-cb').forEach(function (cb) { cb.checked = false; });
-                setKindsOpen(row, false);
-                syncRow(row);
-            });
-        });
     }
 
     form.addEventListener('submit', function () {

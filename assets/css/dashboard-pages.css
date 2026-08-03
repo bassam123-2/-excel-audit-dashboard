@@ -867,7 +867,7 @@ html[data-theme="dark"] .dv-manage-dash {
 
 .dv-manage-controls {
     display: grid;
-    grid-template-columns: minmax(0, 1.4fr) auto auto;
+    grid-template-columns: minmax(0, 1.4fr) auto;
     gap: 0.65rem;
     align-items: center;
     margin-bottom: 0.85rem;
@@ -921,13 +921,6 @@ html[data-theme="dark"] .dv-manage-dash {
     background: #2563eb;
     border-color: #2563eb;
     color: #fff;
-}
-
-.dv-manage-bulk {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    justify-content: flex-end;
 }
 
 .dv-manage-list-head {
@@ -1143,10 +1136,6 @@ html[data-theme="dark"] .dv-manage-footer {
 @media (max-width: 991.98px) {
     .dv-manage-controls {
         grid-template-columns: 1fr;
-    }
-
-    .dv-manage-bulk {
-        justify-content: flex-start;
     }
 
     .dv-manage-list-head {
