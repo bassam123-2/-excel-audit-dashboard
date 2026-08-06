@@ -1081,6 +1081,7 @@ def store_upload_to_db(
         resolve_tenant_company,
         validate_excel_company_for_tenant,
         validate_excel_subcompanies_for_tenant,
+        resolve_excel_sheet_for_company,
     )
     from reports_app.dashboard_workflow import mark_dashboard_draft
 
@@ -1140,7 +1141,12 @@ def store_upload_to_db(
 
         for up in uploads:
             path = _persist_upload(up, tmp_dir)
-            df = read_input_file(path, sheet_name=sheet, locale=ui_locale)
+            use_sheet = sheet
+            if use_sheet is None:
+                use_sheet = resolve_excel_sheet_for_company(
+                    path, active_company, locale=ui_locale
+                )
+            df = read_input_file(path, sheet_name=use_sheet, locale=ui_locale)
             if isinstance(df, dict):
                 first_key = next(iter(df.keys()))
                 df = df[first_key]
@@ -1159,6 +1165,7 @@ def store_upload_to_db(
                 primary_df = df
                 primary_name = up.name
                 primary_sha256 = content_fingerprint(df, up.name)
+                sheet = use_sheet
 
         if not file_entries or primary_df is None:
             raise ValueError(tr(ui_locale, "web_err_empty"))

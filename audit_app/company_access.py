@@ -352,3 +352,57 @@ def extract_excel_company_names_from_df(df, locale: str = "en") -> set[str]:
 
 def extract_excel_subcompany_names_from_df(df, locale: str = "en") -> set[str]:
     return _extract_dimension_values_from_df(df, "subcompany")
+
+
+def resolve_excel_sheet_for_company(
+    path: str,
+    company: Company,
+    *,
+    locale: str = "en",
+) -> str | None:
+    """
+    Prefer a worksheet whose Company column matches the active tenant.
+
+    Workbooks often keep multiple company tabs (e.g. AAGH then BTC). Upload
+    previously always used sheet 0, which fails tenant validation. Returns the
+    matching sheet name, or the first non-empty sheet when none match.
+    """
+    import pandas as pd
+
+    from data_io import read_input_file
+
+    ext = str(path).rsplit(".", 1)[-1].lower()
+    if ext not in {"xlsx", "xlsm", "xls"}:
+        return None
+
+    try:
+        xl = pd.ExcelFile(path)
+        sheet_names = list(xl.sheet_names)
+    except Exception:
+        return None
+    if not sheet_names:
+        return None
+
+    scope = tenant_company_scope(company).filter(
+        company_kind=COMPANY_KIND_MAIN,
+        parent__isnull=True,
+    )
+    first_nonempty: str | None = None
+    for name in sheet_names:
+        try:
+            df = read_input_file(path, sheet_name=name, locale=locale)
+        except Exception:
+            continue
+        if isinstance(df, dict):
+            continue
+        df = df.dropna(how="all").dropna(axis=1, how="all")
+        if df.empty:
+            continue
+        if first_nonempty is None:
+            first_nonempty = str(name)
+        companies = extract_excel_company_names_from_df(df, locale)
+        if not companies:
+            continue
+        if all(find_company_by_excel_token(n, scope) is not None for n in companies):
+            return str(name)
+    return first_nonempty
