@@ -14,3 +14,12 @@ class ForgivingManifestStaticFilesStorage(ManifestStaticFilesStorage):
     """Manifest storage tolerant of missing manifest entries."""
 
     manifest_strict = False
+
+    def hashed_name(self, name, content=None, filename=None):
+        # Keep PWA source file unhashed; the live link is /manifest.webmanifest.
+        # Avoids browsers requesting denied hashed ``manifest.*.json`` under /static/.
+        normalized = str(name or "").replace("\\", "/")
+        if normalized == "manifest.json" or normalized.endswith("/manifest.json"):
+            return name
+        return super().hashed_name(name, content=content, filename=filename)
+

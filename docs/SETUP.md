@@ -166,6 +166,9 @@ curl http://127.0.0.1:8000/api/version
 - Production uses **Django Manifest** static storage: after `collectstatic`,
   JS/CSS URLs include a content hash so browsers fetch new assets on deploy
   without users hard-reloading (no extra packages required).
+- The PWA manifest is served at **`/manifest.webmanifest`** (Django view), not
+  as hashed `/static/manifest.*.json`. Many VPS nginx configs deny public
+  `.json` under `/static/` (HTTP 403); the `.webmanifest` route avoids that.
 - Serve media via your web server or object storage as appropriate.
 - Run `python manage.py collectstatic --noinput` on every deploy
   (already in `scripts/deploy.example.sh`). Prefer no `--clear` so older
@@ -179,4 +182,5 @@ curl http://127.0.0.1:8000/api/version
 | MySQL access denied | Check `.env` DB credentials |
 | Redirect loop at login | Ensure at least one active `Company` exists |
 | Excel company mismatch | Match Excel `Company` column to `Company.excel_company_names` in admin |
-| Report shows old HTML | Use `/dashboards/<id>/ serve/?nocache=1` or re-upload |
+| Report shows old HTML | Use `/dashboards/<id>/serve/?nocache=1` or re-upload |
+| Console 403 on `manifest.*.json` | Redeploy: app now uses `/manifest.webmanifest`. Ensure nginx allows JS/CSS under `/static/` |

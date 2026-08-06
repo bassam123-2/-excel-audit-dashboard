@@ -26,6 +26,7 @@ from reports_app.dashboard_workflow import (
     return_published_dashboard_to_review,
     set_dashboard_viewers,
     submit_dashboard,
+    user_allowed_attachment_kinds,
     user_can_see_dashboard,
 )
 
@@ -140,8 +141,42 @@ class WorkflowV2Tests(TestCase):
         )
         self.assertEqual(added, {self.viewer.pk})
         self.assertEqual(removed, set())
-        self.assertTrue(
-            DashboardViewer.objects.filter(dashboard=dash, user=self.viewer).exists()
+        grant = DashboardViewer.objects.get(dashboard=dash, user=self.viewer)
+        self.assertEqual(grant.allowed_attachment_kinds, [])
+
+    def test_set_dashboard_viewers_with_attachment_kinds(self):
+        self.company.ensure_attachment_settings()
+        dash = self._dashboard(status=DashboardStatus.PUBLISHED)
+        set_dashboard_viewers(
+            dash,
+            [self.viewer.pk],
+            granted_by=self.assigner,
+            attachment_kinds_by_user={self.viewer.pk: ["deck", "highRisk"]},
+        )
+        grant = DashboardViewer.objects.get(dashboard=dash, user=self.viewer)
+        self.assertEqual(grant.allowed_attachment_kinds, ["deck", "highRisk"])
+
+    def test_user_allowed_attachment_kinds_roles(self):
+        self.company.ensure_attachment_settings()
+        dash = self._dashboard(status=DashboardStatus.PUBLISHED)
+        DashboardViewer.objects.create(
+            dashboard=dash,
+            user=self.viewer,
+            granted_by=self.assigner,
+            allowed_attachment_kinds=["deck"],
+        )
+        self.assertIsNone(
+            user_allowed_attachment_kinds(self.creator, dash, self.company)
+        )
+        self.assertIsNone(
+            user_allowed_attachment_kinds(self.reviewer, dash, self.company)
+        )
+        self.assertIsNone(
+            user_allowed_attachment_kinds(self.assigner, dash, self.company)
+        )
+        self.assertEqual(
+            user_allowed_attachment_kinds(self.viewer, dash, self.company),
+            {"deck"},
         )
 
     def test_can_manage_viewers_only_when_published(self):

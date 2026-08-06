@@ -293,7 +293,7 @@
     </style>
     <link rel="stylesheet" href="{% static 'css/app-layout.css' %}">
     <link rel="stylesheet" href="{% static 'css/dark-theme.css' %}">
-    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <link rel="manifest" href="{% url 'web_app_manifest' %}">
     <script>(function(){var t=document.documentElement.getAttribute("data-ui-theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");})();</script>
     {% block extra_head %}{% endblock %}
 </head>

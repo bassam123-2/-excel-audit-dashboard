@@ -123,12 +123,11 @@
             </div>
             {% endif %}
             {% if db.pk in manageable_viewer_dashboard_ids %}
-            <button type="button" class="btn btn-outline-primary btn-sm js-viewers-btn"
-                    data-viewers-url="{% url 'dashboard_viewers' db.pk %}"
-                    data-bs-toggle="modal" data-bs-target="#viewersModal"
-                    title="{{ ui.dv_btn }}" aria-label="{{ ui.dv_btn }}: {{ db.name }}">
+            <a href="{% url 'dashboard_viewers_manage' db.pk %}"
+               class="btn btn-outline-primary btn-sm"
+               title="{{ ui.dv_btn }}" aria-label="{{ ui.dv_btn }}: {{ db.name }}">
                 <i class="bi bi-people-fill"></i>
-            </button>
+            </a>
             {% endif %}
             {% if can_delete_dashboards and db.pk in deletable_dashboard_ids %}
             <form method="post" action="{% url 'dashboard_delete' db.pk %}" class="db-card-delete js-super-delete-form"
@@ -228,14 +227,9 @@
 </div>
 {% endif %}
 
-{% if manageable_viewer_dashboard_ids %}
-{% include "reports_app/_dashboard_viewers_modal.html" %}
-{% endif %}
-
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/dashboard_viewers.js' %}"></script>
 <script>
 (function () {
     function getCsrfToken() {
@@ -343,17 +337,6 @@
     });
 })();
 {% endif %}
-if (window.initDashboardViewersModal) {
-    window.initDashboardViewersModal({
-        modalId: 'viewersModal',
-        saveBtnId: 'viewersSaveBtn',
-        errorId: 'viewersError',
-        triggerSelector: '.js-viewers-btn',
-        emptyText: '{{ ui.dv_empty|escapejs }}',
-        errorText: '{{ ui.dv_error|escapejs }}',
-        csrfToken: '{{ csrf_token }}'
-    });
-}
 var inp = document.getElementById('dbSearch');
 if (inp) {
     inp.addEventListener('input', function () {

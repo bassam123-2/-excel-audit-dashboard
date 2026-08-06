@@ -18,6 +18,7 @@ from .views import (
     dashboard_submit,
     dashboard_user_edits,
     dashboard_viewers,
+    dashboard_viewers_manage,
     favicon,
     index,
 )
@@ -57,6 +58,11 @@ urlpatterns = [
     ),
     path("dashboards/<int:pk>/submit/", dashboard_submit, name="dashboard_submit"),
     path("dashboards/<int:pk>/viewers/", dashboard_viewers, name="dashboard_viewers"),
+    path(
+        "dashboards/<int:pk>/viewers/manage/",
+        dashboard_viewers_manage,
+        name="dashboard_viewers_manage",
+    ),
     path("dashboards/<int:pk>/api/user-edits/", dashboard_user_edits, name="dashboard_user_edits"),
     path("dashboards/<int:pk>/api/user-edits", dashboard_user_edits, name="dashboard_user_edits_noslash"),
     path(

@@ -33,7 +33,7 @@
 {% if user.is_authenticated and user.is_staff and not is_popup %}
 <link rel="stylesheet" href="{% static 'css/admin_delete_modal.css' %}">
 {% endif %}
-<link rel="manifest" href="{% static 'manifest.json' %}">
+<link rel="manifest" href="{% url 'web_app_manifest' %}">
 <script>(function(){var t="{{ ui_theme|default:'light'|escapejs }}";document.documentElement.setAttribute("data-ui-theme",t);if(t==="dark")document.documentElement.setAttribute("data-theme","dark");})();</script>
 
 {% endblock %}

@@ -637,6 +637,15 @@ class DashboardViewer(models.Model):
         verbose_name=_("Granted by"),
     )
     granted_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Granted at"))
+    allowed_attachment_kinds = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name=_("Allowed attachment kinds"),
+        help_text=_(
+            "Attachment kind codes this viewer may see on this dashboard "
+            "(e.g. deck, highRisk). Empty means no attachments."
+        ),
+    )
 
     class Meta:
         verbose_name = _("Dashboard viewer")

@@ -1,6 +1,8 @@
 """API tests for per-dashboard viewer assignment."""
 from __future__ import annotations
 
+import json
+
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 
@@ -19,6 +21,7 @@ class DashboardViewersApiTests(TestCase):
             code="BTC",
             defaults={"name": "BTC", "excel_company_names": ["BTC"]},
         )
+        self.company.ensure_attachment_settings()
         self.assigner = self._user("dv_assigner", "assigner@example.com")
         self.viewer = self._user("dv_viewer", "viewer@example.com")
         self.creator = self._user("dv_creator", "creator@example.com")
@@ -63,7 +66,33 @@ class DashboardViewersApiTests(TestCase):
         data = response.json()
         member_ids = {item["id"] for item in data["members"]}
         self.assertIn(self.viewer.pk, member_ids)
-        self.assertIn(self.creator.pk, member_ids)
+        # Creator / assigners already access published dashboards without a grant.
+        self.assertNotIn(self.creator.pk, member_ids)
+        self.assertNotIn(self.assigner.pk, member_ids)
+        self.assertIn("attachment_kind_options", data)
+        self.assertTrue(any(o["kind"] == "deck" for o in data["attachment_kind_options"]))
+
+    def test_get_viewers_excludes_superuser_and_reviewer(self):
+        superuser = self._user("dv_super", "super@example.com")
+        superuser.is_superuser = True
+        superuser.save(update_fields=["is_superuser"])
+        CompanyMembership.objects.create(user=superuser, company=self.company)
+
+        reviewer = self._user("dv_reviewer", "reviewer@example.com")
+        CompanyMembership.objects.create(
+            user=reviewer,
+            company=self.company,
+            can_review=True,
+        )
+
+        response = self.client.get(
+            f"/dashboards/{self.dashboard.pk}/viewers/",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        member_ids = {item["id"] for item in response.json()["members"]}
+        self.assertNotIn(superuser.pk, member_ids)
+        self.assertNotIn(reviewer.pk, member_ids)
+        self.assertIn(self.viewer.pk, member_ids)
 
     def test_post_viewers_saves_assignments(self):
         response = self.client.post(
@@ -72,12 +101,64 @@ class DashboardViewersApiTests(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(
-            DashboardViewer.objects.filter(
-                dashboard=self.dashboard,
-                user=self.viewer,
-            ).exists()
+        grant = DashboardViewer.objects.get(
+            dashboard=self.dashboard,
+            user=self.viewer,
         )
+        self.assertEqual(grant.allowed_attachment_kinds, [])
+
+    def test_post_assignments_with_attachment_kinds(self):
+        payload = json.dumps(
+            [
+                {
+                    "user_id": self.viewer.pk,
+                    "attachment_kinds": ["deck", "highRisk"],
+                }
+            ]
+        )
+        response = self.client.post(
+            f"/dashboards/{self.dashboard.pk}/viewers/",
+            data={"assignments": payload},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        grant = DashboardViewer.objects.get(
+            dashboard=self.dashboard,
+            user=self.viewer,
+        )
+        self.assertEqual(grant.allowed_attachment_kinds, ["deck", "highRisk"])
+
+        get_resp = self.client.get(
+            f"/dashboards/{self.dashboard.pk}/viewers/",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        member = next(
+            m for m in get_resp.json()["members"] if m["id"] == self.viewer.pk
+        )
+        self.assertTrue(member["assigned"])
+        self.assertEqual(member["attachment_kinds"], ["deck", "highRisk"])
+
+    def test_post_assignments_can_update_kinds(self):
+        DashboardViewer.objects.create(
+            dashboard=self.dashboard,
+            user=self.viewer,
+            granted_by=self.assigner,
+            allowed_attachment_kinds=["deck"],
+        )
+        payload = json.dumps(
+            [{"user_id": self.viewer.pk, "attachment_kinds": ["highRisk"]}]
+        )
+        response = self.client.post(
+            f"/dashboards/{self.dashboard.pk}/viewers/",
+            data={"assignments": payload},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        grant = DashboardViewer.objects.get(
+            dashboard=self.dashboard,
+            user=self.viewer,
+        )
+        self.assertEqual(grant.allowed_attachment_kinds, ["highRisk"])
 
     def test_forbidden_for_user_without_assign_perm(self):
         client = Client()

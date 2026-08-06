@@ -32,6 +32,8 @@ class ActiveCompanyMiddleware:
         "/theme/switch/",
         "/api/",
         "/favicon.ico",
+        "/robots.txt",
+        "/manifest.webmanifest",
     )
 
     def __init__(self, get_response):
