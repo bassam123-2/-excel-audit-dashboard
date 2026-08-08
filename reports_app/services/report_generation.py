@@ -477,11 +477,21 @@ def validate_dashboard_user_edits_payload(data: dict) -> dict:
     if reviews_note is not None and not isinstance(reviews_note, str):
         raise ValueError("invalid_reviews_note")
 
+    obs_tracking_out: list[list[str]] = []
+    for row in data.get("obsTrackingRows") or []:
+        if not isinstance(row, list):
+            continue
+        cells = [str(c if c is not None else "").strip() for c in row[:5]]
+        while len(cells) < 5:
+            cells.append("")
+        obs_tracking_out.append(cells)
+
     return {
         "v": 1,
         "planRows": plan_rows_out,
         "planCellBg": plan_bg_out,
         "reviewsNote": str(reviews_note or ""),
+        "obsTrackingRows": obs_tracking_out,
     }
 
 
