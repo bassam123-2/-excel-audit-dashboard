@@ -867,6 +867,34 @@ def _json_safe_cell(v: Any) -> Any:
     return str(v).strip()
 
 
+def _json_safe_year_cell(v: Any) -> Any:
+    """Normalize year/quarter year cells so Excel floats like 2024.0 become 2024."""
+    cell = _json_safe_cell(v)
+    if cell is None:
+        return None
+    if isinstance(cell, bool):
+        return cell
+    if isinstance(cell, numbers.Integral):
+        return int(cell)
+    if isinstance(cell, numbers.Real):
+        fv = float(cell)
+        if math.isnan(fv):
+            return None
+        if fv == int(fv) and 1900 <= int(fv) <= 2200:
+            return int(fv)
+        return fv
+    s = str(cell).strip()
+    if not s:
+        return None
+    try:
+        fv = float(s)
+        if fv == int(fv) and 1900 <= int(fv) <= 2200:
+            return int(fv)
+    except (TypeError, ValueError):
+        pass
+    return s
+
+
 def _json_safe_obs_date_cell(v: Any) -> Any:
     """Normalize observation date cells to ISO dates or Excel serials for aging."""
     if v is None:
@@ -1173,6 +1201,46 @@ def resolve_audit_observation_columns(df: pd.DataFrame) -> dict[str, str] | None
                 break
     if emailcol:
         out["email"] = emailcol
+    planned_year_col = pick(
+        ("planned closure year", "plannedclosure year", "planned closure yr")
+    )
+    if planned_year_col is None:
+        for na, actual in n2c.items():
+            if "planned" in na and "closure" in na and "year" in na and "quarter" not in na:
+                planned_year_col = actual
+                break
+    if planned_year_col:
+        out["planned_closure_year"] = planned_year_col
+    planned_q_col = pick(
+        ("planned closure quarter", "plannedclosure quarter", "planned closure q")
+    )
+    if planned_q_col is None:
+        for na, actual in n2c.items():
+            if "planned" in na and ("closure" in na or "plannedclosure" in na) and "quarter" in na:
+                planned_q_col = actual
+                break
+    if planned_q_col:
+        out["planned_closure_quarter"] = planned_q_col
+    actual_year_col = pick(
+        ("actual closure year", "actualclosure year", "actual closure yr")
+    )
+    if actual_year_col is None:
+        for na, actual in n2c.items():
+            if "actual" in na and "closure" in na and "year" in na and "quarter" not in na:
+                actual_year_col = actual
+                break
+    if actual_year_col:
+        out["actual_closure_year"] = actual_year_col
+    actual_q_col = pick(
+        ("actual closure quarter", "actualclosure quarter", "actual closure q")
+    )
+    if actual_q_col is None:
+        for na, actual in n2c.items():
+            if "actual" in na and "closure" in na and "quarter" in na:
+                actual_q_col = actual
+                break
+    if actual_q_col:
+        out["actual_closure_quarter"] = actual_q_col
     return out
 
 
@@ -1245,7 +1313,7 @@ def build_audit_observation_payload(
     for _, r in clip.iterrows():
         rec: dict[str, Any] = {
             "_idx": len(rows_out),
-            "y": _json_safe_cell(r[colmap["audit_year"]]),
+            "y": _json_safe_year_cell(r[colmap["audit_year"]]),
             "f": (
                 _json_safe_cell(r[colmap["function"]])
                 if "function" in colmap
@@ -1296,6 +1364,22 @@ def build_audit_observation_payload(
             rec["em"] = _json_safe_cell(r[colmap["email"]])
         else:
             rec["em"] = None
+        if "planned_closure_year" in colmap:
+            rec["py"] = _json_safe_year_cell(r[colmap["planned_closure_year"]])
+        else:
+            rec["py"] = None
+        if "planned_closure_quarter" in colmap:
+            rec["pq"] = _json_safe_cell(r[colmap["planned_closure_quarter"]])
+        else:
+            rec["pq"] = None
+        if "actual_closure_year" in colmap:
+            rec["ay"] = _json_safe_year_cell(r[colmap["actual_closure_year"]])
+        else:
+            rec["ay"] = None
+        if "actual_closure_quarter" in colmap:
+            rec["aq"] = _json_safe_cell(r[colmap["actual_closure_quarter"]])
+        else:
+            rec["aq"] = None
         rows_out.append(rec)
     loaded = len(clip)
     rating_types: list[dict[str, str]] = []
@@ -1318,6 +1402,10 @@ def build_audit_observation_payload(
         "has_revised_date": "revised_date" in colmap,
         "has_observation_id": "observation_id" in colmap,
         "has_email": "email" in colmap,
+        "has_planned_closure_year": "planned_closure_year" in colmap,
+        "has_planned_closure_quarter": "planned_closure_quarter" in colmap,
+        "has_actual_closure_year": "actual_closure_year" in colmap,
+        "has_actual_closure_quarter": "actual_closure_quarter" in colmap,
         "has_observation_type": has_observation_type,
         "has_function": "function" in colmap,
         "has_subcompany": "subcompany" in colmap,
@@ -1331,6 +1419,10 @@ def build_audit_observation_payload(
             "filterDimSelectAll": tr(loc, "audit_filter_dim_select_all"),
             "filterDimDeselectAll": tr(loc, "audit_filter_dim_deselect_all"),
             "auditYearsTitle": tr(loc, "audit_year_strip_title"),
+            "plannedClosureYearsTitle": tr(loc, "audit_planned_closure_year_strip_title"),
+            "actualClosureYearsTitle": tr(loc, "audit_actual_closure_year_strip_title"),
+            "boxPlannedYearsAria": tr(loc, "audit_box_planned_years_aria"),
+            "boxActualYearsAria": tr(loc, "audit_box_actual_years_aria"),
             "obsListHeading": tr(loc, "audit_obs_list_heading"),
             "obsListEmpty": tr(loc, "audit_obs_list_empty"),
             "iaStatusTpl": tr(loc, "audit_ia_status_tpl"),
@@ -1355,6 +1447,7 @@ def build_audit_observation_payload(
             "boxObsTypeAria": tr(loc, "audit_box_obs_type_aria"),
             "boxYearsAria": tr(loc, "audit_box_years_aria"),
             "ratingTypesTotal": tr(loc, "audit_rating_types_total"),
+            "stripTotalResetHint": tr(loc, "audit_strip_total_reset_hint"),
             "obsTypeClickHint": tr(loc, "audit_obs_type_click_hint"),
             "obsNamesToggleHint": tr(loc, "audit_obs_names_toggle_hint"),
             "obsShowNamesCheckboxAria": tr(loc, "audit_obs_show_names_checkbox_aria"),
@@ -1424,6 +1517,13 @@ def build_audit_observation_payload(
             "agingDrillBack": tr(loc, "audit_aging_drill_back"),
             "blockDrillTitleTpl": tr(loc, "audit_block_drill_title_tpl"),
             "blockDrillHint": tr(loc, "audit_block_drill_hint"),
+            "plannedQuarterDrillTitleTpl": tr(loc, "audit_planned_quarter_drill_title_tpl"),
+            "actualQuarterDrillTitleTpl": tr(loc, "audit_actual_quarter_drill_title_tpl"),
+            "quarterQ1Label": tr(loc, "audit_quarter_q1"),
+            "quarterQ2Label": tr(loc, "audit_quarter_q2"),
+            "quarterQ3Label": tr(loc, "audit_quarter_q3"),
+            "quarterQ4Label": tr(loc, "audit_quarter_q4"),
+            "quarterOtherLabel": tr(loc, "audit_quarter_other"),
             "agingTitleAsOfTpl": tr(loc, "audit_aging_title_as_of_tpl"),
             "agingMatrixHint": tr(loc, "audit_aging_matrix_hint"),
             "agingRevisedToggleLabel": tr(loc, "audit_aging_revised_toggle_label"),
@@ -5209,6 +5309,54 @@ def generate_finance_report(
     .audit-aging-drill-rating.audit-aging-th-high {{ background: rgba(255,51,0,0.86); color:#fff; }}
     .audit-aging-drill-rating.audit-aging-th-medium {{ background: rgba(255,192,0,0.9); color:#111827; }}
     .audit-aging-drill-rating.audit-aging-th-low {{ background: rgba(112,173,71,0.88); color:#fff; }}
+    .audit-aging-drill-quarter-wrap {{
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }}
+    .audit-aging-drill-quarter-block {{
+      border: 1px solid rgba(147, 197, 253, 0.55);
+      border-radius: 10px;
+      overflow: hidden;
+      background: rgba(239, 246, 255, 0.55);
+    }}
+    .audit-aging-drill-quarter-head {{
+      margin: 0;
+      padding: 0.45rem 0.75rem;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #0f172a;
+      background: linear-gradient(90deg, rgba(191, 219, 254, 0.95), rgba(226, 232, 240, 0.9));
+      border-bottom: 1px solid rgba(147, 197, 253, 0.55);
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }}
+    .audit-aging-drill-quarter-count {{
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: none;
+      color: #1e3a8a;
+    }}
+    .audit-aging-drill-quarter-block .audit-aging-drill-table {{
+      margin: 0;
+      width: 100%;
+    }}
+    .audit-aging-drill-quarter-block .audit-aging-drill-table thead th {{
+      background: rgba(219, 234, 254, 0.92);
+      color: #0f172a;
+    }}
+    .audit-aging-drill-quarter-block .audit-aging-drill-table thead th.audit-aging-th-high {{
+      background: rgba(255, 51, 0, 0.9);
+      color: #fff;
+    }}
+    .audit-aging-drill-quarter-block .audit-aging-drill-table tbody td {{
+      background: rgba(239, 246, 255, 0.72);
+    }}
     .audit-aging-drill-empty {{
       margin: 0.75rem 0 0;
       text-align: center;
@@ -5559,6 +5707,19 @@ def generate_finance_report(
       font-weight: 700;
       font-size: 0.75rem;
       color: var(--total-box-text);
+    }}
+    button.audit-rating-total-pill {{
+      font-family: inherit;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+    }}
+    button.audit-rating-total-pill:hover {{
+      filter: brightness(1.08);
+    }}
+    button.audit-rating-total-pill:focus-visible {{
+      outline: 2px solid rgba(56, 189, 248, 0.75);
+      outline-offset: -2px;
     }}
     .audit-rating-total-pill .audit-rating-total-n {{
       font-variant-numeric: tabular-nums;
@@ -6336,6 +6497,12 @@ def generate_finance_report(
     <a href="#segment">{html.escape(tr(loc, "nav_segment"))}</a>
     <a href="#trend">{html.escape(tr(loc, "nav_trend"))}</a>
     <a href="#corr">{html.escape(tr(loc, "nav_corr"))}</a>
+    <span class="nav-actions">
+      <label class="nav-download-html-lbl" title="{html.escape(tr(loc, "nav_download_title"))}">
+        <input type="checkbox" id="save-report-html-cb" aria-label="{html.escape(tr(loc, "nav_download_title"))}" />
+        <span>{html.escape(tr(loc, "nav_download_html"))}</span>
+      </label>
+    </span>
   </nav>
   <main class="shell">
     <section class="audit-pie-section" id="audit-pie-section" style="display: {audit_obs_root_display};" aria-label="{html.escape(tr(loc, "audit_pie_section_aria"))}">
@@ -6400,6 +6567,14 @@ def generate_finance_report(
             <p class="audit-strip-row-heading">{html.escape(tr(loc, "audit_year_strip_title"))}</p>
             <div class="audit-rating-btns audit-rating-row" id="audit-year-btns"></div>
           </div>
+          <div class="audit-ratings-deck audit-box audit-box-years" id="audit-box-planned-years" aria-label="{html.escape(tr(loc, "audit_box_planned_years_aria"))}" style="display:none">
+            <p class="audit-strip-row-heading">{html.escape(tr(loc, "audit_planned_closure_year_strip_title"))}</p>
+            <div class="audit-rating-btns audit-rating-row" id="audit-planned-year-btns"></div>
+          </div>
+          <div class="audit-ratings-deck audit-box audit-box-years" id="audit-box-actual-years" aria-label="{html.escape(tr(loc, "audit_box_actual_years_aria"))}" style="display:none">
+            <p class="audit-strip-row-heading">{html.escape(tr(loc, "audit_actual_closure_year_strip_title"))}</p>
+            <div class="audit-rating-btns audit-rating-row" id="audit-actual-year-btns"></div>
+          </div>
           <div class="audit-dashboard-toggles">
             <div class="audit-dashboard-toggles-checks">
             <label class="audit-obs-aging-toggle">
@@ -6421,6 +6596,10 @@ def generate_finance_report(
             <label class="audit-obs-aging-toggle">
               <input type="checkbox" id="audit-reviews-cb" />
               <span id="audit-reviews-label"></span>
+            </label>
+            <label class="audit-obs-aging-toggle" title="{html.escape(tr(loc, "nav_download_title"))}">
+              <input type="checkbox" id="save-report-html-cb-audit" aria-label="{html.escape(tr(loc, "nav_download_title"))}" />
+              <span>{html.escape(tr(loc, "audit_top_html_download_label"))}</span>
             </label>
             </div>
             <label class="audit-obs-revdate-lbl" id="audit-obs-revised-date-wrap" style="display:none">
@@ -6627,6 +6806,7 @@ def generate_finance_report(
             <thead id="audit-aging-drill-head"></thead>
             <tbody id="audit-aging-drill-body"></tbody>
           </table>
+          <div class="audit-aging-drill-quarter-wrap" id="audit-aging-drill-quarter-host" hidden></div>
           <p class="audit-aging-drill-empty" id="audit-aging-drill-empty" hidden></p>
         </div>
       </div>
@@ -7658,6 +7838,8 @@ def generate_finance_report(
       const agingDrillHead = document.getElementById("audit-aging-drill-head");
       const agingDrillBody = document.getElementById("audit-aging-drill-body");
       const agingDrillEmpty = document.getElementById("audit-aging-drill-empty");
+      const agingDrillTable = document.getElementById("audit-aging-drill-table");
+      const agingDrillQuarterHost = document.getElementById("audit-aging-drill-quarter-host");
       if (agingDrillBack) {{
         agingDrillBack.textContent = ui.agingDrillBack || "Back to aging summary";
       }}
@@ -8360,6 +8542,8 @@ def generate_finance_report(
       let activeIaLabels = new Set();
       let brandCompanyFilterReopen = false;
       let activeAuditYears = new Set();
+      let activePlannedYears = new Set();
+      let activeActualYears = new Set();
       let activeRatingValues = new Set();
       let activeObsTypeLabels = new Set();
       let obsCheckedIds = null;
@@ -8369,6 +8553,12 @@ def generate_finance_report(
       let obsTypeOrderResolved = null;
       const yearBtnHost = document.getElementById("audit-year-btns");
       const yearBox = document.getElementById("audit-box-years");
+      const plannedYearBtnHost = document.getElementById("audit-planned-year-btns");
+      const plannedYearBox = document.getElementById("audit-box-planned-years");
+      const actualYearBtnHost = document.getElementById("audit-actual-year-btns");
+      const actualYearBox = document.getElementById("audit-box-actual-years");
+      const hasPlannedClosureYear = !!AO.has_planned_closure_year;
+      const hasActualClosureYear = !!AO.has_actual_closure_year;
       const obsTypeBtnHost = document.getElementById("audit-obs-type-btns");
       const obsBarTitle = document.getElementById("audit-obs-bar-title");
       const obsBarMeta = document.getElementById("audit-obs-bar-meta");
@@ -8690,6 +8880,11 @@ def generate_finance_report(
       }}
       function renderAgingDrillList(rows) {{
         if (!agingDrillHead || !agingDrillBody) return;
+        if (agingDrillTable) agingDrillTable.style.display = "";
+        if (agingDrillQuarterHost) {{
+          agingDrillQuarterHost.hidden = true;
+          agingDrillQuarterHost.innerHTML = "";
+        }}
         const obsLabel = ui.agingColObservation || "Observation";
         const riskLabel = ui.obsDetailRating || "Risk rating";
         const deptLabel = ui.obsDepartmentLabel || "Department";
@@ -8709,36 +8904,114 @@ def generate_finance_report(
           agingDrillEmpty.textContent = list.length ? "" : (ui.agingDrillEmpty || "No observations match this cell.");
         }}
         list.forEach(function (row) {{
-          const tr = document.createElement("tr");
-          tr.className = "audit-aging-drill-row";
-          tr.title = ui.obsDetailOpenHint || "View details";
-          const tdName = document.createElement("td");
-          tdName.textContent = row.obs == null ? emptyMark : String(row.obs);
-          tr.appendChild(tdName);
-          const tdRisk = document.createElement("td");
-          const riskBadge = document.createElement("span");
-          const ratingTxt = formatObsRowRating(row);
-          riskBadge.className = "audit-aging-drill-rating audit-aging-th-" + ratingClassKey(ffCellKey(row.rt) || ratingTxt);
-          riskBadge.textContent = ratingTxt;
-          tdRisk.appendChild(riskBadge);
-          tr.appendChild(tdRisk);
-          const tdDept = document.createElement("td");
-          const deptTxt = ffCellKey(row.d) || ffCellKey(row.c);
-          tdDept.textContent = deptTxt || emptyMark;
-          tr.appendChild(tdDept);
-          tr.addEventListener("click", function () {{
-            openAuditObsDetail(row, true);
-          }});
-          tr.addEventListener("keydown", function (ev) {{
-            if (ev.key === "Enter" || ev.key === " ") {{
-              ev.preventDefault();
-              openAuditObsDetail(row, true);
-            }}
-          }});
-          tr.setAttribute("tabindex", "0");
-          tr.setAttribute("role", "button");
-          agingDrillBody.appendChild(tr);
+          appendAgingDrillDataRow(agingDrillBody, row);
         }});
+      }}
+      function normalizeQuarterBucket(raw) {{
+        const s = String(raw == null ? "" : raw).trim().toUpperCase().replace(/\\s+/g, "");
+        if (!s) return "";
+        if (s === "Q1" || s === "1" || s === "QUARTER1" || s.indexOf("Q1") === 0) return "Q1";
+        if (s === "Q2" || s === "2" || s === "QUARTER2" || s.indexOf("Q2") === 0) return "Q2";
+        if (s === "Q3" || s === "3" || s === "QUARTER3" || s.indexOf("Q3") === 0) return "Q3";
+        if (s === "Q4" || s === "4" || s === "QUARTER4" || s.indexOf("Q4") === 0) return "Q4";
+        const m = s.match(/Q\\s*([1-4])/);
+        if (m) return "Q" + m[1];
+        return "";
+      }}
+      function appendAgingDrillDataRow(tbody, row) {{
+        const tr = document.createElement("tr");
+        tr.className = "audit-aging-drill-row";
+        tr.title = ui.obsDetailOpenHint || "View details";
+        const tdName = document.createElement("td");
+        tdName.textContent = row.obs == null ? emptyMark : String(row.obs);
+        tr.appendChild(tdName);
+        const tdRisk = document.createElement("td");
+        const riskBadge = document.createElement("span");
+        const ratingTxt = formatObsRowRating(row);
+        riskBadge.className = "audit-aging-drill-rating audit-aging-th-" + ratingClassKey(ffCellKey(row.rt) || ratingTxt);
+        riskBadge.textContent = ratingTxt;
+        tdRisk.appendChild(riskBadge);
+        tr.appendChild(tdRisk);
+        const tdDept = document.createElement("td");
+        const deptTxt = ffCellKey(row.d) || ffCellKey(row.c);
+        tdDept.textContent = deptTxt || emptyMark;
+        tr.appendChild(tdDept);
+        tr.addEventListener("click", function () {{
+          openAuditObsDetail(row, true);
+        }});
+        tr.addEventListener("keydown", function (ev) {{
+          if (ev.key === "Enter" || ev.key === " ") {{
+            ev.preventDefault();
+            openAuditObsDetail(row, true);
+          }}
+        }});
+        tr.setAttribute("tabindex", "0");
+        tr.setAttribute("role", "button");
+        tbody.appendChild(tr);
+      }}
+      function renderQuarterSplitDrillList(rows, quarterField) {{
+        if (!agingDrillQuarterHost) {{
+          renderAgingDrillList(rows);
+          return;
+        }}
+        if (agingDrillTable) agingDrillTable.style.display = "none";
+        if (agingDrillHead) agingDrillHead.innerHTML = "";
+        if (agingDrillBody) agingDrillBody.innerHTML = "";
+        agingDrillQuarterHost.hidden = false;
+        agingDrillQuarterHost.innerHTML = "";
+        const list = dedupeAgingDrillRows(rows || []);
+        const buckets = {{ Q1: [], Q2: [], Q3: [], Q4: [], other: [] }};
+        list.forEach(function (row) {{
+          const q = normalizeQuarterBucket(row[quarterField]);
+          if (q && buckets[q]) buckets[q].push(row);
+          else buckets.other.push(row);
+        }});
+        const order = ["Q1", "Q2", "Q3", "Q4"];
+        if (buckets.other.length) order.push("other");
+        const obsLabel = ui.agingColObservation || "Observation";
+        const riskLabel = ui.obsDetailRating || "Risk rating";
+        const deptLabel = ui.obsDepartmentLabel || "Department";
+        let shown = 0;
+        order.forEach(function (key) {{
+          const group = buckets[key] || [];
+          if (!group.length) return;
+          shown += group.length;
+          const block = document.createElement("section");
+          block.className = "audit-aging-drill-quarter-block";
+          const head = document.createElement("h4");
+          head.className = "audit-aging-drill-quarter-head";
+          const titleSp = document.createElement("span");
+          titleSp.textContent = key === "other"
+            ? (ui.quarterOtherLabel || "Other / blank")
+            : (ui["quarter" + key + "Label"] || key);
+          const countSp = document.createElement("span");
+          countSp.className = "audit-aging-drill-quarter-count";
+          countSp.textContent = String(group.length);
+          head.appendChild(titleSp);
+          head.appendChild(countSp);
+          block.appendChild(head);
+          const table = document.createElement("table");
+          table.className = "audit-aging-table audit-aging-drill-table";
+          const thead = document.createElement("thead");
+          const trh = document.createElement("tr");
+          [obsLabel, riskLabel, deptLabel].forEach(function (lbl, idx) {{
+            const th = document.createElement("th");
+            th.textContent = lbl;
+            if (idx === 1) th.className = "audit-aging-th-high";
+            trh.appendChild(th);
+          }});
+          thead.appendChild(trh);
+          table.appendChild(thead);
+          const tbody = document.createElement("tbody");
+          group.forEach(function (row) {{ appendAgingDrillDataRow(tbody, row); }});
+          table.appendChild(tbody);
+          block.appendChild(table);
+          agingDrillQuarterHost.appendChild(block);
+        }});
+        if (agingDrillEmpty) {{
+          agingDrillEmpty.hidden = shown > 0;
+          agingDrillEmpty.textContent = shown ? "" : (ui.agingDrillEmpty || "No observations match this cell.");
+        }}
       }}
       function closeAgingDrillDown() {{
         if (agingDrillBackdrop) {{
@@ -8749,6 +9022,11 @@ def generate_finance_report(
           agingDrillPanel.style.display = "none";
           agingDrillPanel.setAttribute("aria-hidden", "true");
         }}
+        if (agingDrillQuarterHost) {{
+          agingDrillQuarterHost.hidden = true;
+          agingDrillQuarterHost.innerHTML = "";
+        }}
+        if (agingDrillTable) agingDrillTable.style.display = "";
         lastBlockDrillKey = null;
       }}
       function isObsListDrillOpen() {{
@@ -8808,20 +9086,74 @@ def generate_finance_report(
             return yk !== "" && activeAuditYears.has(yk);
           }});
         }}
+        if (kind === "plannedYear") {{
+          rows = rows.filter(function (r) {{ return ffCellKey(r.py) === value; }});
+        }} else if (activePlannedYears.size > 0) {{
+          rows = rows.filter(function (r) {{
+            const yk = ffCellKey(r.py);
+            return yk !== "" && activePlannedYears.has(yk);
+          }});
+        }}
+        if (kind === "actualYear") {{
+          rows = rows.filter(function (r) {{ return ffCellKey(r.ay) === value; }});
+        }} else if (activeActualYears.size > 0) {{
+          rows = rows.filter(function (r) {{
+            const yk = ffCellKey(r.ay);
+            return yk !== "" && activeActualYears.has(yk);
+          }});
+        }}
+        // Closure-year drills must include Closed rows (strip counts include them).
+        // Planned/actual year blocks are about closure timing, not open-item follow-up.
         const closedKey = normAuditColorKey(value);
-        if (!(kind === "ia" && closedKey === "closed")) {{
+        const keepClosed =
+          (kind === "ia" && closedKey === "closed") ||
+          kind === "plannedYear" ||
+          kind === "actualYear";
+        if (!keepClosed) {{
           rows = rows.filter(function (r) {{ return !rowIsClosedIa(r, bl); }});
         }}
         return rows;
       }}
-      function openObsListDrillDown(rows, title) {{
+      /** Same row universe as the Planned/Actual year strip counts (keeps popup in sync). */
+      function collectClosureYearStripRows(field, yearValue, kind) {{
+        let rows = aoRowsForYearStrip()
+          .filter(function (r) {{ return rowInIaSelection(r, blankLabel); }})
+          .filter(function (r) {{ return rowMatchesRatingSelection(r); }})
+          .filter(function (r) {{ return rowMatchesObsTypeSelection(r, blankLabel); }});
+        if (kind !== "year" && activeAuditYears.size > 0) {{
+          rows = rows.filter(function (r) {{
+            const yk = ffCellKey(r.y);
+            return yk !== "" && activeAuditYears.has(yk);
+          }});
+        }}
+        if (kind !== "plannedYear" && activePlannedYears.size > 0) {{
+          rows = rows.filter(function (r) {{
+            const yk = ffCellKey(r.py);
+            return yk !== "" && activePlannedYears.has(yk);
+          }});
+        }}
+        if (kind !== "actualYear" && activeActualYears.size > 0) {{
+          rows = rows.filter(function (r) {{
+            const yk = ffCellKey(r.ay);
+            return yk !== "" && activeActualYears.has(yk);
+          }});
+        }}
+        const want = String(yearValue == null ? "" : yearValue);
+        return rows.filter(function (r) {{ return ffCellKey(r[field]) === want; }});
+      }}
+      function openObsListDrillDown(rows, title, opts) {{
         if (!agingDrillPanel || !agingDrillBackdrop) return;
+        opts = opts || {{}};
         syncAgingDrillBackVisibility(false);
         if (agingDrillTitle) {{
           const tpl = ui.blockDrillTitleTpl || "{{label}}";
           agingDrillTitle.textContent = tpl.split("{{label}}").join(String(title || ""));
         }}
-        renderAgingDrillList(rows || []);
+        if (opts.quarterField) {{
+          renderQuarterSplitDrillList(rows || [], opts.quarterField);
+        }} else {{
+          renderAgingDrillList(rows || []);
+        }}
         agingDrillBackdrop.style.display = "block";
         agingDrillBackdrop.setAttribute("aria-hidden", "false");
         agingDrillPanel.style.display = "block";
@@ -8847,7 +9179,23 @@ def generate_finance_report(
           return;
         }}
         lastBlockDrillKey = drillKey;
-        openObsListDrillDown(collectMetricBlockRows(kind, key), displayLabel || key);
+        let rows;
+        let title = displayLabel || key;
+        const drillOpts = {{}};
+        if (kind === "plannedYear") {{
+          const tpl = ui.plannedQuarterDrillTitleTpl || "Planned Closure Year {{year}}";
+          title = tpl.split("{{year}}").join(String(key));
+          drillOpts.quarterField = "pq";
+          rows = collectClosureYearStripRows("py", key, kind);
+        }} else if (kind === "actualYear") {{
+          const tpl = ui.actualQuarterDrillTitleTpl || "Actual Closure Year {{year}}";
+          title = tpl.split("{{year}}").join(String(key));
+          drillOpts.quarterField = "aq";
+          rows = collectClosureYearStripRows("ay", key, kind);
+        }} else {{
+          rows = collectMetricBlockRows(kind, key);
+        }}
+        openObsListDrillDown(rows, title, drillOpts);
       }}
       function computeAgingMatrixRows(rows) {{
         const cfg = agingMatrixBucketConfig();
@@ -12526,6 +12874,18 @@ def generate_finance_report(
             return activeAuditYears.has(yl);
           }});
         }}
+        if (activePlannedYears.size > 0) {{
+          out = out.filter(function (r) {{
+            const yk = ffCellKey(r.py);
+            return yk !== "" && activePlannedYears.has(yk);
+          }});
+        }}
+        if (activeActualYears.size > 0) {{
+          out = out.filter(function (r) {{
+            const yk = ffCellKey(r.ay);
+            return yk !== "" && activeActualYears.has(yk);
+          }});
+        }}
         return out;
       }}
 
@@ -12729,22 +13089,36 @@ def generate_finance_report(
         if (idx < 0) idx = Math.max(0, orderedKeys.indexOf(label));
         return obsTypeGradientAt(idx >= 0 ? idx : 0, n);
       }}
-      /** Gray gradient for Audit Year (earliest year = lightest, latest = darkest). */
-      function auditYearGradientAt(i, n) {{
-        if (n <= 0) return h(220, 6, 32, 0.94);
+      /** Colored year-strip gradients (earliest = lightest, latest = darkest). */
+      function yearStripGradientAt(i, n, hue, sat0, sat1, light0, light1) {{
+        if (n <= 0) return h(hue || 220, sat1 || 42, light1 || 32, 0.96);
         const t = n === 1 ? 0 : i / (n - 1);
-        const sat = 5 + t * 4;
-        const light = 88 - t * 56;
-        return h(220, sat, light, 0.94);
+        const sat = (sat0 == null ? 28 : sat0) + t * ((sat1 == null ? 48 : sat1) - (sat0 == null ? 28 : sat0));
+        const light = (light0 == null ? 86 : light0) - t * ((light0 == null ? 86 : light0) - (light1 == null ? 34 : light1));
+        return h(hue || 220, sat, light, 0.96);
       }}
-      function auditYearGradientColor(label, orderedYearKeys) {{
+      function yearStripGradientColor(label, orderedYearKeys, hue, sat0, sat1, light0, light1) {{
         const keys = orderedYearKeys.slice().sort(function (a, b) {{
           return String(a).localeCompare(String(b), undefined, {{ numeric: true, sensitivity: "base" }});
         }});
         const n = keys.length;
         const idx = keys.indexOf(label);
         const i = idx >= 0 ? idx : 0;
-        return auditYearGradientAt(i, n);
+        return yearStripGradientAt(i, n, hue, sat0, sat1, light0, light1);
+      }}
+      function auditYearGradientAt(i, n) {{
+        return yearStripGradientAt(i, n, 220, 5, 9, 88, 32);
+      }}
+      function auditYearGradientColor(label, orderedYearKeys) {{
+        return yearStripGradientColor(label, orderedYearKeys, 220, 5, 9, 88, 32);
+      }}
+      function plannedYearGradientColor(label, orderedYearKeys) {{
+        // Teal / cyan — distinct from audit-year gray and actual indigo
+        return yearStripGradientColor(label, orderedYearKeys, 174, 32, 58, 88, 30);
+      }}
+      function actualYearGradientColor(label, orderedYearKeys) {{
+        // Brown — light tan → deep chocolate
+        return yearStripGradientColor(label, orderedYearKeys, 28, 28, 52, 88, 28);
       }}
       function auditMetricFillFromColor(colorCss) {{
         const raw = String(colorCss || "").trim();
@@ -13036,7 +13410,8 @@ def generate_finance_report(
           }});
           if (ui.blockDrillHint) b.title = ui.blockDrillHint;
         }});
-        const totRg = document.createElement("div");
+        const totRg = document.createElement("button");
+        totRg.type = "button";
         totRg.id = "audit-rating-total-row";
         totRg.className = "audit-rating-total-pill";
         const tlb = document.createElement("span");
@@ -13045,6 +13420,17 @@ def generate_finance_report(
         tnum.className = "audit-rating-total-n";
         totRg.appendChild(tlb);
         totRg.appendChild(tnum);
+        totRg.title = ui.stripTotalResetHint || "Clear this filter only";
+        totRg.setAttribute("aria-label", ui.stripTotalResetHint || "Clear this filter only");
+        totRg.addEventListener("click", function () {{
+          if (activeRatingValues.size === 0) return;
+          activeRatingValues.clear();
+          if (isObsListDrillOpen() && lastBlockDrillKey && String(lastBlockDrillKey).indexOf("rating:") === 0) {{
+            closeAgingDrillDown();
+          }}
+          obsCheckedIds = null;
+          aoRefresh();
+        }});
         ratingBtnHost.appendChild(totRg);
       }}
 
@@ -13443,6 +13829,18 @@ def generate_finance_report(
             return activeAuditYears.has(yl);
           }});
         }}
+        if (activePlannedYears.size > 0) {{
+          out = out.filter(function (r) {{
+            const yk = ffCellKey(r.py);
+            return yk !== "" && activePlannedYears.has(yk);
+          }});
+        }}
+        if (activeActualYears.size > 0) {{
+          out = out.filter(function (r) {{
+            const yk = ffCellKey(r.ay);
+            return yk !== "" && activeActualYears.has(yk);
+          }});
+        }}
         out = out
           .filter(function (r) {{ return rowInIaSelection(r, blankLabel); }})
           .filter(function (r) {{ return rowMatchesRatingSelection(r); }})
@@ -13493,79 +13891,155 @@ def generate_finance_report(
         }});
       }}
 
-      function aoRefresh() {{
-        syncAuditDimFilterOptions();
+      function renderYearMetricStrip(opts) {{
+        const host = opts.host;
+        const box = opts.box;
+        const field = opts.field;
+        const activeSet = opts.activeSet;
+        const kind = opts.kind;
+        const colorFn = opts.colorFn;
+        const totalId = opts.totalId;
+        const enabled = opts.enabled !== false;
+        if (!host || !box) return activeSet;
+        host.innerHTML = "";
+        if (!enabled) {{
+          box.style.display = "none";
+          activeSet.clear();
+          return activeSet;
+        }}
         const yearRowsBase = aoRowsForYearStrip();
         const yearKeysSet = {{}};
         for (let i = 0; i < yearRowsBase.length; i++) {{
-          const yk0 = ffCellKey(yearRowsBase[i].y);
+          const yk0 = ffCellKey(yearRowsBase[i][field]);
           if (yk0 === "") continue;
           yearKeysSet[yk0] = true;
         }}
         const yearKeys = Object.keys(yearKeysSet).sort(function (a, b) {{
           return String(a).localeCompare(String(b), undefined, {{ numeric: true, sensitivity: "base" }});
         }});
-        // Same downstream filters as the audit-year pie so every year block + Total stay live.
-        const yearRows = yearRowsBase
+        let yearRows = yearRowsBase
           .filter(function (r) {{ return rowInIaSelection(r, blankLabel); }})
           .filter(function (r) {{ return rowMatchesRatingSelection(r); }})
           .filter(function (r) {{ return rowMatchesObsTypeSelection(r, blankLabel); }});
+        if (kind !== "year" && activeAuditYears.size > 0) {{
+          yearRows = yearRows.filter(function (r) {{
+            const yk = ffCellKey(r.y);
+            return yk !== "" && activeAuditYears.has(yk);
+          }});
+        }}
+        if (kind !== "plannedYear" && activePlannedYears.size > 0) {{
+          yearRows = yearRows.filter(function (r) {{
+            const yk = ffCellKey(r.py);
+            return yk !== "" && activePlannedYears.has(yk);
+          }});
+        }}
+        if (kind !== "actualYear" && activeActualYears.size > 0) {{
+          yearRows = yearRows.filter(function (r) {{
+            const yk = ffCellKey(r.ay);
+            return yk !== "" && activeActualYears.has(yk);
+          }});
+        }}
         const yearCounts = {{}};
         for (let i = 0; i < yearRows.length; i++) {{
-          const yk = ffCellKey(yearRows[i].y);
+          const yk = ffCellKey(yearRows[i][field]);
           if (yk === "") continue;
           yearCounts[yk] = (yearCounts[yk] || 0) + 1;
         }}
-        if (activeAuditYears.size > 0) {{
+        let nextActive = activeSet;
+        if (activeSet.size > 0) {{
           const ykOk = new Set(yearKeys);
-          activeAuditYears = new Set(Array.from(activeAuditYears).filter(function (y) {{ return ykOk.has(y); }}));
+          nextActive = new Set(Array.from(activeSet).filter(function (y) {{ return ykOk.has(y); }}));
         }}
-        if (yearBtnHost && yearBox) {{
-          yearBtnHost.innerHTML = "";
-          if (!yearKeys.length) {{
-            yearBox.style.display = "none";
-          }} else {{
-            yearBox.style.display = "";
-            yearKeys.forEach(function (yk, yi) {{
-              const yb = document.createElement("button");
-              yb.type = "button";
-              yb.className = "audit-rating-btn";
-              yb.setAttribute("data-audit-year", yk);
-              const yrCol = auditYearGradientColor(yk, yearKeys);
-              applyFlatMetricSurface(yb, yrCol);
-              yb.style.boxShadow = "none";
-              const yLabSp = document.createElement("span");
-              yLabSp.className = "audit-rating-lbl";
-              const yNumSp = document.createElement("span");
-              yNumSp.className = "audit-rating-n";
-              yLabSp.textContent = yk;
-              yNumSp.textContent = String(yearCounts[yk] || 0);
-              yb.appendChild(yLabSp);
-              yb.appendChild(yNumSp);
-              yb.setAttribute("aria-pressed", activeAuditYears.has(yk) ? "true" : "false");
-              yb.classList.toggle("audit-rating-active", activeAuditYears.has(yk));
-              yb.addEventListener("click", function () {{
-                handleMetricBlockClick(activeAuditYears, yk, "year", yk);
-              }});
-              if (ui.blockDrillHint) yb.title = ui.blockDrillHint;
-              yearBtnHost.appendChild(yb);
-            }});
-            const totYr = document.createElement("div");
-            totYr.id = "audit-year-total-row";
-            totYr.className = "audit-rating-total-pill";
-            const tly = document.createElement("span");
-            tly.className = "audit-rating-total-lbl";
-            const tny = document.createElement("span");
-            tny.className = "audit-rating-total-n";
-            tly.textContent = ui.ratingTypesTotal || "Total";
-            tny.textContent = String(
-              yearKeys.reduce(function (sum, k) {{ return sum + (yearCounts[k] || 0); }}, 0)
-            );
-            totYr.appendChild(tly);
-            totYr.appendChild(tny);
-            yearBtnHost.appendChild(totYr);
+        if (!yearKeys.length) {{
+          box.style.display = "none";
+          return nextActive;
+        }}
+        box.style.display = "";
+        yearKeys.forEach(function (yk) {{
+          const yb = document.createElement("button");
+          yb.type = "button";
+          yb.className = "audit-rating-btn";
+          yb.setAttribute("data-year-value", yk);
+          const yrCol = colorFn(yk, yearKeys);
+          applyFlatMetricSurface(yb, yrCol);
+          yb.style.boxShadow = "none";
+          const yLabSp = document.createElement("span");
+          yLabSp.className = "audit-rating-lbl";
+          const yNumSp = document.createElement("span");
+          yNumSp.className = "audit-rating-n";
+          yLabSp.textContent = yk;
+          yNumSp.textContent = String(yearCounts[yk] || 0);
+          yb.appendChild(yLabSp);
+          yb.appendChild(yNumSp);
+          yb.setAttribute("aria-pressed", nextActive.has(yk) ? "true" : "false");
+          yb.classList.toggle("audit-rating-active", nextActive.has(yk));
+          yb.addEventListener("click", function () {{
+            handleMetricBlockClick(nextActive, yk, kind, yk);
+          }});
+          if (ui.blockDrillHint) yb.title = ui.blockDrillHint;
+          host.appendChild(yb);
+        }});
+        const totYr = document.createElement("button");
+        totYr.type = "button";
+        totYr.id = totalId;
+        totYr.className = "audit-rating-total-pill";
+        const tly = document.createElement("span");
+        tly.className = "audit-rating-total-lbl";
+        const tny = document.createElement("span");
+        tny.className = "audit-rating-total-n";
+        tly.textContent = ui.ratingTypesTotal || "Total";
+        tny.textContent = String(
+          yearKeys.reduce(function (sum, k) {{ return sum + (yearCounts[k] || 0); }}, 0)
+        );
+        totYr.appendChild(tly);
+        totYr.appendChild(tny);
+        totYr.title = ui.stripTotalResetHint || "Clear this filter only";
+        totYr.setAttribute("aria-label", ui.stripTotalResetHint || "Clear this filter only");
+        totYr.addEventListener("click", function () {{
+          if (nextActive.size === 0) return;
+          nextActive.clear();
+          if (isObsListDrillOpen() && lastBlockDrillKey && String(lastBlockDrillKey).indexOf(kind + ":") === 0) {{
+            closeAgingDrillDown();
           }}
-        }}
+          obsCheckedIds = null;
+          aoRefresh();
+        }});
+        host.appendChild(totYr);
+        return nextActive;
+      }}
+
+      function aoRefresh() {{
+        syncAuditDimFilterOptions();
+        activeAuditYears = renderYearMetricStrip({{
+          host: yearBtnHost,
+          box: yearBox,
+          field: "y",
+          activeSet: activeAuditYears,
+          kind: "year",
+          colorFn: auditYearGradientColor,
+          totalId: "audit-year-total-row",
+          enabled: true
+        }});
+        activePlannedYears = renderYearMetricStrip({{
+          host: plannedYearBtnHost,
+          box: plannedYearBox,
+          field: "py",
+          activeSet: activePlannedYears,
+          kind: "plannedYear",
+          colorFn: plannedYearGradientColor,
+          totalId: "audit-planned-year-total-row",
+          enabled: hasPlannedClosureYear
+        }});
+        activeActualYears = renderYearMetricStrip({{
+          host: actualYearBtnHost,
+          box: actualYearBox,
+          field: "ay",
+          activeSet: activeActualYears,
+          kind: "actualYear",
+          colorFn: actualYearGradientColor,
+          totalId: "audit-actual-year-total-row",
+          enabled: hasActualClosureYear
+        }});
         const fr = aoFilteredRows();
         if (activeRatingValues.size > 0 && AO.rating_types) {{
           const vk = new Set((AO.rating_types || []).map(function (x) {{ return String(x.value).toLowerCase(); }}));
@@ -13731,7 +14205,8 @@ def generate_finance_report(
                 if (ui.blockDrillHint) b.title = ui.blockDrillHint;
                 obsTypeBtnHost.appendChild(b);
               }});
-              const totOt = document.createElement("div");
+              const totOt = document.createElement("button");
+              totOt.type = "button";
               totOt.id = "audit-obs-type-total-row";
               totOt.className = "audit-rating-total-pill";
               const tlo = document.createElement("span");
@@ -13742,6 +14217,17 @@ def generate_finance_report(
               tno.textContent = String(frForObsTypes.length);
               totOt.appendChild(tlo);
               totOt.appendChild(tno);
+              totOt.title = ui.stripTotalResetHint || "Clear this filter only";
+              totOt.setAttribute("aria-label", ui.stripTotalResetHint || "Clear this filter only");
+              totOt.addEventListener("click", function () {{
+                if (activeObsTypeLabels.size === 0) return;
+                activeObsTypeLabels.clear();
+                if (isObsListDrillOpen() && lastBlockDrillKey && String(lastBlockDrillKey).indexOf("obsType:") === 0) {{
+                  closeAgingDrillDown();
+                }}
+                obsCheckedIds = null;
+                aoRefresh();
+              }});
               obsTypeBtnHost.appendChild(totOt);
               obsTypeStripInited = true;
             }} else if (obsTypeStripOrder) {{
@@ -13877,6 +14363,8 @@ def generate_finance_report(
           activeRatingValues.size > 0 ||
           activeObsTypeLabels.size > 0 ||
           activeAuditYears.size > 0 ||
+          activePlannedYears.size > 0 ||
+          activeActualYears.size > 0 ||
           shortlistToolbarSelectionActive();
         if (!fr.length) metaLine = ui.obsListEmpty || "";
         else if (!shortlistGateOn) metaLine = ui.obsNamesMetaSelect || "";
@@ -14040,6 +14528,8 @@ def generate_finance_report(
         const scSel0 = subcompanyFilterSelectEl();
         if (coSel && ev && ev.target === coSel) brandCompanyFilterReopen = false;
         activeAuditYears.clear();
+        activePlannedYears.clear();
+        activeActualYears.clear();
         activeIaLabels.clear();
         obsCheckedIds = null;
         activeRatingValues.clear();
@@ -14222,6 +14712,8 @@ def generate_finance_report(
         try {{ closeOtherReviews(); }} catch (_e3) {{}}
         resetAuditFilterSelectsToNone();
         activeAuditYears.clear();
+        activePlannedYears.clear();
+        activeActualYears.clear();
         activeIaLabels.clear();
         activeRatingValues.clear();
         activeObsTypeLabels.clear();
