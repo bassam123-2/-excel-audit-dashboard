@@ -1336,3 +1336,96 @@ html[dir="rtl"] .aligned label { text-align: right !important; }
 .admin-active-status--no {
     color: var(--danger);
 }
+
+/* Company membership — per template permission cards */
+.form-row.field-template_permissions,
+.form-row.field-template_permissions > div,
+.form-row.field-template_permissions .flex-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+}
+.form-row.field-template_permissions .flex-container {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+}
+.form-row.field-template_permissions > .flex-container > label,
+.form-row.field-template_permissions label {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+}
+.tpl-perm-board {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    width: 100%;
+    max-width: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    box-sizing: border-box;
+}
+.tpl-perm-help {
+    margin: 0;
+    color: var(--muted, #64748b);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    grid-column: 1 / -1;
+}
+@media (max-width: 899px) {
+    .tpl-perm-board {
+        grid-template-columns: 1fr;
+    }
+}
+.tpl-perm-card {
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 12px;
+    padding: 0.9rem 1rem 0.75rem;
+    background: var(--surface, #fff);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+.tpl-perm-title {
+    margin: 0;
+    font-size: 0.92rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--heading, #0f172a);
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+}
+.tpl-perm-title i {
+    color: var(--accent, #3b82f6);
+}
+html[data-theme="dark"] .tpl-perm-title {
+    color: #f8fafc !important;
+}
+.tpl-perm-code {
+    margin: 0.15rem 0 0.55rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    color: var(--muted, #64748b);
+    text-transform: uppercase;
+}
+.tpl-perm-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 0.35rem 0;
+    font-size: 0.84rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+.tpl-perm-row input {
+    margin-top: 0.15rem;
+}
+.inline-related .tpl-perm-board {
+    margin-top: 0.35rem;
+}

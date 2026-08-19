@@ -34,7 +34,9 @@ def make_membership(
     can_review: bool = False,
     can_delete_drafts: bool = False,
 ) -> CompanyMembership:
-    return CompanyMembership.objects.create(
+    from audit_app.models import apply_membership_template_accesses, known_template_codes
+
+    membership = CompanyMembership.objects.create(
         user=user,
         company=company,
         can_upload=can_upload,
@@ -43,6 +45,18 @@ def make_membership(
         can_review=can_review,
         can_delete_drafts=can_delete_drafts,
     )
+    flags = {
+        "can_upload": can_upload,
+        "can_assign_dashboard_viewers": can_assign_dashboard_viewers,
+        "can_view_own_only": can_view_own_only,
+        "can_review": can_review,
+        "can_delete_drafts": can_delete_drafts,
+    }
+    apply_membership_template_accesses(
+        membership,
+        {code: flags for code in known_template_codes()},
+    )
+    return membership
 
 
 def make_dashboard(

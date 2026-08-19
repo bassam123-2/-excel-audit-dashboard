@@ -27,6 +27,7 @@ from dashboard_locale import normalize_locale  # noqa: E402
 
 from audit_app.company_access import (
     get_enabled_attachment_kinds,
+    template_codes_with_perm,
     user_must_select_company,
 )
 from audit_app.models import (
@@ -106,12 +107,12 @@ def _resolve_dashboard_request(request, pk: int, *, allow_deleted: bool = False)
     return dashboard
 
 
-def _has_upload_perm(user, request) -> bool:
-    return has_upload_perm(user, _active_company(request))
+def _has_upload_perm(user, request, template_code: str | None = None) -> bool:
+    return has_upload_perm(user, _active_company(request), template_code)
 
 
-def _has_view_perm(user, request) -> bool:
-    return has_dashboard_list_perm(user, _active_company(request))
+def _has_view_perm(user, request, template_code: str | None = None) -> bool:
+    return has_dashboard_list_perm(user, _active_company(request), template_code)
 
 
 def _has_delete_perm(user) -> bool:
@@ -204,16 +205,19 @@ def _dashboard_cache_fresh(cache_path: Path) -> bool:
 # ── Upload form helpers ───────────────────────────────────────────────
 
 
-def _active_upload_template_codes() -> set[str]:
+def _active_upload_template_codes(user=None, company=None) -> set[str]:
     codes = set(
         DashboardTemplateType.objects.filter(
             is_active=True,
             is_deleted=False,
         ).values_list("code", flat=True)
     )
-    if codes:
-        return codes
-    return {code for code, _ in TEMPLATE_TYPE_CHOICES}
+    if not codes:
+        codes = {code for code, _ in TEMPLATE_TYPE_CHOICES}
+    if user is not None:
+        allowed = template_codes_with_perm(user, company, "upload")
+        codes &= allowed
+    return codes
 
 
 def _upload_form_from_post(post) -> dict:
@@ -250,13 +254,23 @@ def _upload_page_context(request, form: dict | None = None) -> dict:
     selected_template = (
         form.get("template_type")
         or (resubmit_dashboard.template_type if resubmit_dashboard else "")
+        or request.GET.get("template", "").strip()
     )
-    active_templates = list(
-        DashboardTemplateType.objects.filter(
+    allowed_upload_codes = template_codes_with_perm(
+        request.user, _active_company(request), "upload"
+    )
+    active_templates = [
+        item
+        for item in DashboardTemplateType.objects.filter(
             is_active=True,
             is_deleted=False,
         )
-    )
+        if item.code in allowed_upload_codes
+    ]
+    requested_only = request.GET.get("template", "").strip()
+    if requested_only and requested_only in allowed_upload_codes:
+        active_templates = [item for item in active_templates if item.code == requested_only]
+        selected_template = requested_only
     if not selected_template and len(active_templates) == 1:
         selected_template = active_templates[0].code
     dashboard_name_value = (
@@ -307,7 +321,19 @@ def index(request):
     if user_must_select_company(request.user) and not _active_company(request):
         return redirect("select_company")
 
-    if not _has_upload_perm(request.user, request):
+    requested_template = request.GET.get("template", "").strip()
+    if requested_template and not _has_upload_perm(
+        request.user, request, requested_template
+    ):
+        lang = request.session.get("ui_lang", "en")
+        messages.error(request, get_ui(lang)["alert_no_upload_perm"])
+        if _has_view_perm(request.user, request, requested_template):
+            return redirect(f"{reverse('dashboard_list')}?template={requested_template}")
+        if _has_view_perm(request.user, request):
+            return redirect("dashboard_list")
+        return redirect("profile")
+
+    if not _has_upload_perm(request.user, request, requested_template or None):
         if _has_view_perm(request.user, request):
             return redirect("dashboard_list")
         lang = request.session.get("ui_lang", "en")
@@ -346,7 +372,9 @@ def analyze(request):
     description = form["description"]
     template_type = form["template_type"]
 
-    valid_template_codes = _active_upload_template_codes()
+    valid_template_codes = _active_upload_template_codes(
+        request.user, _active_company(request)
+    )
     if not template_type and len(valid_template_codes) == 1:
         template_type = next(iter(valid_template_codes))
 
@@ -358,9 +386,14 @@ def analyze(request):
         messages.error(request, ui["upload_err_icon"])
         return _render_upload_page(request, form)
 
-    valid_template_codes = _active_upload_template_codes()
+    valid_template_codes = _active_upload_template_codes(
+        request.user, _active_company(request)
+    )
     if template_type not in valid_template_codes:
         messages.error(request, ui["upload_err_template"])
+        return _render_upload_page(request, form)
+    if not _has_upload_perm(request.user, request, template_type):
+        messages.error(request, ui["alert_no_upload_perm"])
         return _render_upload_page(request, form)
 
     resubmit_dashboard = None
@@ -425,6 +458,8 @@ def analyze(request):
                 dashboard.pk,
             )
 
+    if template_type:
+        return redirect(f"{reverse('dashboard_list')}?template={template_type}")
     return redirect("dashboard_list")
 
 
@@ -476,7 +511,17 @@ def dashboard_list(request):
     if user_must_select_company(request.user) and not _active_company(request):
         return redirect("select_company")
 
-    if not _has_view_perm(request.user, request):
+    requested_template = request.GET.get("template", "").strip()
+    if requested_template and not _has_view_perm(
+        request.user, request, requested_template
+    ):
+        lang = request.session.get("ui_lang", "en")
+        messages.error(request, get_ui(lang)["alert_no_view_perm"])
+        if _has_view_perm(request.user, request):
+            return redirect("dashboard_list")
+        return redirect("profile")
+
+    if not _has_view_perm(request.user, request, requested_template or None):
         lang = request.session.get("ui_lang", "en")
         messages.error(request, get_ui(lang)["alert_no_view_perm"])
         return redirect("profile")
@@ -485,11 +530,15 @@ def dashboard_list(request):
     dashboards = dashboards_queryset_for_user(
         request.user, _active_company(request)
     )
+    if requested_template:
+        dashboards = dashboards.filter(template_type=requested_template)
     company = _active_company(request)
     filter_key = request.GET.get("filter", "").strip()
     if not filter_key and request.session.get("dashboard_list_filter"):
         filter_key = request.session.get("dashboard_list_filter", FILTER_ALL)
-    available_filters = available_dashboard_filters(request.user, company, dashboards)
+    available_filters = available_dashboard_filters(
+        request.user, company, dashboards, template_code=requested_template or None
+    )
     lang = request.session.get("ui_lang", "en")
     ui = get_ui(lang)
     if available_filters:
@@ -523,6 +572,7 @@ def dashboard_list(request):
     }
     undo_deleted_pk = None
     undo_deleted_name = ""
+    list_heading = ui.get(f"template_nav_{requested_template}") if requested_template else ""
     return render(
         request,
         "reports_app/dashboard_list.html",
@@ -532,13 +582,23 @@ def dashboard_list(request):
             "manageable_viewer_dashboard_ids": manageable_viewer_dashboard_ids,
             "returnable_dashboard_ids": returnable_dashboard_ids,
             "can_review_dashboards": has_review_perm(
-                request.user, company
+                request.user, company, requested_template or None
             ),
             "dashboard_filters": available_filters,
             "active_dashboard_filter": filter_key,
             "show_trash": show_trash,
             "undo_deleted_pk": undo_deleted_pk,
             "undo_deleted_name": undo_deleted_name,
+            "list_template": requested_template,
+            "list_heading": list_heading,
+            "can_upload_files": has_upload_perm(
+                request.user, company, requested_template or None
+            ),
+            "upload_url": (
+                f"{reverse('upload')}?template={requested_template}"
+                if requested_template
+                else reverse("upload")
+            ),
         },
     )
 
@@ -564,7 +624,9 @@ def dashboard_detail(request, pk: int):
         {
             "dashboard": dashboard,
             "rejection_logs": rejection_logs,
-            "can_review_dashboards": has_review_perm(request.user, company),
+            "can_review_dashboards": has_review_perm(
+                request.user, company, dashboard.template_type
+            ),
             "can_resubmit": can_user_resubmit(request.user, dashboard, company),
             "can_submit_for_review": can_user_submit(request.user, dashboard, company),
             "can_approve_reject": can_user_review(request.user, dashboard, company),
@@ -583,6 +645,10 @@ def dashboard_detail(request, pk: int):
             "can_delete_dashboard": can_user_delete_dashboard(
                 request.user, dashboard, company
             ),
+            "can_upload_files": has_upload_perm(
+                request.user, company, dashboard.template_type
+            ),
+            "upload_url": f"{reverse('upload')}?template={dashboard.template_type}",
         },
     )
 
@@ -1198,3 +1264,4 @@ def favicon(request):
     if icon_path.exists():
         return FileResponse(open(icon_path, "rb"), content_type="image/x-icon")
     return HttpResponse(status=204)
+ 

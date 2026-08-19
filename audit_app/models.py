@@ -8,6 +8,7 @@ from django.utils.translation import gettext_lazy as _
 
 from .dashboard_template_codes import (
     DEFAULT_DASHBOARD_TEMPLATE_CODE,
+    TEMPLATE_CODE_IAD,
     TEMPLATE_TYPE_SEEDS,
 )
 
@@ -271,6 +272,121 @@ class CompanyMembership(AdminSoftDeleteFields):
 
     def __str__(self) -> str:
         return f"{self.user} @ {self.company.code}"
+
+    def save(self, *args, **kwargs):
+        skip_template_access_seed = kwargs.pop("skip_template_access_seed", False)
+        super().save(*args, **kwargs)
+        if skip_template_access_seed or self.is_deleted:
+            return
+        seed_membership_template_accesses(self)
+
+
+MEMBERSHIP_PERM_FIELDS = (
+    "can_upload",
+    "can_assign_dashboard_viewers",
+    "can_view_own_only",
+    "can_review",
+    "can_delete_drafts",
+)
+
+
+class CompanyMembershipTemplateAccess(models.Model):
+    """Per dashboard-template permissions within a company membership."""
+
+    membership = models.ForeignKey(
+        CompanyMembership,
+        on_delete=models.CASCADE,
+        related_name="template_accesses",
+        verbose_name=_("Membership"),
+    )
+    template_code = models.SlugField(max_length=32, verbose_name=_("Template type"))
+    can_upload = models.BooleanField(
+        default=False,
+        verbose_name=_("Can upload files and create dashboards"),
+    )
+    can_assign_dashboard_viewers = models.BooleanField(
+        default=False,
+        verbose_name=_("Can assign dashboard viewers"),
+    )
+    can_view_own_only = models.BooleanField(
+        default=False,
+        verbose_name=_("Can view own dashboards only"),
+    )
+    can_review = models.BooleanField(
+        default=False,
+        verbose_name=_("Can approve or reject dashboards"),
+    )
+    can_delete_drafts = models.BooleanField(
+        default=False,
+        verbose_name=_("Can delete draft dashboards"),
+    )
+
+    class Meta:
+        verbose_name = _("Template access")
+        verbose_name_plural = _("Template access")
+        unique_together = ("membership", "template_code")
+        ordering = ["template_code"]
+
+    def __str__(self) -> str:
+        return f"{self.membership} · {self.template_code}"
+
+
+def known_template_codes() -> list[str]:
+    codes = list(
+        DashboardTemplateType.objects.filter(is_deleted=False)
+        .order_by("sort_order", "code")
+        .values_list("code", flat=True)
+    )
+    if codes:
+        return codes
+    return [str(seed["code"]) for seed in TEMPLATE_TYPE_SEEDS]
+
+
+def seed_membership_template_accesses(membership: CompanyMembership) -> None:
+    """Map pre-split membership flags onto Internal Audit only; other types start empty."""
+    if not membership.pk:
+        return
+    if CompanyMembershipTemplateAccess.objects.filter(membership=membership).exists():
+        return
+    inherited = {
+        field: bool(getattr(membership, field)) for field in MEMBERSHIP_PERM_FIELDS
+    }
+    denied = {field: False for field in MEMBERSHIP_PERM_FIELDS}
+    CompanyMembershipTemplateAccess.objects.bulk_create(
+        [
+            CompanyMembershipTemplateAccess(
+                membership=membership,
+                template_code=code,
+                **(inherited if code == TEMPLATE_CODE_IAD else denied),
+            )
+            for code in known_template_codes()
+        ]
+    )
+
+
+def apply_membership_template_accesses(
+    membership: CompanyMembership,
+    access_map: dict[str, dict[str, bool]],
+) -> None:
+    for code, flags in access_map.items():
+        CompanyMembershipTemplateAccess.objects.update_or_create(
+            membership=membership,
+            template_code=str(code),
+            defaults={
+                field: bool(flags.get(field)) for field in MEMBERSHIP_PERM_FIELDS
+            },
+        )
+    rows = list(membership.template_accesses.all())
+    rollup = {
+        field: any(getattr(row, field) for row in rows)
+        for field in MEMBERSHIP_PERM_FIELDS
+    }
+    for field, value in rollup.items():
+        setattr(membership, field, value)
+    membership.save(
+        update_fields=list(rollup.keys()),
+        skip_template_access_seed=True,
+    )
 
 
 class CompanyAttachmentSetting(models.Model):

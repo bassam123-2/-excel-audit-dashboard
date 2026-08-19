@@ -84,7 +84,7 @@
             <i class="bi bi-box-arrow-up-right"></i> {{ ui.dd_open_new }}
         </a>
         {% if can_upload_files %}
-        <a href="{% url 'upload' %}" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
+        <a href="{{ upload_url }}" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
             <i class="bi bi-plus-lg"></i> {{ ui.dd_new_btn }}
         </a>
         {% endif %}

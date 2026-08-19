@@ -12,7 +12,7 @@ from tests.helpers import login_and_select_company
 @pytest.mark.regression
 @pytest.mark.django_db
 def test_home_routing_viewer_goes_to_dashboard_list(viewer_user):
-    assert resolve_default_home(viewer_user) == reverse("dashboard_list")
+    assert resolve_default_home(viewer_user) == f"{reverse('dashboard_list')}?template=IAD"
 
 
 @pytest.mark.regression

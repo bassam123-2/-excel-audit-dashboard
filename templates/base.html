@@ -79,10 +79,11 @@
         .sb-section {
             font-size: .66rem;
             font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: .08em;
+            text-transform: none;
+            letter-spacing: .04em;
             color: rgba(255,255,255,.25);
             padding: .8rem 1.1rem .25rem;
+            line-height: 1.35;
         }
         .sb-link {
             display: flex;
@@ -313,21 +314,21 @@
 
     <nav class="sb-nav">
         {% if user.is_authenticated %}
-            {% if can_upload_files and not needs_company_selection and not no_companies_configured %}
-            <div class="sb-section">{{ ui.section_uploads }}</div>
-            <a href="{% url 'upload' %}"
-               class="sb-link {% if request.resolver_match.url_name == 'upload' %}active{% endif %}">
+            {% for section in template_nav_sections %}
+            <div class="sb-section">{{ section.name }}</div>
+            {% if section.can_upload %}
+            <a href="{{ section.upload_url }}"
+               class="sb-link {% if request.resolver_match.url_name == 'upload' and active_nav_template == section.code %}active{% endif %}">
                 <i class="bi bi-cloud-upload-fill"></i> {{ ui.nav_upload }}
             </a>
             {% endif %}
-
-            {% if can_view_dashboards and not needs_company_selection and not no_companies_configured %}
-            <div class="sb-section">{{ ui.section_reports }}</div>
-            <a href="{% url 'dashboard_list' %}"
-               class="sb-link {% if 'dashboard' in request.resolver_match.url_name|default:'' %}active{% endif %}">
+            {% if section.can_view %}
+            <a href="{{ section.list_url }}"
+               class="sb-link {% if 'dashboard' in request.resolver_match.url_name|default:'' and active_nav_template == section.code %}active{% endif %}">
                 <i class="bi bi-grid-3x3-gap-fill"></i> {{ ui.nav_dashboards }}
             </a>
             {% endif %}
+            {% endfor %}
 
             {% if user.is_staff %}
             <div class="sb-section">{{ ui.section_admin }}</div>

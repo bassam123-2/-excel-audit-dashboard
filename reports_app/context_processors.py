@@ -10,6 +10,7 @@ if _BASE not in sys.path:
 
 from accounts_app.services.user_language import resolve_ui_lang
 from accounts_app.services.user_theme import resolve_ui_theme
+from accounts_app.navigation import nav_template_sections
 from audit_app.company_access import (
     active_companies_exist,
     get_active_company,
@@ -74,12 +75,25 @@ def ui_context(request) -> dict:
         except (ValueError, AttributeError):
             active_company_logo_url = None
 
+    ui = get_ui(lang)
+    template_nav_sections = []
+    active_nav_template = ""
+    if (
+        hasattr(request, "user")
+        and request.user.is_authenticated
+        and active_company
+        and not needs_company_selection
+        and not no_companies_configured
+    ):
+        template_nav_sections = nav_template_sections(request.user, active_company, ui)
+        active_nav_template = _resolve_active_nav_template(request, template_nav_sections)
+
     return {
         "lang": lang,
         "ui_theme": ui_theme,
         "is_rtl": lang == "ar",
         "dir": "rtl" if lang == "ar" else "ltr",
-        "ui": get_ui(lang),
+        "ui": ui,
         "can_upload_files": can_upload,
         "can_view_dashboards": can_view,
         "can_delete_dashboards": can_delete_dashboards,
@@ -93,4 +107,34 @@ def ui_context(request) -> dict:
         "needs_company_selection": needs_company_selection,
         "no_companies_configured": no_companies_configured,
         "can_manage_companies": can_manage_companies,
+        "template_nav_sections": template_nav_sections,
+        "active_nav_template": active_nav_template,
     }
+
+
+def _resolve_active_nav_template(request, sections: list[dict]) -> str:
+    allowed = {item["code"] for item in sections}
+    requested = (request.GET.get("template") or "").strip()
+    if requested in allowed:
+        return requested
+    match = getattr(request, "resolver_match", None)
+    if not match:
+        return ""
+    url_name = match.url_name or ""
+    if url_name == "upload":
+        upload_codes = [item["code"] for item in sections if item.get("can_upload")]
+        if len(upload_codes) == 1:
+            return upload_codes[0]
+    pk = match.kwargs.get("pk") if match.kwargs else None
+    url_name = match.url_name or ""
+    if pk and "dashboard" in url_name:
+        from audit_app.models import Dashboard
+
+        code = (
+            Dashboard.objects.filter(pk=pk)
+            .values_list("template_type", flat=True)
+            .first()
+        )
+        if code in allowed:
+            return str(code)
+    return "" 

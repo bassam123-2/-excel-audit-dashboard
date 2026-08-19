@@ -1253,6 +1253,33 @@ msgstr "عضوية شركة"
 msgid "Company memberships"
 msgstr "عضويات الشركات"
 
+msgid "Dashboard template permissions"
+msgstr "صلاحيات قوالب لوحات التحكم"
+
+msgid "Template access"
+msgstr "صلاحية القالب"
+
+msgid "Upload files"
+msgstr "رفع الملفات"
+
+msgid "Approve or reject"
+msgstr "الموافقة أو الرفض"
+
+msgid "Assign viewers"
+msgstr "تعيين المشاهدين"
+
+msgid "Delete drafts"
+msgstr "حذف المسودات"
+
+msgid "Each template type has its own upload, view, review, and delete rights for this company."
+msgstr "لكل نوع قالب صلاحيات رفع وعرض ومراجعة وحذف مستقلة داخل هذه الشركة."
+
+msgid "Grant access independently for each dashboard template. Upload for Internal Audit does not include Compliance, and the reverse."
+msgstr "امنح الصلاحيات بشكل مستقل لكل نوع قالب. صلاحية الرفع للتدقيق الداخلي لا تشمل الامتثال، والعكس صحيح."
+
+msgid "Manage user access independently for each dashboard template type."
+msgstr "إدارة صلاحيات المستخدم بشكل مستقل لكل نوع قالب لوحة تحكم."
+
 #: .\audit_app\models.py:278
 msgid "Attachment type"
 msgstr "نوع المرفق"
