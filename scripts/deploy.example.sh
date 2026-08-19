@@ -150,6 +150,18 @@ cd "${PROJECT_ROOT}"
 # shellcheck disable=SC1091
 source "${PROJECT_ROOT}/${DEPLOY_VENV_DIR}/bin/activate"
 
+# manage.py defaults to development. That storage does NOT write content-hashed
+# CSS/JS, so gunicorn (production Manifest URLs) keeps serving stale hashed files.
+# Export a clean module path from .env before migrate / collectstatic.
+_DSM="$(env_val DJANGO_SETTINGS_MODULE "${ENV_FILE}")"
+_DSM="${_DSM%% *}"
+_DSM="${_DSM//$'\r'/}"
+if [[ -z "${_DSM}" ]]; then
+    _DSM="config.settings.production"
+fi
+export DJANGO_SETTINGS_MODULE="${_DSM}"
+log "Django settings module: ${DJANGO_SETTINGS_MODULE}"
+
 # =============================================================================
 # 1) Pull latest code from Git
 # =============================================================================
@@ -181,10 +193,14 @@ run "'${PYTHON}' manage.py compilemessages -l ar"
 # 4) Collect static files (Manifest hashes — cache bust for all users)
 # =============================================================================
 
+# Refuse to collectstatic unless Manifest storage is active (DEBUG must be false).
+run "'${PYTHON}' manage.py check_static_manifest"
+
 # Produces hashed names (e.g. app.a1b2c3.js) so browsers load new JS/CSS after
 # deploy without requiring a hard reload. Avoid --clear so open tabs with older
 # HTML can still load previous hashed assets until they refresh the page.
 run "'${PYTHON}' manage.py collectstatic --noinput"
+run "'${PYTHON}' manage.py check_static_manifest --verify-files"
 
 # =============================================================================
 # 5) Restart services
