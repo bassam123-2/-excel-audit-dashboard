@@ -20,8 +20,12 @@
                 <h2 class="h5 fw-semibold mb-2">{{ ui.not_found_title }}</h2>
                 <p class="text-muted mb-4">{{ ui.not_found_body }}</p>
                 <div class="d-flex flex-wrap justify-content-center gap-2">
-                    {% if can_view_dashboards %}
+                    {% if template_nav_sections %}
+                    <a href="{{ template_nav_sections.0.list_url }}" class="btn btn-primary">
+                    {% elif can_view_dashboards %}
                     <a href="{% url 'dashboard_list' %}" class="btn btn-primary">
+                    {% endif %}
+                    {% if template_nav_sections or can_view_dashboards %}
                         <i class="bi bi-grid-3x3-gap-fill me-1"></i> {{ ui.not_found_dashboard_btn }}
                     </a>
                     {% endif %}

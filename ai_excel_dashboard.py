@@ -1530,6 +1530,28 @@ def build_audit_observation_payload(
             "agingMatrixHintRevised": tr(loc, "audit_aging_matrix_hint_revised"),
             "planToggleLabel": tr(loc, "audit_plan_toggle_label"),
             "planTitle": tr(loc, "audit_plan_title"),
+            "obsTrackingToggleLabel": tr(loc, "audit_obs_tracking_toggle_label"),
+            "obsTrackingTitle": tr(loc, "audit_obs_tracking_title"),
+            "obsTrackingColPeriod": tr(loc, "audit_obs_tracking_col_period"),
+            "obsTrackingColOpening": tr(loc, "audit_obs_tracking_col_opening"),
+            "obsTrackingColNew": tr(loc, "audit_obs_tracking_col_new"),
+            "obsTrackingColClosed": tr(loc, "audit_obs_tracking_col_closed"),
+            "obsTrackingColEnding": tr(loc, "audit_obs_tracking_col_ending"),
+            "obsTrackingRowOpening": tr(loc, "audit_obs_tracking_row_opening"),
+            "obsTrackingRowQ1": tr(loc, "audit_obs_tracking_row_q1"),
+            "obsTrackingRowQ2": tr(loc, "audit_obs_tracking_row_q2"),
+            "obsTrackingRowQ3": tr(loc, "audit_obs_tracking_row_q3"),
+            "obsTrackingRowQ4": tr(loc, "audit_obs_tracking_row_q4"),
+            "obsTrackingRowEnding": tr(loc, "audit_obs_tracking_row_ending"),
+            "obsTrackingHint": tr(loc, "audit_obs_tracking_hint"),
+            "obsTrackingUploadFile": tr(loc, "audit_obs_tracking_upload_file"),
+            "obsTrackingApply": tr(loc, "audit_obs_tracking_apply"),
+            "obsTrackingUploadNeedXlsx": tr(loc, "audit_obs_tracking_upload_need_xlsx"),
+            "obsTrackingUploadBadType": tr(loc, "audit_obs_tracking_upload_bad_type"),
+            "obsTrackingUploadNoRows": tr(loc, "audit_obs_tracking_upload_no_rows"),
+            "obsTrackingSaveSuccess": tr(loc, "audit_obs_tracking_save_success"),
+            "obsTrackingApplySuccess": tr(loc, "audit_obs_tracking_apply_success"),
+            "obsTrackingSaveFailed": tr(loc, "audit_obs_tracking_save_failed"),
             "planColProjectName": tr(loc, "audit_plan_col_project_name"),
             "planColAuditableFunction": tr(loc, "audit_plan_col_auditable_function"),
             "planColResourceAllocated": tr(loc, "audit_plan_col_resource_allocated"),
@@ -2240,6 +2262,7 @@ def build_multi_dashboard_shell(
         'audit-aging-panel',
         'audit-aging-drill-panel',
         'audit-plan-panel',
+        'audit-obs-tracking-panel',
         'audit-reviews-panel',
         'audit-obs-detail-panel'
       ];
@@ -5544,6 +5567,21 @@ def generate_finance_report(
     #audit-plan-panel .audit-aging-head {{
       position: relative;
     }}
+    #audit-obs-tracking-table.audit-aging-table td.audit-obs-tracking-computed {{
+      background: rgba(15, 23, 42, 0.04);
+      color: var(--muted, #64748b);
+      font-variant-numeric: tabular-nums;
+    }}
+    #audit-obs-tracking-table.audit-aging-table td.audit-obs-tracking-editable {{
+      font-variant-numeric: tabular-nums;
+    }}
+    #audit-obs-tracking-table.audit-aging-table td.audit-obs-tracking-period {{
+      font-weight: 600;
+      white-space: nowrap;
+    }}
+    #audit-obs-tracking-panel .audit-aging-head {{
+      position: relative;
+    }}
     .audit-obs-names-open {{
       flex: 1;
       display: flex;
@@ -6552,6 +6590,10 @@ def generate_finance_report(
               <span id="audit-plan-status-label"></span>
             </label>
             <label class="audit-obs-aging-toggle">
+              <input type="checkbox" id="audit-obs-tracking-cb" />
+              <span id="audit-obs-tracking-label"></span>
+            </label>
+            <label class="audit-obs-aging-toggle">
               <input type="checkbox" id="audit-reviews-cb" />
               <span id="audit-reviews-label"></span>
             </label>
@@ -6811,6 +6853,32 @@ def generate_finance_report(
           <table class="audit-aging-table" id="audit-plan-table">
             <thead id="audit-plan-head-row"></thead>
             <tbody id="audit-plan-body-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="audit-aging-backdrop" id="audit-obs-tracking-backdrop" style="display:none" aria-hidden="true"></div>
+    <div class="audit-aging-panel" id="audit-obs-tracking-panel" role="dialog" aria-modal="true" aria-hidden="true" style="display:none">
+      <div class="audit-aging-inner">
+        <div class="audit-aging-head">
+          <h3 class="audit-aging-title" id="audit-obs-tracking-title"></h3>
+          <div class="audit-plan-save-toast" id="audit-obs-tracking-save-toast" role="status" aria-live="polite" hidden></div>
+          <button type="button" class="audit-aging-close" id="audit-obs-tracking-close" aria-label="Close">×</button>
+        </div>
+        <p class="audit-aging-hint" id="audit-obs-tracking-hint"></p>
+        <div class="audit-aging-body">
+          <div class="audit-plan-toolbar" style="display:flex;justify-content:space-between;gap:0.45rem;align-items:center;margin-bottom:0.55rem;flex-wrap:wrap;">
+            <div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;">
+              <button type="button" class="nav-btn" id="audit-obs-tracking-apply-btn"></button>
+            </div>
+            <div style="display:flex;gap:0.45rem;align-items:center;flex-wrap:wrap;">
+              <button type="button" class="nav-btn" id="audit-obs-tracking-upload-btn"></button>
+              <input type="file" id="audit-obs-tracking-upload-file" accept=".xlsx,.xls,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none" aria-hidden="true" />
+            </div>
+          </div>
+          <table class="audit-aging-table" id="audit-obs-tracking-table">
+            <thead id="audit-obs-tracking-head-row"></thead>
+            <tbody id="audit-obs-tracking-body-rows"></tbody>
           </table>
         </div>
       </div>
@@ -7497,7 +7565,7 @@ def generate_finance_report(
         }} catch (_e) {{}}
         return reviewsSnap;
       }}
-      function writeAuditPersistScript(planRows, planCellBg, reviewsSnap) {{
+      function writeAuditPersistScript(planRows, planCellBg, reviewsSnap, obsTrackingRows) {{
         try {{
           let prev = document.getElementById("audit-dashboard-user-persist");
           while (prev) {{
@@ -7512,6 +7580,7 @@ def generate_finance_report(
             planRows: planRows || [],
             planCellBg: planCellBg || [],
             reviewsNote: String(reviewsSnap != null ? reviewsSnap : ""),
+            obsTrackingRows: obsTrackingRows || [],
           }};
           s.textContent = JSON.stringify(persistObj).replace(/</g, "\\u003c");
           if (document.body.firstChild) document.body.insertBefore(s, document.body.firstChild);
@@ -7520,8 +7589,14 @@ def generate_finance_report(
       }}
       function persistAuditUserEdits() {{
         try {{ capturePlanDraftRows(); }} catch (_e0) {{}}
+        try {{ captureObsTrackingDraftRows(); }} catch (_e0b) {{}}
         try {{
-          writeAuditPersistScript(planDraftRows || [], planCellBgHex || [], snapshotReviewsForExport());
+          writeAuditPersistScript(
+            planDraftRows || [],
+            planCellBgHex || [],
+            snapshotReviewsForExport(),
+            obsTrackingDraftRows || []
+          );
         }} catch (_e1) {{}}
         try {{ scheduleSaveUserEditsToServer(); }} catch (_e2) {{}}
       }}
@@ -7530,7 +7605,14 @@ def generate_finance_report(
       let userEditsSaveQueued = false;
       let planSaveToastTimer = null;
       function showPlanSaveToast(message, isError) {{
-        const toast = document.getElementById("audit-plan-save-toast");
+        let toast = null;
+        try {{
+          const otPanel = document.getElementById("audit-obs-tracking-panel");
+          if (otPanel && otPanel.style.display !== "none") {{
+            toast = document.getElementById("audit-obs-tracking-save-toast");
+          }}
+        }} catch (_t0) {{}}
+        if (!toast) toast = document.getElementById("audit-plan-save-toast");
         if (!toast) return;
         if (planSaveToastTimer) {{
           clearTimeout(planSaveToastTimer);
@@ -7626,11 +7708,13 @@ def generate_finance_report(
         }}
         userEditsSaveInFlight = true;
         try {{ capturePlanDraftRows(); }} catch (_cap) {{}}
+        try {{ captureObsTrackingDraftRows(); }} catch (_capOt) {{}}
         const payload = {{
           v: 1,
           planRows: planDraftRows || [],
           planCellBg: planCellBgHex || [],
           reviewsNote: snapshotReviewsForExport(),
+          obsTrackingRows: obsTrackingDraftRows || [],
         }};
         return fetch(url, {{
           method: "POST",
@@ -7693,7 +7777,7 @@ def generate_finance_report(
           brandCoHostOff.classList.remove("brand-company-filter-host--compact");
         }}
         window.__aiExcelFlushUserEditsForExport = function () {{
-          writeAuditPersistScript([], [], snapshotReviewsForExport());
+          writeAuditPersistScript([], [], snapshotReviewsForExport(), []);
         }};
         window.__aiExcelResetAuditChoices = function () {{}};
         return;
@@ -7761,6 +7845,18 @@ def generate_finance_report(
       }}
       const planCb = document.getElementById("audit-plan-status-cb");
       const planLbl = document.getElementById("audit-plan-status-label");
+      const obsTrackingCb = document.getElementById("audit-obs-tracking-cb");
+      const obsTrackingLbl = document.getElementById("audit-obs-tracking-label");
+      const obsTrackingBackdrop = document.getElementById("audit-obs-tracking-backdrop");
+      const obsTrackingPanel = document.getElementById("audit-obs-tracking-panel");
+      const obsTrackingClose = document.getElementById("audit-obs-tracking-close");
+      const obsTrackingTitle = document.getElementById("audit-obs-tracking-title");
+      const obsTrackingHintEl = document.getElementById("audit-obs-tracking-hint");
+      const obsTrackingHeadRow = document.getElementById("audit-obs-tracking-head-row");
+      const obsTrackingBodyRows = document.getElementById("audit-obs-tracking-body-rows");
+      const obsTrackingApplyBtn = document.getElementById("audit-obs-tracking-apply-btn");
+      const obsTrackingUploadBtn = document.getElementById("audit-obs-tracking-upload-btn");
+      const obsTrackingUploadFile = document.getElementById("audit-obs-tracking-upload-file");
       const reviewsCb = document.getElementById("audit-reviews-cb");
       const additionalNotesCb = document.getElementById("audit-additional-notes-cb");
       const additionalNotesLbl = document.getElementById("audit-additional-notes-label");
@@ -8339,6 +8435,10 @@ def generate_finance_report(
           closePlanStatus();
           return;
         }}
+        if (obsTrackingPanel && obsTrackingPanel.style.display !== "none") {{
+          closeObsTracking();
+          return;
+        }}
         if (deckModal && deckModal.style.display !== "none") {{
           try {{ ev.preventDefault(); }} catch (_pe) {{}}
           if (typeof deckCloseModalAndReset === "function") deckCloseModalAndReset();
@@ -8483,6 +8583,7 @@ def generate_finance_report(
       let lastPlanRows = [];
       let planCellBgHex = [];
       let planSelectedCell = null;
+      let obsTrackingDraftRows = null;
       const planThemePaletteHex = [
         "#FFFFFF", "#000000", "#E7E6E6", "#44546A", "#5B9BD5", "#ED7D31", "#A5A5A5", "#FFC000", "#4472C4", "#70AD47",
         "#F2F2F2", "#7F7F7F", "#D0CECE", "#D6DCE4", "#DDEBF7", "#FCE4D6", "#EDEDED", "#FFF2CC", "#D9E1F2", "#E2EFDA",
@@ -8519,6 +8620,13 @@ def generate_finance_report(
           if (typeof o.reviewsNote === "string" && reviewsTextarea) {{
             reviewsTextarea.value = o.reviewsNote;
             try {{ localStorage.setItem("auditOtherReviewsNote", o.reviewsNote); }} catch (_lsH) {{}}
+          }}
+          if (Array.isArray(o.obsTrackingRows) && o.obsTrackingRows.length) {{
+            obsTrackingDraftRows = o.obsTrackingRows.map(function (r) {{
+              const row = Array.isArray(r) ? r.slice(0, 5) : [];
+              while (row.length < 5) row.push("");
+              return row.map(function (c) {{ return String(c != null ? c : ""); }});
+            }});
           }}
         }} catch (_e) {{}}
       }}
@@ -9401,7 +9509,12 @@ def generate_finance_report(
         planDraftRows = formatPlanPctInRows(planDraftRows);
         renderPlanStatusTable();
         try {{
-          writeAuditPersistScript(planDraftRows || [], planCellBgHex || [], snapshotReviewsForExport());
+          writeAuditPersistScript(
+            planDraftRows || [],
+            planCellBgHex || [],
+            snapshotReviewsForExport(),
+            obsTrackingDraftRows || []
+          );
         }} catch (_w) {{}}
         const applyMsg = ui.planApplySuccess || ui.planSaveSuccess || "Applied successfully";
         saveUserEditsToServer({{ successMsg: applyMsg }});
@@ -9909,6 +10022,367 @@ def generate_finance_report(
           }}
         }} catch (_pmOpenPlan) {{}}
       }}
+      function obsTrackingPeriodLabels() {{
+        return [
+          ui.obsTrackingRowOpening || "Opening Balance",
+          ui.obsTrackingRowQ1 || "Q1",
+          ui.obsTrackingRowQ2 || "Q2",
+          ui.obsTrackingRowQ3 || "Q3",
+          ui.obsTrackingRowQ4 || "Q4",
+          ui.obsTrackingRowEnding || "Ending Balance",
+        ];
+      }}
+      function obsTrackingColumnLabels() {{
+        return [
+          ui.obsTrackingColPeriod || "Period",
+          ui.obsTrackingColOpening || "Opening Balance",
+          ui.obsTrackingColNew || "New Observations",
+          ui.obsTrackingColClosed || "Closed Observations",
+          ui.obsTrackingColEnding || "Ending Balance",
+        ];
+      }}
+      function defaultObsTrackingRows() {{
+        const periods = obsTrackingPeriodLabels();
+        return periods.map(function (p) {{
+          return [p, "0", "", "", "0"];
+        }});
+      }}
+      function parseObsTrackingNum(v) {{
+        if (v == null || v === "") return 0;
+        const s = String(v).replace(/,/g, "").trim();
+        if (!s) return 0;
+        const n = Number(s);
+        return Number.isFinite(n) ? n : 0;
+      }}
+      function fmtObsTrackingNum(n) {{
+        if (!Number.isFinite(n)) return "0";
+        if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+        return String(Math.round(n * 100) / 100);
+      }}
+      function recomputeObsTrackingRows(rows) {{
+        const periods = obsTrackingPeriodLabels();
+        const out = [];
+        for (let i = 0; i < 6; i++) {{
+          const src = (rows && rows[i]) ? rows[i] : [];
+          const period = periods[i] || String(src[0] || "");
+          if (i === 0) {{
+            const opening = parseObsTrackingNum(src[1] != null ? src[1] : "0");
+            out.push([period, fmtObsTrackingNum(opening), "", "", fmtObsTrackingNum(opening)]);
+            continue;
+          }}
+          if (i >= 1 && i <= 4) {{
+            const opening = parseObsTrackingNum(out[i - 1][4]);
+            const neu = parseObsTrackingNum(src[2]);
+            const closed = parseObsTrackingNum(src[3]);
+            const ending = opening + neu - closed;
+            const neuRaw = src[2] != null && String(src[2]).trim() !== "" ? fmtObsTrackingNum(neu) : "";
+            const closedRaw = src[3] != null && String(src[3]).trim() !== "" ? fmtObsTrackingNum(closed) : "";
+            out.push([period, fmtObsTrackingNum(opening), neuRaw, closedRaw, fmtObsTrackingNum(ending)]);
+            continue;
+          }}
+          const opening = parseObsTrackingNum(out[4][4]);
+          out.push([period, fmtObsTrackingNum(opening), "", "", fmtObsTrackingNum(opening)]);
+        }}
+        return out;
+      }}
+      function ensureObsTrackingDraftRows() {{
+        if (!Array.isArray(obsTrackingDraftRows) || obsTrackingDraftRows.length < 6) {{
+          obsTrackingDraftRows = recomputeObsTrackingRows(obsTrackingDraftRows || defaultObsTrackingRows());
+        }} else {{
+          obsTrackingDraftRows = recomputeObsTrackingRows(obsTrackingDraftRows);
+        }}
+        return obsTrackingDraftRows;
+      }}
+      function captureObsTrackingDraftRows() {{
+        if (!obsTrackingBodyRows) {{
+          if (!Array.isArray(obsTrackingDraftRows) || obsTrackingDraftRows.length < 6) {{
+            ensureObsTrackingDraftRows();
+          }}
+          return obsTrackingDraftRows;
+        }}
+        const trs = obsTrackingBodyRows.querySelectorAll("tr");
+        // Panel not rendered yet — keep hydrated/in-memory draft (do not wipe on plan save).
+        if (!trs.length) {{
+          if (!Array.isArray(obsTrackingDraftRows) || obsTrackingDraftRows.length < 6) {{
+            ensureObsTrackingDraftRows();
+          }}
+          return obsTrackingDraftRows;
+        }}
+        const periods = obsTrackingPeriodLabels();
+        const rows = [];
+        for (let i = 0; i < 6; i++) {{
+          const tr = trs[i];
+          const tds = tr ? tr.querySelectorAll("td") : [];
+          const get = function (idx) {{
+            return tds[idx] ? String(tds[idx].textContent || "").trim() : "";
+          }};
+          rows.push([periods[i] || get(0), get(1), get(2), get(3), get(4)]);
+        }}
+        obsTrackingDraftRows = recomputeObsTrackingRows(rows);
+        return obsTrackingDraftRows;
+      }}
+      function cellLooksLikeFormula(v) {{
+        const s = String(v != null ? v : "").trim();
+        return s.charAt(0) === "=";
+      }}
+      function sanitizeObsTrackingCell(v) {{
+        if (v == null) return "";
+        if (typeof v === "number" && Number.isFinite(v)) return fmtObsTrackingNum(v);
+        const s = String(v).trim();
+        if (!s || cellLooksLikeFormula(s)) return "";
+        return s;
+      }}
+      function normalizeObsTrackingHeader(h) {{
+        return String(h || "")
+          .replace(/^\\ufeff/, "")
+          .replace(/\\u00a0/g, " ")
+          .trim()
+          .toLowerCase()
+          .replace(/[%_\\-]/g, " ")
+          .replace(/\\s+/g, " ")
+          .trim();
+      }}
+      function classifyObsTrackingHeader(h) {{
+        const n = normalizeObsTrackingHeader(h);
+        if (!n) return "";
+        if (/^(period|الفترة)$/.test(n) || n === "period") return "period";
+        if (/opening/.test(n) || /افتتاح/.test(n)) return "opening";
+        if (/^new\\b/.test(n) || /new observation/.test(n) || /ملاحظات جديدة/.test(n) || n === "new") return "new";
+        if (/closed/.test(n) || /مغلقة/.test(n) || /مغلق/.test(n)) return "closed";
+        if (/ending/.test(n) || /ختام/.test(n)) return "ending";
+        if (/فترة/.test(n)) return "period";
+        return "";
+      }}
+      function classifyObsTrackingPeriod(label) {{
+        const n = normalizeObsTrackingHeader(label);
+        if (!n) return -1;
+        if (/opening/.test(n) || /افتتاح/.test(n)) return 0;
+        if (/^q\\s*1$/.test(n) || n === "q1" || /الربع\\s*1/.test(n) || /ربع\\s*1/.test(n)) return 1;
+        if (/^q\\s*2$/.test(n) || n === "q2" || /الربع\\s*2/.test(n) || /ربع\\s*2/.test(n)) return 2;
+        if (/^q\\s*3$/.test(n) || n === "q3" || /الربع\\s*3/.test(n) || /ربع\\s*3/.test(n)) return 3;
+        if (/^q\\s*4$/.test(n) || n === "q4" || /الربع\\s*4/.test(n) || /ربع\\s*4/.test(n)) return 4;
+        if (/ending/.test(n) || /ختام/.test(n)) return 5;
+        return -1;
+      }}
+      function matrixToObsTrackingRecords(matrix) {{
+        if (!matrix || !matrix.length) return [];
+        let hdrIdx = -1;
+        let roles = null;
+        for (let i = 0; i < Math.min(8, matrix.length); i++) {{
+          const row = matrix[i] || [];
+          const mapped = row.map(function (x) {{ return classifyObsTrackingHeader(x); }});
+          const hasPeriod = mapped.indexOf("period") >= 0;
+          const hasOpening = mapped.indexOf("opening") >= 0;
+          const hasNew = mapped.indexOf("new") >= 0;
+          if (hasPeriod && (hasOpening || hasNew)) {{
+            hdrIdx = i;
+            roles = mapped;
+            break;
+          }}
+        }}
+        if (hdrIdx < 0) {{
+          // Positional fallback: first row headers-like or raw 5-col rows
+          return matrix.map(function (vals) {{
+            const v = vals || [];
+            return {{
+              period: v[0],
+              opening: v[1],
+              new: v[2],
+              closed: v[3],
+              ending: v[4],
+            }};
+          }});
+        }}
+        return matrix.slice(hdrIdx + 1).map(function (vals) {{
+          const rec = {{ period: "", opening: "", new: "", closed: "", ending: "" }};
+          const v = vals || [];
+          roles.forEach(function (role, j) {{
+            if (!role) return;
+            rec[role] = v[j] !== undefined ? v[j] : "";
+          }});
+          if (!rec.period && v[0] != null) rec.period = v[0];
+          return rec;
+        }});
+      }}
+      function fillObsTrackingFromRecords(records) {{
+        if (!Array.isArray(records) || !records.length) return false;
+        const periods = obsTrackingPeriodLabels();
+        const base = defaultObsTrackingRows();
+        let matched = 0;
+        records.forEach(function (rec) {{
+          if (!rec || typeof rec !== "object") return;
+          let periodVal = rec.period != null ? rec.period : (rec.Period != null ? rec.Period : "");
+          let openingVal = rec.opening != null ? rec.opening : "";
+          let newVal = rec.new != null ? rec.new : "";
+          let closedVal = rec.closed != null ? rec.closed : "";
+          let endingVal = rec.ending != null ? rec.ending : "";
+          if (!periodVal && !openingVal && !newVal && !closedVal) {{
+            const keys = Object.keys(rec);
+            keys.forEach(function (k) {{
+              const role = classifyObsTrackingHeader(k);
+              if (role === "period") periodVal = rec[k];
+              else if (role === "opening") openingVal = rec[k];
+              else if (role === "new") newVal = rec[k];
+              else if (role === "closed") closedVal = rec[k];
+              else if (role === "ending") endingVal = rec[k];
+            }});
+            if (!periodVal && keys.length) {{
+              // sheet_to_json object with original headers
+              const vals = keys.map(function (k) {{ return rec[k]; }});
+              if (vals.length >= 1) periodVal = vals[0];
+              if (vals.length >= 2) openingVal = vals[1];
+              if (vals.length >= 3) newVal = vals[2];
+              if (vals.length >= 4) closedVal = vals[3];
+              if (vals.length >= 5) endingVal = vals[4];
+            }}
+          }}
+          const idx = classifyObsTrackingPeriod(periodVal);
+          if (idx < 0) return;
+          matched += 1;
+          const opening = sanitizeObsTrackingCell(openingVal);
+          const neu = sanitizeObsTrackingCell(newVal);
+          const closed = sanitizeObsTrackingCell(closedVal);
+          const ending = sanitizeObsTrackingCell(endingVal);
+          if (idx === 0) {{
+            base[0] = [periods[0], opening || "0", "", "", ending || opening || "0"];
+          }} else if (idx >= 1 && idx <= 4) {{
+            base[idx] = [periods[idx], opening, neu, closed, ending];
+          }} else if (idx === 5) {{
+            base[5] = [periods[5], opening, "", "", ending || opening || "0"];
+          }}
+        }});
+        if (!matched) return false;
+        obsTrackingDraftRows = recomputeObsTrackingRows(base);
+        renderObsTrackingTable();
+        try {{ persistAuditUserEdits(); }} catch (_p) {{}}
+        try {{
+          saveUserEditsToServer({{
+            successMsg: ui.obsTrackingApplySuccess || ui.obsTrackingSaveSuccess || "Applied successfully",
+          }});
+        }} catch (_s) {{}}
+        return true;
+      }}
+      function parseExcelObsTrackingWorksheet(ws) {{
+        if (!ws || typeof XLSX === "undefined") return [];
+        const matrix = XLSX.utils.sheet_to_json(ws, {{ header: 1, defval: "", raw: false }});
+        return matrixToObsTrackingRecords(matrix);
+      }}
+      function applyObsTrackingPanelChanges() {{
+        try {{ captureObsTrackingDraftRows(); }} catch (_c) {{}}
+        obsTrackingDraftRows = recomputeObsTrackingRows(obsTrackingDraftRows || defaultObsTrackingRows());
+        renderObsTrackingTable();
+        try {{
+          writeAuditPersistScript(
+            planDraftRows || [],
+            planCellBgHex || [],
+            snapshotReviewsForExport(),
+            obsTrackingDraftRows || []
+          );
+        }} catch (_w) {{}}
+        const applyMsg = ui.obsTrackingApplySuccess || ui.obsTrackingSaveSuccess || "Applied successfully";
+        saveUserEditsToServer({{ successMsg: applyMsg }});
+      }}
+      function syncObsTrackingComputedCells() {{
+        if (!obsTrackingBodyRows) return;
+        const rows = captureObsTrackingDraftRows();
+        const trs = obsTrackingBodyRows.querySelectorAll("tr");
+        if (!trs.length) return;
+        for (let r = 0; r < 6; r++) {{
+          const tr = trs[r];
+          if (!tr) continue;
+          const tds = tr.querySelectorAll("td");
+          const row = rows[r] || [];
+          if (tds[0]) tds[0].textContent = String(row[0] != null ? row[0] : "");
+          if (r === 0) {{
+            if (tds[4]) tds[4].textContent = String(row[4] != null ? row[4] : "0");
+          }} else {{
+            if (tds[1]) tds[1].textContent = String(row[1] != null ? row[1] : "0");
+            if (tds[4]) tds[4].textContent = String(row[4] != null ? row[4] : "0");
+          }}
+        }}
+      }}
+      function renderObsTrackingTable() {{
+        if (!obsTrackingHeadRow || !obsTrackingBodyRows) return;
+        const cols = obsTrackingColumnLabels();
+        const trh = document.createElement("tr");
+        cols.forEach(function (c) {{
+          const th = document.createElement("th");
+          th.textContent = c;
+          trh.appendChild(th);
+        }});
+        obsTrackingHeadRow.innerHTML = "";
+        obsTrackingHeadRow.appendChild(trh);
+        const draftRows = ensureObsTrackingDraftRows();
+        obsTrackingBodyRows.innerHTML = "";
+        draftRows.forEach(function (rowVals, r) {{
+          const trb = document.createElement("tr");
+          rowVals.forEach(function (v, idx) {{
+            const td = document.createElement("td");
+            td.textContent = String(v != null ? v : "");
+            const isPeriod = idx === 0;
+            const isOpeningSeed = r === 0 && idx === 1;
+            const isQuarterMovement = (r >= 1 && r <= 4) && (idx === 2 || idx === 3);
+            const editable = isOpeningSeed || isQuarterMovement;
+            if (isPeriod) td.className = "audit-obs-tracking-period";
+            else if (editable) td.className = "audit-obs-tracking-editable";
+            else td.className = "audit-obs-tracking-computed";
+            if (editable) {{
+              td.setAttribute("contenteditable", "true");
+              td.spellcheck = false;
+              td.addEventListener("input", function () {{
+                try {{ syncObsTrackingComputedCells(); }} catch (_re) {{}}
+                try {{ persistAuditUserEdits(); }} catch (_pe) {{}}
+              }});
+              td.addEventListener("blur", function () {{
+                try {{
+                  captureObsTrackingDraftRows();
+                  renderObsTrackingTable();
+                }} catch (_rb) {{}}
+                try {{ persistAuditUserEdits(); }} catch (_pe2) {{}}
+              }});
+            }}
+            trb.appendChild(td);
+          }});
+          obsTrackingBodyRows.appendChild(trb);
+        }});
+      }}
+      function closeObsTracking() {{
+        if (obsTrackingBackdrop) {{
+          obsTrackingBackdrop.style.display = "none";
+          obsTrackingBackdrop.setAttribute("aria-hidden", "true");
+        }}
+        if (obsTrackingPanel) {{
+          obsTrackingPanel.style.display = "none";
+          obsTrackingPanel.setAttribute("aria-hidden", "true");
+        }}
+        document.body.style.overflow = "";
+        try {{ captureObsTrackingDraftRows(); }} catch (_cap) {{}}
+        try {{
+          saveUserEditsToServer({{
+            successMsg: (typeof ui !== "undefined" && ui && (ui.obsTrackingSaveSuccess || ui.planSaveSuccess)) || "Changes saved",
+          }});
+        }} catch (_sv) {{}}
+        try {{
+          if (window.parent && window.parent !== window) {{
+            window.parent.postMessage({{ type: "deck-modal-state", open: false }}, "*");
+          }}
+        }} catch (_pmCloseOt) {{}}
+        if (obsTrackingCb) obsTrackingCb.checked = false;
+      }}
+      function openObsTracking() {{
+        if (!obsTrackingPanel || !obsTrackingBackdrop) return;
+        renderObsTrackingTable();
+        obsTrackingBackdrop.style.display = "block";
+        obsTrackingBackdrop.setAttribute("aria-hidden", "false");
+        obsTrackingPanel.style.display = "block";
+        obsTrackingPanel.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+        try {{
+          if (window.parent && window.parent !== window) {{
+            window.parent.postMessage({{ type: "deck-modal-state", open: true }}, "*");
+          }}
+        }} catch (_pmOpenOt) {{}}
+      }}
       const AUDIT_REVIEWS_LS = "auditOtherReviewsNote";
       function closeOtherReviews() {{
         if (reviewsBackdrop) {{
@@ -10001,6 +10475,20 @@ def generate_finance_report(
       if (agingRevisedLbl) agingRevisedLbl.textContent = ui.agingRevisedToggleLabel || "Revised date";
       if (planLbl) planLbl.textContent = ui.planToggleLabel || "Audit plan status";
       if (planTitle) planTitle.textContent = ui.planTitle || "Audit Plan Status";
+      if (obsTrackingLbl) obsTrackingLbl.textContent = ui.obsTrackingToggleLabel || "Observation Tracking Report";
+      if (obsTrackingTitle) obsTrackingTitle.textContent = ui.obsTrackingTitle || "Observation Tracking Report";
+      if (obsTrackingHintEl) obsTrackingHintEl.textContent = ui.obsTrackingHint || "";
+      if (obsTrackingApplyBtn) {{
+        obsTrackingApplyBtn.textContent = ui.obsTrackingApply || "Apply";
+        if (ui.obsTrackingApply) obsTrackingApplyBtn.setAttribute("aria-label", ui.obsTrackingApply);
+        obsTrackingApplyBtn.addEventListener("click", function () {{
+          applyObsTrackingPanelChanges();
+        }});
+      }}
+      if (obsTrackingUploadBtn) {{
+        obsTrackingUploadBtn.textContent = ui.obsTrackingUploadFile || "Upload file";
+        if (ui.obsTrackingUploadFile) obsTrackingUploadBtn.setAttribute("aria-label", ui.obsTrackingUploadFile);
+      }}
       if (planDownloadPptBtn) planDownloadPptBtn.textContent = ui.planDownloadPpt || "Download PowerPoint";
       if (planUploadBtn) {{
         planUploadBtn.textContent = ui.planUploadFile || "Upload file";
@@ -10100,8 +10588,26 @@ def generate_finance_report(
       }}
       if (planCb) {{
         planCb.addEventListener("change", function () {{
-          if (planCb.checked) openPlanStatus();
-          else closePlanStatus();
+          if (planCb.checked) {{
+            if (obsTrackingPanel && obsTrackingPanel.style.display !== "none") {{
+              try {{ closeObsTracking(); }} catch (_cOt) {{}}
+            }} else if (obsTrackingCb) {{
+              obsTrackingCb.checked = false;
+            }}
+            openPlanStatus();
+          }} else closePlanStatus();
+        }});
+      }}
+      if (obsTrackingCb) {{
+        obsTrackingCb.addEventListener("change", function () {{
+          if (obsTrackingCb.checked) {{
+            if (planPanel && planPanel.style.display !== "none") {{
+              try {{ closePlanStatus(); }} catch (_cPlan) {{}}
+            }} else if (planCb) {{
+              planCb.checked = false;
+            }}
+            openObsTracking();
+          }} else closeObsTracking();
         }});
       }}
       if (agingClose) agingClose.addEventListener("click", closeAgingMatrix);
@@ -10111,6 +10617,134 @@ def generate_finance_report(
       if (agingDrillBackdrop) agingDrillBackdrop.addEventListener("click", closeAgingDrillDown);
       if (planClose) planClose.addEventListener("click", closePlanStatus);
       if (planBackdrop) planBackdrop.addEventListener("click", closePlanStatus);
+      if (obsTrackingClose) obsTrackingClose.addEventListener("click", closeObsTracking);
+      if (obsTrackingBackdrop) obsTrackingBackdrop.addEventListener("click", closeObsTracking);
+      if (obsTrackingUploadBtn && obsTrackingUploadFile) {{
+        obsTrackingUploadBtn.addEventListener("click", function () {{
+          try {{ obsTrackingUploadFile.click(); }} catch (_pc) {{}}
+        }});
+      }}
+      if (obsTrackingUploadFile) {{
+        obsTrackingUploadFile.addEventListener("change", function () {{
+          const f = obsTrackingUploadFile.files && obsTrackingUploadFile.files[0];
+          const badTypeMsg = ui.obsTrackingUploadBadType || "Unsupported file type.";
+          const noRowsMsg = ui.obsTrackingUploadNoRows || "No observation tracking rows could be read from this file.";
+          const needXlsxMsg = ui.obsTrackingUploadNeedXlsx || "Excel import is unavailable (SheetJS did not load).";
+          function warn(msg) {{
+            try {{ window.alert(String(msg || "")); }} catch (_a) {{}}
+          }}
+          function resetObsTrackingUploadInput() {{
+            try {{ obsTrackingUploadFile.value = ""; }} catch (_v1) {{}}
+          }}
+          function readBlobAsText(blob, onOk, onErr) {{
+            if (blob && typeof blob.text === "function") {{
+              blob.text().then(function (t) {{ onOk(String(t != null ? t : "")); }}).catch(function () {{ if (onErr) onErr(); }});
+              return;
+            }}
+            readBlobAsArrayBuffer(blob, function (ab) {{
+              try {{
+                const td = new TextDecoder("utf-8");
+                onOk(td.decode(ab));
+              }} catch (_e0) {{
+                if (onErr) onErr();
+              }}
+            }}, onErr);
+          }}
+          function readBlobAsArrayBuffer(blob, onOk, onErr) {{
+            if (blob && typeof blob.arrayBuffer === "function") {{
+              blob.arrayBuffer().then(function (ab) {{ onOk(ab); }}).catch(function () {{ if (onErr) onErr(); }});
+              return;
+            }}
+            if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function" || typeof fetch !== "function") {{
+              if (onErr) onErr();
+              return;
+            }}
+            let u = "";
+            try {{
+              u = URL.createObjectURL(blob);
+            }} catch (_u0) {{
+              if (onErr) onErr();
+              return;
+            }}
+            fetch(u)
+              .then(function (r) {{ return r.arrayBuffer(); }})
+              .then(function (ab) {{
+                try {{ URL.revokeObjectURL(u); }} catch (_r0) {{}}
+                onOk(ab);
+              }})
+              .catch(function () {{
+                try {{ URL.revokeObjectURL(u); }} catch (_r1) {{}}
+                if (onErr) onErr();
+              }});
+          }}
+          if (!f) {{
+            resetObsTrackingUploadInput();
+            return;
+          }}
+          const name = String(f.name || "").toLowerCase();
+          if (name.endsWith(".csv")) {{
+            readBlobAsText(
+              f,
+              function (txt) {{
+                try {{
+                  const lines = String(txt || "").split(/\\r?\\n/).filter(function (x) {{ return x.trim() !== ""; }});
+                  if (!lines.length) {{
+                    warn(noRowsMsg);
+                    return;
+                  }}
+                  const splitCsv = function (line) {{
+                    const out = [];
+                    let cur = "";
+                    let inQ = false;
+                    for (let i = 0; i < line.length; i++) {{
+                      const ch = line[i];
+                      if (ch === '"' && line[i + 1] === '"' && inQ) {{ cur += '"'; i++; continue; }}
+                      if (ch === '"') {{ inQ = !inQ; continue; }}
+                      if (ch === "," && !inQ) {{ out.push(cur); cur = ""; continue; }}
+                      cur += ch;
+                    }}
+                    out.push(cur);
+                    return out;
+                  }};
+                  const matrix = lines.map(function (ln) {{ return splitCsv(ln); }});
+                  const rows = matrixToObsTrackingRecords(matrix);
+                  if (!fillObsTrackingFromRecords(rows)) warn(noRowsMsg);
+                }} finally {{
+                  resetObsTrackingUploadInput();
+                }}
+              }},
+              function () {{ warn(noRowsMsg); resetObsTrackingUploadInput(); }},
+            );
+          }} else if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".xlsm")) {{
+            readBlobAsArrayBuffer(
+              f,
+              function (ab) {{
+                try {{
+                  if (typeof XLSX === "undefined") {{
+                    warn(needXlsxMsg);
+                    return;
+                  }}
+                  const data = new Uint8Array(ab);
+                  const wb = XLSX.read(data, {{ type: "array" }});
+                  const ws = wb.Sheets[wb.SheetNames[0]];
+                  let rows = parseExcelObsTrackingWorksheet(ws);
+                  if (!rows.length) {{
+                    const jsonRows = XLSX.utils.sheet_to_json(ws, {{ defval: "" }});
+                    rows = jsonRows;
+                  }}
+                  if (!fillObsTrackingFromRecords(rows)) warn(noRowsMsg);
+                }} finally {{
+                  resetObsTrackingUploadInput();
+                }}
+              }},
+              function () {{ warn(noRowsMsg); resetObsTrackingUploadInput(); }},
+            );
+          }} else {{
+            warn(badTypeMsg);
+            resetObsTrackingUploadInput();
+          }}
+        }});
+      }}
       if (reviewsLbl) reviewsLbl.textContent = ui.reviewsToggleLabel || "Other audit reviews";
       if (additionalNotesLbl) additionalNotesLbl.textContent = ui.additionalNotesToggleLabel || "ملاحظات اضافية";
       if (reviewsTitle) reviewsTitle.textContent = ui.reviewsTitle || "Other audit reviews";
@@ -14074,6 +14708,7 @@ def generate_finance_report(
         try {{ closeAuditObsDetail(); }} catch (_e0) {{}}
         try {{ closeAgingMatrix(); }} catch (_e1) {{}}
         try {{ closePlanStatus(); }} catch (_e2) {{}}
+        try {{ closeObsTracking(); }} catch (_e2b) {{}}
         try {{ closeOtherReviews(); }} catch (_e3) {{}}
         resetAuditFilterSelectsToNone();
         activeAuditYears.clear();

@@ -11,6 +11,8 @@ from audit_app.models import (
     Company,
     CompanyAttachmentSetting,
     CompanyMembership,
+    DashboardTemplateType,
+    known_template_codes,
 )
 
 SESSION_ACTIVE_COMPANY_KEY = "active_company_id"
@@ -120,7 +122,7 @@ def user_membership(user, company: Company | None) -> CompanyMembership | None:
             can_delete_drafts=True,
         )
     try:
-        return CompanyMembership.objects.get(
+        return CompanyMembership.objects.prefetch_related("template_accesses").get(
             user=user,
             company=company,
             is_deleted=False,
@@ -137,7 +139,39 @@ def user_must_select_company(user) -> bool:
     return user_companies(user).count() > 1
 
 
-def has_company_perm(user, company: Company | None, perm: str) -> bool:
+_PERM_TO_FIELD = {
+    "upload": "can_upload",
+    "assign_viewers": "can_assign_dashboard_viewers",
+    "view_own": "can_view_own_only",
+    "review": "can_review",
+    "delete_draft": "can_delete_drafts",
+}
+
+
+def _membership_perm_value(
+    membership: CompanyMembership,
+    field: str,
+    template_code: str | None = None,
+) -> bool:
+    if not membership.pk:
+        return bool(getattr(membership, field, False))
+    rows = list(membership.template_accesses.all())
+    if not rows:
+        return bool(getattr(membership, field, False))
+    if template_code:
+        for row in rows:
+            if row.template_code == template_code:
+                return bool(getattr(row, field, False))
+        return False
+    return any(getattr(row, field, False) for row in rows)
+
+
+def has_company_perm(
+    user,
+    company: Company | None,
+    perm: str,
+    template_code: str | None = None,
+) -> bool:
     if not user.is_authenticated or not active_companies_exist():
         return False
     if user.is_superuser:
@@ -147,17 +181,55 @@ def has_company_perm(user, company: Company | None, perm: str) -> bool:
     membership = user_membership(user, company)
     if membership is None:
         return False
-    if perm == "upload":
-        return membership.can_upload
-    if perm == "assign_viewers":
-        return membership.can_assign_dashboard_viewers
-    if perm == "view_own":
-        return membership.can_view_own_only
-    if perm == "review":
-        return membership.can_review
-    if perm == "delete_draft":
-        return membership.can_delete_drafts
-    return False
+    field = _PERM_TO_FIELD.get(perm)
+    if not field:
+        return False
+    return _membership_perm_value(membership, field, template_code)
+
+
+def template_codes_with_perm(
+    user,
+    company: Company | None,
+    perm: str,
+) -> set[str]:
+    if not user.is_authenticated or not active_companies_exist():
+        return set()
+    codes = set(known_template_codes())
+    if user.is_superuser:
+        return codes
+    if company is None or not company_is_effectively_active(resolve_tenant_company(company)):
+        return set()
+    membership = user_membership(user, company)
+    if membership is None:
+        return set()
+    field = _PERM_TO_FIELD.get(perm)
+    if not field:
+        return set()
+    if not membership.pk:
+        return codes if getattr(membership, field, False) else set()
+    rows = list(membership.template_accesses.all())
+    if not rows:
+        return codes if getattr(membership, field, False) else set()
+    return {row.template_code for row in rows if getattr(row, field, False)}
+
+
+def list_nav_template_types():
+    types = list(
+        DashboardTemplateType.objects.filter(is_active=True, is_deleted=False).order_by(
+            "sort_order", "code"
+        )
+    )
+    if types:
+        return types
+    from audit_app.dashboard_template_codes import TEMPLATE_TYPE_SEEDS
+
+    class _Fallback:
+        def __init__(self, seed: dict):
+            self.code = seed["code"]
+            self.name = seed["name"]
+            self.icon = seed.get("icon") or "bi-grid"
+
+    return [_Fallback(seed) for seed in TEMPLATE_TYPE_SEEDS]
 
 
 def set_active_company(request, company_id: int) -> bool:

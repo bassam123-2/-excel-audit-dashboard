@@ -5,7 +5,7 @@
 {% block page_title %}
 <span class="d-flex align-items-center gap-2">
     <i class="bi {% if show_trash %}bi-trash{% else %}bi-grid-3x3-gap-fill{% endif %}" style="color:var(--accent);"></i>
-    {% if show_trash %}{{ ui.dl_trash_heading }}{% else %}{{ ui.dl_heading }}{% endif %}
+    {% if show_trash %}{{ ui.dl_trash_heading }}{% elif list_heading %}{{ list_heading }}{% else %}{{ ui.dl_heading }}{% endif %}
 </span>
 {% endblock %}
 
@@ -25,7 +25,7 @@
         </div>
     </div>
     {% if can_upload_files %}
-    <div class="stat-card stat-card--clickable" onclick="window.location='{% url 'upload' %}'">
+    <div class="stat-card stat-card--clickable" onclick="window.location='{{ upload_url }}'">
         <div class="stat-icon green"><i class="bi bi-plus-circle-fill"></i></div>
         <div>
             <div class="stat-val stat-val--compact">{{ ui.dl_new_btn }}</div>
@@ -45,7 +45,7 @@
         </div>
     </div>
     {% if can_upload_files %}
-    <a href="{% url 'upload' %}" class="btn btn-primary btn-sm d-flex align-items-center gap-2">
+    <a href="{{ upload_url }}" class="btn btn-primary btn-sm d-flex align-items-center gap-2">
         <i class="bi bi-plus-lg"></i> {{ ui.dl_new_btn }}
     </a>
     {% endif %}
@@ -54,7 +54,7 @@
 {% if dashboard_filters %}
 <div class="dashboard-filter-bar mb-3" role="group" aria-label="{% if is_rtl %}تصفية اللوحات{% else %}Filter dashboards{% endif %}">
     {% for f in dashboard_filters %}
-    <a href="?filter={{ f.key }}"
+    <a href="?{% if list_template %}template={{ list_template }}&{% endif %}filter={{ f.key }}"
        class="dashboard-filter-chip{% if active_dashboard_filter == f.key %} is-active{% endif %}"
        aria-pressed="{% if active_dashboard_filter == f.key %}true{% else %}false{% endif %}">
         {{ f.label }}
@@ -152,7 +152,7 @@
         {% if can_upload_files %}{{ ui.dl_empty_sub_uploader }}{% else %}{{ ui.dl_empty_sub_viewer }}{% endif %}
     </p>
     {% if can_upload_files %}
-    <a href="{% url 'upload' %}" class="btn btn-primary mt-3">
+    <a href="{{ upload_url }}" class="btn btn-primary mt-3">
         <i class="bi bi-cloud-upload me-1"></i> {{ ui.dl_upload_btn }}
     </a>
     {% endif %}

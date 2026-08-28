@@ -59,6 +59,21 @@ class AuditPlanUserEditsTests(TestCase):
         self.assertEqual(payload["planCellBg"][0][0], "#ff0000")
         self.assertEqual(payload["planCellBg"][0][1], "#ffffff")
         self.assertEqual(payload["reviewsNote"], "note")
+        self.assertEqual(payload.get("obsTrackingRows"), [])
+
+    def test_validate_dashboard_user_edits_payload_obs_tracking_rows(self):
+        payload = validate_dashboard_user_edits_payload(
+            {
+                "v": 1,
+                "planRows": [],
+                "planCellBg": [],
+                "reviewsNote": "",
+                "obsTrackingRows": [[" Opening Balance ", "0", "", "", "0"], ["Q1", "0", "2", "1"]],
+            }
+        )
+        self.assertEqual(payload["obsTrackingRows"][0][0], "Opening Balance")
+        self.assertEqual(payload["obsTrackingRows"][1][2], "2")
+        self.assertEqual(len(payload["obsTrackingRows"][1]), 5)
 
     def test_validate_dashboard_user_edits_payload_formats_percent_columns(self):
         payload = validate_dashboard_user_edits_payload(

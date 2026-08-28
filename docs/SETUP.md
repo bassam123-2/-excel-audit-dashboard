@@ -173,6 +173,10 @@ curl http://127.0.0.1:8000/api/version
 - Run `python manage.py collectstatic --noinput` on every deploy
   (already in `scripts/deploy.example.sh`). Prefer no `--clear` so older
   hashed files remain available to open browser tabs.
+- Deploy **must** collectstatic with `DJANGO_SETTINGS_MODULE=config.settings.production`.
+  `manage.py` defaults to development; that storage does not refresh hashed CSS.
+  After pulling this fix, recopy `scripts/deploy.example.sh` → `scripts/deploy.sh`
+  on the VPS once (`deploy.sh` is gitignored).
 
 ## Troubleshooting
 
@@ -184,3 +188,4 @@ curl http://127.0.0.1:8000/api/version
 | Excel company mismatch | Match Excel `Company` column to `Company.excel_company_names` in admin |
 | Report shows old HTML | Use `/dashboards/<id>/serve/?nocache=1` or re-upload |
 | Console 403 on `manifest.*.json` | Redeploy: app now uses `/manifest.webmanifest`. Ensure nginx allows JS/CSS under `/static/` |
+| Admin/app CSS unchanged after deploy | `collectstatic` ran with development settings so hashed files stayed old. Confirm `.env` has `DJANGO_SETTINGS_MODULE=config.settings.production` (no extra text on that line), recopy `deploy.example.sh` → `deploy.sh`, redeploy. `check_static_manifest --verify-files` must pass. |

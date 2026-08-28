@@ -16,6 +16,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         # ── Sidebar sections ─────────────────────
         "section_uploads": "رفع البيانات",
         "section_reports": "التقارير",
+        "template_nav_IAD": "لوحة التدقيق الداخلي",
+        "template_nav_CD": "لوحة الامتثال",
         "section_admin": "الإدارة",
         "section_account": "الحساب",
         # ── Sidebar links ─────────────────────────
@@ -379,6 +381,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         # ── Sidebar sections ─────────────────────
         "section_uploads": "Data Upload",
         "section_reports": "Reports",
+        "template_nav_IAD": "Internal Audit Dashboard",
+        "template_nav_CD": "Compliance Dashboard",
         "section_admin": "Administration",
         "section_account": "Account",
         # ── Sidebar links ─────────────────────────
@@ -742,3 +746,4 @@ def get_ui(lang: str) -> dict[str, str]:
     """Return UI string dict for the given language ('ar' or 'en')."""
     key = "ar" if str(lang).strip().lower() == "ar" else "en"
     return _STRINGS[key]
+ 
