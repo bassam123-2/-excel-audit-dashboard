@@ -895,6 +895,24 @@ def _json_safe_year_cell(v: Any) -> Any:
     return s
 
 
+def _json_safe_quarter_cell(v: Any) -> Any:
+    """Normalize quarter cells (Q1–Q4) from Excel."""
+    cell = _json_safe_cell(v)
+    if cell is None:
+        return None
+    s = str(cell).strip().upper().replace(" ", "")
+    if not s:
+        return None
+    if s in ("Q1", "Q2", "Q3", "Q4"):
+        return s
+    if s in ("1", "2", "3", "4"):
+        return "Q" + s
+    m = re.match(r"Q\s*([1-4])", s)
+    if m:
+        return "Q" + m.group(1)
+    return str(cell).strip()
+
+
 def _json_safe_obs_date_cell(v: Any) -> Any:
     """Normalize observation date cells to ISO dates or Excel serials for aging."""
     if v is None:
@@ -1241,6 +1259,20 @@ def resolve_audit_observation_columns(df: pd.DataFrame) -> dict[str, str] | None
                 break
     if actual_q_col:
         out["actual_closure_quarter"] = actual_q_col
+    finding_rel_col = pick(
+        (
+            "finding released during current year",
+            "finding released during current yr",
+            "findings released during current year",
+        )
+    )
+    if finding_rel_col is None:
+        for na, actual in n2c.items():
+            if "finding" in na and "released" in na and "current" in na and "year" in na:
+                finding_rel_col = actual
+                break
+    if finding_rel_col:
+        out["finding_released_quarter"] = finding_rel_col
     return out
 
 
@@ -1369,7 +1401,7 @@ def build_audit_observation_payload(
         else:
             rec["py"] = None
         if "planned_closure_quarter" in colmap:
-            rec["pq"] = _json_safe_cell(r[colmap["planned_closure_quarter"]])
+            rec["pq"] = _json_safe_quarter_cell(r[colmap["planned_closure_quarter"]])
         else:
             rec["pq"] = None
         if "actual_closure_year" in colmap:
@@ -1377,9 +1409,13 @@ def build_audit_observation_payload(
         else:
             rec["ay"] = None
         if "actual_closure_quarter" in colmap:
-            rec["aq"] = _json_safe_cell(r[colmap["actual_closure_quarter"]])
+            rec["aq"] = _json_safe_quarter_cell(r[colmap["actual_closure_quarter"]])
         else:
             rec["aq"] = None
+        if "finding_released_quarter" in colmap:
+            rec["frq"] = _json_safe_quarter_cell(r[colmap["finding_released_quarter"]])
+        else:
+            rec["frq"] = None
         rows_out.append(rec)
     loaded = len(clip)
     rating_types: list[dict[str, str]] = []
@@ -1406,6 +1442,8 @@ def build_audit_observation_payload(
         "has_planned_closure_quarter": "planned_closure_quarter" in colmap,
         "has_actual_closure_year": "actual_closure_year" in colmap,
         "has_actual_closure_quarter": "actual_closure_quarter" in colmap,
+        "has_finding_released_quarter": "finding_released_quarter" in colmap,
+        "finding_released_quarters": ["Q1", "Q2", "Q3", "Q4"],
         "has_observation_type": has_observation_type,
         "has_function": "function" in colmap,
         "has_subcompany": "subcompany" in colmap,
@@ -1421,6 +1459,8 @@ def build_audit_observation_payload(
             "auditYearsTitle": tr(loc, "audit_year_strip_title"),
             "plannedClosureYearsTitle": tr(loc, "audit_planned_closure_year_strip_title"),
             "actualClosureYearsTitle": tr(loc, "audit_actual_closure_year_strip_title"),
+            "findingReleasedTitle": tr(loc, "audit_finding_released_strip_title"),
+            "boxFindingReleasedAria": tr(loc, "audit_box_finding_released_aria"),
             "boxPlannedYearsAria": tr(loc, "audit_box_planned_years_aria"),
             "boxActualYearsAria": tr(loc, "audit_box_actual_years_aria"),
             "obsListHeading": tr(loc, "audit_obs_list_heading"),
@@ -1517,6 +1557,7 @@ def build_audit_observation_payload(
             "agingDrillBack": tr(loc, "audit_aging_drill_back"),
             "blockDrillTitleTpl": tr(loc, "audit_block_drill_title_tpl"),
             "blockDrillHint": tr(loc, "audit_block_drill_hint"),
+            "findingReleasedDrillTitleTpl": tr(loc, "audit_finding_released_drill_title_tpl"),
             "plannedQuarterDrillTitleTpl": tr(loc, "audit_planned_quarter_drill_title_tpl"),
             "actualQuarterDrillTitleTpl": tr(loc, "audit_actual_quarter_drill_title_tpl"),
             "quarterQ1Label": tr(loc, "audit_quarter_q1"),
@@ -6529,6 +6570,10 @@ def generate_finance_report(
             <p class="audit-strip-row-heading">{html.escape(tr(loc, "audit_year_strip_title"))}</p>
             <div class="audit-rating-btns audit-rating-row" id="audit-year-btns"></div>
           </div>
+          <div class="audit-ratings-deck audit-box audit-box-quarters" id="audit-box-finding-released" aria-label="{html.escape(tr(loc, "audit_box_finding_released_aria"))}" style="display:none">
+            <p class="audit-strip-row-heading">{html.escape(tr(loc, "audit_finding_released_strip_title"))}</p>
+            <div class="audit-rating-btns audit-rating-row" id="audit-finding-released-btns"></div>
+          </div>
           <div class="audit-ratings-deck audit-box audit-box-years" id="audit-box-planned-years" aria-label="{html.escape(tr(loc, "audit_box_planned_years_aria"))}" style="display:none">
             <p class="audit-strip-row-heading">{html.escape(tr(loc, "audit_planned_closure_year_strip_title"))}</p>
             <div class="audit-rating-btns audit-rating-row" id="audit-planned-year-btns"></div>
@@ -8444,6 +8489,7 @@ def generate_finance_report(
       let activeAuditYears = new Set();
       let activePlannedYears = new Set();
       let activeActualYears = new Set();
+      let activeFindingReleasedQuarters = new Set();
       let activeRatingValues = new Set();
       let activeObsTypeLabels = new Set();
       let obsCheckedIds = null;
@@ -8457,8 +8503,14 @@ def generate_finance_report(
       const plannedYearBox = document.getElementById("audit-box-planned-years");
       const actualYearBtnHost = document.getElementById("audit-actual-year-btns");
       const actualYearBox = document.getElementById("audit-box-actual-years");
+      const findingReleasedBtnHost = document.getElementById("audit-finding-released-btns");
+      const findingReleasedBox = document.getElementById("audit-box-finding-released");
       const hasPlannedClosureYear = !!AO.has_planned_closure_year;
       const hasActualClosureYear = !!AO.has_actual_closure_year;
+      const hasFindingReleasedQuarter = !!AO.has_finding_released_quarter;
+      const FINDING_RELEASED_QUARTERS = (AO.finding_released_quarters && AO.finding_released_quarters.length)
+        ? AO.finding_released_quarters.slice()
+        : ["Q1", "Q2", "Q3", "Q4"];
       const obsTypeBtnHost = document.getElementById("audit-obs-type-btns");
       const obsBarTitle = document.getElementById("audit-obs-bar-title");
       const obsBarMeta = document.getElementById("audit-obs-bar-meta");
@@ -8810,6 +8862,14 @@ def generate_finance_report(
         if (m) return "Q" + m[1];
         return "";
       }}
+      function rowFindingReleasedQuarter(r) {{
+        return normalizeQuarterBucket(r && r.frq);
+      }}
+      function rowMatchesFindingReleasedSelection(r) {{
+        if (activeFindingReleasedQuarters.size === 0) return true;
+        const q = rowFindingReleasedQuarter(r);
+        return q !== "" && activeFindingReleasedQuarters.has(q);
+      }}
       function appendAgingDrillDataRow(tbody, row) {{
         const tr = document.createElement("tr");
         tr.className = "audit-aging-drill-row";
@@ -8994,13 +9054,18 @@ def generate_finance_report(
             return yk !== "" && activeActualYears.has(yk);
           }});
         }}
-        // Closure-year drills must include Closed rows (strip counts include them).
-        // Planned/actual year blocks are about closure timing, not open-item follow-up.
+        if (kind === "findingReleased") {{
+          rows = rows.filter(function (r) {{ return rowFindingReleasedQuarter(r) === value; }});
+        }} else {{
+          rows = rows.filter(function (r) {{ return rowMatchesFindingReleasedSelection(r); }});
+        }}
+        // Closure-year / finding-released drills include Closed rows (strip counts include them).
         const closedKey = normAuditColorKey(value);
         const keepClosed =
           (kind === "ia" && closedKey === "closed") ||
           kind === "plannedYear" ||
-          kind === "actualYear";
+          kind === "actualYear" ||
+          kind === "findingReleased";
         if (!keepClosed) {{
           rows = rows.filter(function (r) {{ return !rowIsClosedIa(r, bl); }});
         }}
@@ -9030,8 +9095,37 @@ def generate_finance_report(
             return yk !== "" && activeActualYears.has(yk);
           }});
         }}
+        if (kind !== "findingReleased" && activeFindingReleasedQuarters.size > 0) {{
+          rows = rows.filter(function (r) {{ return rowMatchesFindingReleasedSelection(r); }});
+        }}
         const want = String(yearValue == null ? "" : yearValue);
         return rows.filter(function (r) {{ return ffCellKey(r[field]) === want; }});
+      }}
+      function collectFindingReleasedStripRows(quarterValue) {{
+        let rows = aoRowsForYearStrip()
+          .filter(function (r) {{ return rowInIaSelection(r, blankLabel); }})
+          .filter(function (r) {{ return rowMatchesRatingSelection(r); }})
+          .filter(function (r) {{ return rowMatchesObsTypeSelection(r, blankLabel); }});
+        if (activeAuditYears.size > 0) {{
+          rows = rows.filter(function (r) {{
+            const yk = ffCellKey(r.y);
+            return yk !== "" && activeAuditYears.has(yk);
+          }});
+        }}
+        if (activePlannedYears.size > 0) {{
+          rows = rows.filter(function (r) {{
+            const yk = ffCellKey(r.py);
+            return yk !== "" && activePlannedYears.has(yk);
+          }});
+        }}
+        if (activeActualYears.size > 0) {{
+          rows = rows.filter(function (r) {{
+            const yk = ffCellKey(r.ay);
+            return yk !== "" && activeActualYears.has(yk);
+          }});
+        }}
+        const want = String(quarterValue == null ? "" : quarterValue);
+        return rows.filter(function (r) {{ return rowFindingReleasedQuarter(r) === want; }});
       }}
       function openObsListDrillDown(rows, title, opts) {{
         if (!agingDrillPanel || !agingDrillBackdrop) return;
@@ -9084,6 +9178,10 @@ def generate_finance_report(
           title = tpl.split("{{year}}").join(String(key));
           drillOpts.quarterField = "aq";
           rows = collectClosureYearStripRows("ay", key, kind);
+        }} else if (kind === "findingReleased") {{
+          const tpl = ui.findingReleasedDrillTitleTpl || "Finding released {{quarter}}";
+          title = tpl.split("{{quarter}}").join(String(key));
+          rows = collectFindingReleasedStripRows(key);
         }} else {{
           rows = collectMetricBlockRows(kind, key);
         }}
@@ -12252,6 +12350,9 @@ def generate_finance_report(
             return yk !== "" && activeActualYears.has(yk);
           }});
         }}
+        if (activeFindingReleasedQuarters.size > 0) {{
+          out = out.filter(function (r) {{ return rowMatchesFindingReleasedSelection(r); }});
+        }}
         return out;
       }}
 
@@ -12485,6 +12586,14 @@ def generate_finance_report(
       function actualYearGradientColor(label, orderedYearKeys) {{
         // Brown — light tan → deep chocolate
         return yearStripGradientColor(label, orderedYearKeys, 28, 28, 52, 88, 28);
+      }}
+      function findingReleasedQuarterColor(qKey) {{
+        const keys = FINDING_RELEASED_QUARTERS;
+        const idx = keys.indexOf(qKey);
+        const i = idx >= 0 ? idx : 0;
+        const n = keys.length || 4;
+        // Amber / gold gradient for Q1–Q4
+        return yearStripGradientAt(i, n, 38, 42, 62, 86, 32);
       }}
       function auditMetricFillFromColor(colorCss) {{
         const raw = String(colorCss || "").trim();
@@ -13257,6 +13366,107 @@ def generate_finance_report(
         }});
       }}
 
+      function renderQuarterMetricStrip(opts) {{
+        const host = opts.host;
+        const box = opts.box;
+        const activeSet = opts.activeSet;
+        const kind = opts.kind;
+        const quarterKeys = opts.quarterKeys || ["Q1", "Q2", "Q3", "Q4"];
+        const colorFn = opts.colorFn;
+        const totalId = opts.totalId;
+        const enabled = opts.enabled !== false;
+        if (!host || !box) return activeSet;
+        host.innerHTML = "";
+        if (!enabled) {{
+          box.style.display = "none";
+          activeSet.clear();
+          return activeSet;
+        }}
+        let baseRows = aoRowsForYearStrip()
+          .filter(function (r) {{ return rowInIaSelection(r, blankLabel); }})
+          .filter(function (r) {{ return rowMatchesRatingSelection(r); }})
+          .filter(function (r) {{ return rowMatchesObsTypeSelection(r, blankLabel); }});
+        if (activeAuditYears.size > 0) {{
+          baseRows = baseRows.filter(function (r) {{
+            const yk = ffCellKey(r.y);
+            return yk !== "" && activeAuditYears.has(yk);
+          }});
+        }}
+        if (activePlannedYears.size > 0) {{
+          baseRows = baseRows.filter(function (r) {{
+            const yk = ffCellKey(r.py);
+            return yk !== "" && activePlannedYears.has(yk);
+          }});
+        }}
+        if (activeActualYears.size > 0) {{
+          baseRows = baseRows.filter(function (r) {{
+            const yk = ffCellKey(r.ay);
+            return yk !== "" && activeActualYears.has(yk);
+          }});
+        }}
+        const qCounts = {{}};
+        quarterKeys.forEach(function (qk) {{ qCounts[qk] = 0; }});
+        for (let i = 0; i < baseRows.length; i++) {{
+          const qk = rowFindingReleasedQuarter(baseRows[i]);
+          if (qk && qCounts[qk] != null) qCounts[qk] += 1;
+        }}
+        let nextActive = activeSet;
+        if (activeSet.size > 0) {{
+          nextActive = new Set(Array.from(activeSet).filter(function (q) {{ return quarterKeys.indexOf(q) >= 0; }}));
+        }}
+        box.style.display = "";
+        quarterKeys.forEach(function (qk) {{
+          const qb = document.createElement("button");
+          qb.type = "button";
+          qb.className = "audit-rating-btn";
+          qb.setAttribute("data-quarter-value", qk);
+          applyFlatMetricSurface(qb, colorFn(qk));
+          qb.style.boxShadow = "none";
+          const qLabSp = document.createElement("span");
+          qLabSp.className = "audit-rating-lbl";
+          const qNumSp = document.createElement("span");
+          qNumSp.className = "audit-rating-n";
+          qLabSp.textContent = qk;
+          qNumSp.textContent = String(qCounts[qk] || 0);
+          qb.appendChild(qLabSp);
+          qb.appendChild(qNumSp);
+          qb.setAttribute("aria-pressed", nextActive.has(qk) ? "true" : "false");
+          qb.classList.toggle("audit-rating-active", nextActive.has(qk));
+          qb.addEventListener("click", function () {{
+            handleMetricBlockClick(nextActive, qk, kind, qk);
+          }});
+          if (ui.blockDrillHint) qb.title = ui.blockDrillHint;
+          host.appendChild(qb);
+        }});
+        const totQ = document.createElement("button");
+        totQ.type = "button";
+        totQ.id = totalId;
+        totQ.className = "audit-rating-total-pill";
+        const tlq = document.createElement("span");
+        tlq.className = "audit-rating-total-lbl";
+        const tnq = document.createElement("span");
+        tnq.className = "audit-rating-total-n";
+        tlq.textContent = ui.ratingTypesTotal || "Total";
+        tnq.textContent = String(
+          quarterKeys.reduce(function (sum, k) {{ return sum + (qCounts[k] || 0); }}, 0)
+        );
+        totQ.appendChild(tlq);
+        totQ.appendChild(tnq);
+        totQ.title = ui.stripTotalResetHint || "Clear this filter only";
+        totQ.setAttribute("aria-label", ui.stripTotalResetHint || "Clear this filter only");
+        totQ.addEventListener("click", function () {{
+          if (nextActive.size === 0) return;
+          nextActive.clear();
+          if (isObsListDrillOpen() && lastBlockDrillKey && String(lastBlockDrillKey).indexOf(kind + ":") === 0) {{
+            closeAgingDrillDown();
+          }}
+          obsCheckedIds = null;
+          aoRefresh();
+        }});
+        host.appendChild(totQ);
+        return nextActive;
+      }}
+
       function renderYearMetricStrip(opts) {{
         const host = opts.host;
         const box = opts.box;
@@ -13304,6 +13514,9 @@ def generate_finance_report(
             const yk = ffCellKey(r.ay);
             return yk !== "" && activeActualYears.has(yk);
           }});
+        }}
+        if (kind !== "findingReleased" && activeFindingReleasedQuarters.size > 0) {{
+          yearRows = yearRows.filter(function (r) {{ return rowMatchesFindingReleasedSelection(r); }});
         }}
         const yearCounts = {{}};
         for (let i = 0; i < yearRows.length; i++) {{
@@ -13385,6 +13598,16 @@ def generate_finance_report(
           colorFn: auditYearGradientColor,
           totalId: "audit-year-total-row",
           enabled: true
+        }});
+        activeFindingReleasedQuarters = renderQuarterMetricStrip({{
+          host: findingReleasedBtnHost,
+          box: findingReleasedBox,
+          activeSet: activeFindingReleasedQuarters,
+          kind: "findingReleased",
+          quarterKeys: FINDING_RELEASED_QUARTERS,
+          colorFn: findingReleasedQuarterColor,
+          totalId: "audit-finding-released-total-row",
+          enabled: hasFindingReleasedQuarter
         }});
         activePlannedYears = renderYearMetricStrip({{
           host: plannedYearBtnHost,
@@ -13731,6 +13954,7 @@ def generate_finance_report(
           activeAuditYears.size > 0 ||
           activePlannedYears.size > 0 ||
           activeActualYears.size > 0 ||
+          activeFindingReleasedQuarters.size > 0 ||
           shortlistToolbarSelectionActive();
         if (!fr.length) metaLine = ui.obsListEmpty || "";
         else if (!shortlistGateOn) metaLine = ui.obsNamesMetaSelect || "";
@@ -13896,6 +14120,7 @@ def generate_finance_report(
         activeAuditYears.clear();
         activePlannedYears.clear();
         activeActualYears.clear();
+        activeFindingReleasedQuarters.clear();
         activeIaLabels.clear();
         obsCheckedIds = null;
         activeRatingValues.clear();
@@ -14079,6 +14304,7 @@ def generate_finance_report(
         activeAuditYears.clear();
         activePlannedYears.clear();
         activeActualYears.clear();
+        activeFindingReleasedQuarters.clear();
         activeIaLabels.clear();
         activeRatingValues.clear();
         activeObsTypeLabels.clear();

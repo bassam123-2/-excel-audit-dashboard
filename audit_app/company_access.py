@@ -376,8 +376,8 @@ def resolve_excel_sheet_for_company(
         return None
 
     try:
-        xl = pd.ExcelFile(path)
-        sheet_names = list(xl.sheet_names)
+        with pd.ExcelFile(path) as xl:
+            sheet_names = list(xl.sheet_names)
     except Exception:
         return None
     if not sheet_names:
