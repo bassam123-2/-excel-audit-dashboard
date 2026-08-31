@@ -11,7 +11,7 @@ from tests.factories import make_membership, make_user
 @pytest.mark.unit
 @pytest.mark.django_db
 def test_resolve_default_home_dashboard_viewer(btc_company, viewer_user):
-    assert resolve_default_home(viewer_user) == reverse("dashboard_list")
+    assert resolve_default_home(viewer_user) == f"{reverse('dashboard_list')}?template=IAD"
 
 
 @pytest.mark.unit

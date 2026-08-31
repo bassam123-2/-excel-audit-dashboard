@@ -20,6 +20,7 @@ from audit_app.models import (
     COMPANY_KIND_SUBSIDIARY,
     Company,
     CompanyAttachmentSetting,
+    CompanyMembership,
 )
 
 DEFAULT_ATTACHMENT_MAX_FILES = 4
@@ -595,5 +596,155 @@ CompanyAdminForm = type(
         for code, label in ATTACHMENT_KIND_CHOICES
     },
 )
+
+
+MEMBERSHIP_TEMPLATE_PERM_SPECS = (
+    ("can_upload", _("Upload files")),
+    ("can_view_own_only", _("View own dashboards only")),
+    ("can_review", _("Approve or reject")),
+    ("can_assign_dashboard_viewers", _("Assign viewers")),
+    ("can_delete_drafts", _("Delete drafts")),
+)
+
+
+class TemplatePermissionsWidget(forms.Widget):
+    """Grouped checkboxes: one card per dashboard template type."""
+
+    def __init__(self, attrs=None):
+        super().__init__(attrs)
+        self.template_types = []
+
+    def value_from_datadict(self, data, files, name):
+        result = {}
+        for template in self.template_types:
+            flags = {}
+            for field, _label in MEMBERSHIP_TEMPLATE_PERM_SPECS:
+                flags[field] = data.get(f"{name}-{template.code}-{field}") in (
+                    "on",
+                    "true",
+                    "1",
+                    True,
+                )
+            result[template.code] = flags
+        return result
+
+    def render(self, name, value, attrs=None, renderer=None):
+        from django.utils.html import format_html
+        from django.utils.safestring import mark_safe
+
+        value = value or {}
+        cards = []
+        for template in self.template_types:
+            flags = value.get(template.code) or {}
+            rows = []
+            for field, label in MEMBERSHIP_TEMPLATE_PERM_SPECS:
+                checked = " checked" if flags.get(field) else ""
+                input_id = f"{name}-{template.code}-{field}"
+                rows.append(
+                    format_html(
+                        '<label class="tpl-perm-row" for="{}">'
+                        '<input type="checkbox" name="{}" id="{}"{}>'
+                        "<span>{}</span></label>",
+                        input_id,
+                        input_id,
+                        input_id,
+                        mark_safe(checked),
+                        label,
+                    )
+                )
+            icon = getattr(template, "icon", None) or "bi-grid"
+            cards.append(
+                format_html(
+                    '<section class="tpl-perm-card">'
+                    '<h4 class="tpl-perm-title"><i class="bi {}"></i> {}</h4>'
+                    '<p class="tpl-perm-code">{}</p>'
+                    "{}"
+                    "</section>",
+                    icon,
+                    template.name,
+                    template.code,
+                    mark_safe("".join(str(row) for row in rows)),
+                )
+            )
+        help_html = format_html(
+            '<p class="tpl-perm-help">{}</p>',
+            _(
+                "Grant access independently for each dashboard template. "
+                "Upload for Internal Audit does not include Compliance, and the reverse."
+            ),
+        )
+        return format_html(
+            '<div class="tpl-perm-board">{}{}</div>',
+            help_html,
+            mark_safe("".join(str(card) for card in cards)),
+        )
+
+
+class TemplatePermissionsField(forms.Field):
+    widget = TemplatePermissionsWidget
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("required", False)
+        super().__init__(*args, **kwargs)
+
+    def clean(self, value):
+        return value or {}
+
+
+class CompanyMembershipForm(forms.ModelForm):
+    template_permissions = TemplatePermissionsField(
+        label=_("Dashboard template permissions"),
+    )
+
+    class Meta:
+        model = CompanyMembership
+        fields = ("user", "company")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from audit_app.company_access import list_nav_template_types
+        from audit_app.models import MEMBERSHIP_PERM_FIELDS
+
+        types = list_nav_template_types()
+        self.fields["template_permissions"].widget.template_types = types
+        initial = {}
+        instance = self.instance
+        if instance and instance.pk:
+            by_code = {
+                row.template_code: row for row in instance.template_accesses.all()
+            }
+            for template in types:
+                row = by_code.get(template.code)
+                initial[template.code] = {
+                    field: bool(getattr(row, field)) if row else bool(getattr(instance, field))
+                    for field in MEMBERSHIP_PERM_FIELDS
+                }
+        else:
+            for template in types:
+                initial[template.code] = {
+                    field: False for field, _label in MEMBERSHIP_TEMPLATE_PERM_SPECS
+                }
+        self.fields["template_permissions"].initial = initial
+        if "user" in self.fields:
+            self.fields["user"].required = False
+
+    def save(self, commit=True):
+        obj = super().save(commit=commit)
+        if commit and obj.pk:
+            self._save_template_permissions(obj)
+        return obj
+
+    def save_m2m(self):
+        super().save_m2m()
+        if self.instance.pk:
+            self._save_template_permissions(self.instance)
+
+    def _save_template_permissions(self, membership):
+        from audit_app.models import apply_membership_template_accesses
+
+        access_map = self.cleaned_data.get("template_permissions") or {}
+        if access_map:
+            apply_membership_template_accesses(membership, access_map)
+
 
 

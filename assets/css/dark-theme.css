@@ -20,6 +20,7 @@ html[data-theme="dark"] {
     --body-fg: #f1f5f9;
     --body-bg: #0f172a;
     --body-quiet-color: #94a3b8;
+    --body-medium-color: #e2e8f0;
     --body-loud-color: #f8fafc;
     --hairline-color: #334155;
     --border-color: #334155;

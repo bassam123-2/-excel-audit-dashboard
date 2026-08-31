@@ -433,7 +433,7 @@ class CompanyAccessTests(TestCase):
             {"username": "btc_uploader", "password": "Test@1234"},
         )
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, "/")
+        self.assertEqual(response.url, "/?template=IAD")
 
     def test_uploader_can_open_upload_page(self):
         client = Client()

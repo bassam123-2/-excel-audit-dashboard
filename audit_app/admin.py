@@ -39,6 +39,7 @@ from .admin_utils import (
 from .admin_forms import (
     AdminUserChangeForm,
     CompanyAdminForm,
+    CompanyMembershipForm,
     MandatoryPasswordAdminChangeForm,
     MandatoryPasswordAdminCreationForm,
     apply_user_profile_form,
@@ -199,19 +200,15 @@ class WorkflowEmailsFilter(admin.SimpleListFilter):
         return queryset
 
 
-class CompanyMembershipInline(admin.TabularInline):
+class CompanyMembershipInline(admin.StackedInline):
     model = CompanyMembership
+    form = CompanyMembershipForm
     extra = 1
     autocomplete_fields = ("company",)
     fk_name = "user"
-    fields = (
-        "company",
-        "can_upload",
-        "can_assign_dashboard_viewers",
-        "can_view_own_only",
-        "can_review",
-        "can_delete_drafts",
-    )
+    fields = ("company", "template_permissions")
+    verbose_name = _("Company membership")
+    verbose_name_plural = _("Company memberships")
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(is_deleted=False)
@@ -1356,7 +1353,21 @@ class CompanyAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, admin.ModelAdmin):
 @admin.register(CompanyMembership)
 class CompanyMembershipAdmin(SoftDeleteAdminMixin, AdminClV2Mixin, ActiveCompanyFkMixin, admin.ModelAdmin):
     cl_v2_subtitle = _(
-        "Manage user access, upload rights, and review permissions per company."
+        "Manage user access independently for each dashboard template type."
+    )
+    form = CompanyMembershipForm
+    fieldsets = (
+        (None, {"fields": ("user", "company")}),
+        (
+            _("Dashboard template permissions"),
+            {
+                "fields": ("template_permissions",),
+                "description": _(
+                    "Each template type has its own upload, view, review, "
+                    "and delete rights for this company."
+                ),
+            },
+        ),
     )
     _MEMBERSHIP_BOOL_FIELDS = (
         "can_upload",
